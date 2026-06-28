@@ -3,7 +3,6 @@ import { open } from "@tauri-apps/plugin-dialog";
 import {
   addWatchedFolder,
   removeWatchedFolder,
-  scanFolder,
   type ScanStatus,
 } from "@/lib/tauri";
 import { addFolder, removeFolder, useAppStore } from "@/store/appStore";
@@ -55,7 +54,6 @@ export function FolderManager() {
     try {
       const folder = await addWatchedFolder(selected);
       addFolder(folder);
-      await scanFolder(folder.id);
     } finally {
       setAdding(false);
     }

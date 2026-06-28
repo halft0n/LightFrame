@@ -92,8 +92,8 @@ pub fn get_timeline_groups(
     limit: Option<i64>,
     offset: Option<i64>,
 ) -> Result<Vec<TimelineGroup>, String> {
-    let limit = limit.unwrap_or(200);
-    let offset = offset.unwrap_or(0);
+    let limit = limit.unwrap_or(200).clamp(1, 500);
+    let offset = offset.unwrap_or(0).max(0);
     state
         .db
         .get_timeline_groups(limit, offset)

@@ -48,7 +48,6 @@ export default function App() {
     void onScanProgress((progress) => {
       setScanning(progress.status === "scanning", progress);
       updateFolder(progress.folder_id, {
-        media_count: progress.scanned,
         scan_status: progress.status,
       });
 
