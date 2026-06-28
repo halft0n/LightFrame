@@ -360,6 +360,11 @@ pub fn get_favorites_count(state: State<'_, AppState>) -> Result<i64, String> {
 }
 
 #[tauri::command]
+pub fn is_favorite(state: State<'_, AppState>, media_id: i64) -> Result<bool, String> {
+    state.db.is_favorite(media_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn delete_media(state: State<'_, AppState>, media_id: i64) -> Result<(), String> {
     state
         .db

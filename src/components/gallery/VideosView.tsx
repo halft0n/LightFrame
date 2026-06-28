@@ -28,6 +28,7 @@ export function VideosView() {
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState(false);
 
   const columnCount = Math.max(
     1,
@@ -50,6 +51,8 @@ export function VideosView() {
           setMediaItems(items);
           setTotalCount(count);
         }
+      } catch (err) {
+        console.error("Failed to load videos:", err);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -80,9 +83,13 @@ export function VideosView() {
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
+    setLoadMoreError(false);
     try {
       const items = await getMediaByType("Video", mediaItems.length, PAGE_SIZE);
       setMediaItems((prev) => [...prev, ...items]);
+    } catch (err) {
+      console.error("Failed to load more videos:", err);
+      setLoadMoreError(true);
     } finally {
       setLoadingMore(false);
     }
@@ -118,7 +125,7 @@ export function VideosView() {
   const handleSelect = useCallback(
     (id: number, event: React.MouseEvent) => {
       if (event.shiftKey && lastSelectedRef.current != null) {
-        selectMediaRange(lastSelectedRef.current, id);
+        selectMediaRange(lastSelectedRef.current, id, mediaItems);
       } else if (event.ctrlKey || event.metaKey) {
         toggleMediaSelection(id);
         lastSelectedRef.current = id;
@@ -127,7 +134,7 @@ export function VideosView() {
         lastSelectedRef.current = id;
       }
     },
-    [],
+    [mediaItems],
   );
 
   useEffect(() => {
@@ -211,6 +218,9 @@ export function VideosView() {
             <div className="loading-shimmer-bar shimmer" aria-hidden="true" />
             <span className="text-sm text-neutral-500">{t("gallery.loading")}</span>
           </div>
+        )}
+        {loadMoreError && (
+          <p className="py-4 text-center text-sm text-red-500">{t("gallery.loadError")}</p>
         )}
       </div>
     </div>

@@ -10,6 +10,19 @@ import {
   setScanning,
   toggleMediaSelection,
   clearMediaSelection,
+  selectMediaRange,
+  openViewer,
+  closeViewer,
+  setSearchQuery,
+  setTheme,
+  openAlbumDetail,
+  closeAlbumDetail,
+  openSmartAlbumDetail,
+  closeSmartAlbumDetail,
+  openMemoryDetail,
+  closeMemoryDetail,
+  openPersonDetail,
+  closePersonDetail,
 } from "@/store/appStore";
 import type { MediaItem, WatchedFolder } from "@/lib/tauri";
 
@@ -19,6 +32,14 @@ function resetStore() {
   setMedia([], 0);
   clearMediaSelection();
   setScanning(false, null);
+  closeViewer();
+  setSearchQuery("");
+  setTheme("dark");
+  closeAlbumDetail();
+  closeSmartAlbumDetail();
+  closeMemoryDetail();
+  closePersonDetail();
+  setView("all");
 }
 
 const sampleFolder: WatchedFolder = {
@@ -118,5 +139,138 @@ describe("appStore", () => {
     unsubscribe();
     setView("all");
     expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("selectMediaRange selects inclusive range from store mediaItems", () => {
+    const items = [
+      sampleMedia,
+      { ...sampleMedia, id: 2 },
+      { ...sampleMedia, id: 3 },
+      { ...sampleMedia, id: 4 },
+    ];
+    setMedia(items, 4);
+
+    selectMediaRange(1, 3);
+    expect(getSnapshot().selectedMediaIds).toEqual([1, 2, 3]);
+
+    selectMediaRange(4, 2);
+    expect(getSnapshot().selectedMediaIds).toEqual([2, 3, 4]);
+  });
+
+  it("selectMediaRange uses contextItems when provided", () => {
+    setMedia([sampleMedia, { ...sampleMedia, id: 2 }], 2);
+    const contextItems = [
+      { id: 10 },
+      { id: 20 },
+      { id: 30 },
+      { id: 40 },
+    ];
+
+    selectMediaRange(10, 30, contextItems);
+    expect(getSnapshot().selectedMediaIds).toEqual([10, 20, 30]);
+  });
+
+  it("selectMediaRange does nothing when IDs are not found", () => {
+    setMedia([sampleMedia, { ...sampleMedia, id: 2 }], 2);
+    toggleMediaSelection(1);
+
+    selectMediaRange(1, 99);
+    expect(getSnapshot().selectedMediaIds).toEqual([1]);
+
+    selectMediaRange(99, 1, [{ id: 10 }, { id: 20 }]);
+    expect(getSnapshot().selectedMediaIds).toEqual([1]);
+  });
+
+  it("openViewer and closeViewer manage viewingMediaId", () => {
+    expect(getSnapshot().viewingMediaId).toBeNull();
+
+    openViewer(42);
+    expect(getSnapshot().viewingMediaId).toBe(42);
+
+    closeViewer();
+    expect(getSnapshot().viewingMediaId).toBeNull();
+  });
+
+  it("setSearchQuery updates searchQuery", () => {
+    setSearchQuery("sunset beach");
+    expect(getSnapshot().searchQuery).toBe("sunset beach");
+
+    setSearchQuery("");
+    expect(getSnapshot().searchQuery).toBe("");
+  });
+
+  it("setTheme updates theme", () => {
+    setTheme("light");
+    expect(getSnapshot().theme).toBe("light");
+
+    setTheme("system");
+    expect(getSnapshot().theme).toBe("system");
+
+    setTheme("dark");
+    expect(getSnapshot().theme).toBe("dark");
+  });
+
+  it("album detail navigation", () => {
+    openAlbumDetail(5);
+    expect(getSnapshot().currentView).toBe("album-detail");
+    expect(getSnapshot().selectedAlbumId).toBe(5);
+
+    closeAlbumDetail();
+    expect(getSnapshot().currentView).toBe("albums");
+    expect(getSnapshot().selectedAlbumId).toBeNull();
+  });
+
+  it("smart album detail navigation", () => {
+    openSmartAlbumDetail(7);
+    expect(getSnapshot().currentView).toBe("smart-album-detail");
+    expect(getSnapshot().selectedSmartAlbumId).toBe(7);
+
+    closeSmartAlbumDetail();
+    expect(getSnapshot().currentView).toBe("smart-albums");
+    expect(getSnapshot().selectedSmartAlbumId).toBeNull();
+  });
+
+  it("memory detail navigation", () => {
+    openMemoryDetail(3);
+    expect(getSnapshot().currentView).toBe("memory-detail");
+    expect(getSnapshot().selectedMemoryId).toBe(3);
+
+    closeMemoryDetail();
+    expect(getSnapshot().currentView).toBe("memories");
+    expect(getSnapshot().selectedMemoryId).toBeNull();
+  });
+
+  it("person detail navigation", () => {
+    openPersonDetail(9);
+    expect(getSnapshot().currentView).toBe("person-detail");
+    expect(getSnapshot().selectedPersonId).toBe(9);
+
+    closePersonDetail();
+    expect(getSnapshot().currentView).toBe("people");
+    expect(getSnapshot().selectedPersonId).toBeNull();
+  });
+
+  it("setView clears detail IDs when leaving detail views", () => {
+    openAlbumDetail(1);
+    setView("all");
+    expect(getSnapshot().selectedAlbumId).toBeNull();
+
+    openSmartAlbumDetail(2);
+    setView("timeline");
+    expect(getSnapshot().selectedSmartAlbumId).toBeNull();
+
+    openMemoryDetail(3);
+    setView("favorites");
+    expect(getSnapshot().selectedMemoryId).toBeNull();
+
+    openPersonDetail(4);
+    setView("settings");
+    expect(getSnapshot().selectedPersonId).toBeNull();
+  });
+
+  it("setView preserves detail IDs when staying on same detail view", () => {
+    openAlbumDetail(5);
+    setView("album-detail");
+    expect(getSnapshot().selectedAlbumId).toBe(5);
   });
 });

@@ -75,14 +75,20 @@ export function FolderManager() {
     try {
       const folder = await addWatchedFolder(selected);
       addFolder(folder);
+    } catch (err) {
+      console.error("Failed to add watched folder:", err);
     } finally {
       setAdding(false);
     }
   };
 
   const handleRemoveFolder = async (id: number) => {
-    await removeWatchedFolder(id);
-    removeFolder(id);
+    try {
+      await removeWatchedFolder(id);
+      removeFolder(id);
+    } catch (err) {
+      console.error("Failed to remove watched folder:", err);
+    }
   };
 
   const handleRescanFolder = async (folderId: number) => {
@@ -112,7 +118,7 @@ export function FolderManager() {
         <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
           {t("theme.title")}
         </h2>
-        <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t("main.addFolder")}</p>
+        <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t("theme.subtitle")}</p>
         <div className="mt-4 flex flex-wrap gap-2">
           {themeOptions.map((opt) => (
             <button

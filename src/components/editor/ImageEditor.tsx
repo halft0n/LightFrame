@@ -115,6 +115,10 @@ export function ImageEditor({
     })();
     return () => {
       cancelled = true;
+      if (historyTimerRef.current) {
+        clearTimeout(historyTimerRef.current);
+        historyTimerRef.current = null;
+      }
     };
   }, [mediaId, initHistory]);
 
@@ -237,8 +241,17 @@ export function ImageEditor({
       exportParams.crop = undefined;
     }
     const payload = serializeEditParams(exportParams);
-    await saveEdit(mediaId, payload);
-    await exportEdited(mediaId, outputPath, 92);
+    const previousEdit = await getEdit(mediaId);
+    try {
+      await saveEdit(mediaId, payload);
+      await exportEdited(mediaId, outputPath, 92);
+    } finally {
+      if (previousEdit) {
+        await saveEdit(mediaId, previousEdit);
+      } else {
+        await revertEdit(mediaId);
+      }
+    }
   }, [cropMode, filename, mediaId, params]);
 
   const effectiveParams = compare ? DEFAULT_EDIT_PARAMS : params;

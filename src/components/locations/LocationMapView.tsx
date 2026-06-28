@@ -127,22 +127,35 @@ export function LocationMapView({ groups }: LocationMapViewProps) {
     setLoading(true);
 
     void (async () => {
-      const results = await Promise.all(
-        groups.map(async (group) => {
-          const media = await getMediaById(group.sample_media_id);
-          if (media?.latitude == null || media?.longitude == null) return null;
-          return {
-            group,
-            lat: media.latitude,
-            lng: media.longitude,
-            label: locationLabel(group.country, group.city),
-          };
-        }),
-      );
+      try {
+        const results = await Promise.all(
+          groups.map(async (group) => {
+            try {
+              const media = await getMediaById(group.sample_media_id);
+              if (media?.latitude == null || media?.longitude == null) return null;
+              return {
+                group,
+                lat: media.latitude,
+                lng: media.longitude,
+                label: locationLabel(group.country, group.city),
+              };
+            } catch (err) {
+              console.error(
+                `Failed to load coordinates for location group ${group.country}/${group.city ?? ""}:`,
+                err,
+              );
+              return null;
+            }
+          }),
+        );
 
-      if (!cancelled) {
-        setMarkers(results.filter((item): item is LocationMarker => item !== null));
-        setLoading(false);
+        if (!cancelled) {
+          setMarkers(results.filter((item): item is LocationMarker => item !== null));
+        }
+      } catch (err) {
+        console.error("Failed to load map markers:", err);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
 

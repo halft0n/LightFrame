@@ -170,8 +170,8 @@ export function setSingleMediaSelection(id: number) {
   setState({ selectedMediaIds: [id] });
 }
 
-export function selectMediaRange(fromId: number, toId: number) {
-  const items = state.mediaItems;
+export function selectMediaRange(fromId: number, toId: number, contextItems?: { id: number }[]) {
+  const items = contextItems ?? state.mediaItems;
   const fromIdx = items.findIndex((m) => m.id === fromId);
   const toIdx = items.findIndex((m) => m.id === toId);
   if (fromIdx === -1 || toIdx === -1) return;

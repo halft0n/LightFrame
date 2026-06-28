@@ -123,7 +123,14 @@ export const DEFAULT_EDIT_PARAMS: EditParams = {
 export function parseEditParams(json: string | null | undefined): EditParams {
   if (!json?.trim()) return { ...DEFAULT_EDIT_PARAMS };
   try {
-    return { ...DEFAULT_EDIT_PARAMS, ...JSON.parse(json) };
+    const parsed = JSON.parse(json) as Partial<EditParams>;
+    return {
+      ...DEFAULT_EDIT_PARAMS,
+      ...parsed,
+      curves: parsed.curves ?? DEFAULT_EDIT_PARAMS.curves,
+      levels: parsed.levels ? { ...DEFAULT_LEVELS, ...parsed.levels } : DEFAULT_EDIT_PARAMS.levels,
+      selectiveColor: parsed.selectiveColor ?? DEFAULT_EDIT_PARAMS.selectiveColor,
+    };
   } catch {
     return { ...DEFAULT_EDIT_PARAMS };
   }

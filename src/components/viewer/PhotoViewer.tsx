@@ -8,6 +8,7 @@ import {
   getEdit,
   hasEdits,
   toggleFavorite,
+  getFavoriteState,
   type MediaItem,
 } from "@/lib/tauri";
 import { buildClipPath, buildCssFilter, buildImageTransform, parseEditParams } from "@/lib/editParams";
@@ -73,21 +74,22 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
 
   useEffect(() => {
     resetView();
-    setIsFavorite(false);
     let cancelled = false;
 
     void (async () => {
-      const [item, nb, list, hasEdit] = await Promise.all([
+      const [item, nb, list, hasEdit, favoriteState] = await Promise.all([
         getMediaById(mediaId),
         getMediaNeighbors(mediaId),
         getMediaList(0, FILMSTRIP_SIZE * 3),
         hasEdits(mediaId),
+        getFavoriteState(mediaId),
       ]);
       if (cancelled) return;
       setMedia(item);
       setNeighbors(nb);
       setFilmstrip(list);
       setEdited(hasEdit);
+      setIsFavorite(favoriteState);
       if (hasEdit) {
         setEditParamsJson(await getEdit(mediaId));
       } else {

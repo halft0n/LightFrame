@@ -1791,6 +1791,20 @@ impl Database {
         .map_err(|e| catchlight_core::Error::Database(e.to_string()))
     }
 
+    pub fn is_favorite(&self, media_id: i64) -> catchlight_core::Result<bool> {
+        let conn = self.conn();
+        let result: i64 = conn
+            .query_row(
+                "SELECT is_favorite FROM media_files WHERE id = ?1 AND is_deleted = 0",
+                params![media_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?
+            .unwrap_or(0);
+        Ok(result != 0)
+    }
+
     pub fn search_media(
         &self,
         query: &str,

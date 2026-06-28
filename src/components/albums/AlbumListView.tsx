@@ -63,7 +63,7 @@ export function AlbumListView() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="flex items-center justify-between border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3">
-        <h2 className="text-sm font-medium text-neutral-200">{t("albums.title")}</h2>
+        <h2 className="text-sm font-medium text-neutral-700 dark:text-neutral-200">{t("albums.title")}</h2>
         <button
           type="button"
           onClick={() => setShowCreate(true)}
@@ -118,11 +118,13 @@ export function AlbumListView() {
         <div className="flex-1 overflow-y-auto px-1 py-1">
           <div className="grid gap-[3px] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {albums.map((album) => (
-              <button
+              <div
                 key={album.id}
-                type="button"
+                role="button"
+                tabIndex={0}
                 onClick={() => openAlbumDetail(album.id)}
-                className="group relative flex flex-col overflow-hidden rounded-lg border border-neutral-200/80 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900/50 text-left transition hover:border-neutral-300 dark:hover:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800/80"
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") openAlbumDetail(album.id); }}
+                className="group relative flex cursor-pointer flex-col overflow-hidden rounded-lg border border-neutral-200/80 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900/50 text-left transition hover:border-neutral-300 dark:hover:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800/80"
               >
                 <div className="aspect-square w-full bg-neutral-800">
                   {album.cover_media_id != null ? (
@@ -140,7 +142,7 @@ export function AlbumListView() {
                 </div>
                 <div className="flex items-start justify-between gap-2 p-3">
                   <div className="min-w-0">
-                    <p className="truncate font-medium text-neutral-100">{album.name}</p>
+                    <p className="truncate font-medium text-neutral-800 dark:text-neutral-100">{album.name}</p>
                     <p className="text-sm text-neutral-500">
                       {t("gallery.count", { count: album.media_count })}
                     </p>
@@ -154,7 +156,7 @@ export function AlbumListView() {
                     ✕
                   </button>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         </div>

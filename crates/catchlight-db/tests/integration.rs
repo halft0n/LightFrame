@@ -572,6 +572,32 @@ fn test_toggle_favorite() {
 }
 
 #[test]
+fn test_is_favorite() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/a.jpg"))
+        .unwrap();
+
+    assert!(!db.is_favorite(media_id).unwrap());
+
+    assert!(db.toggle_favorite(media_id).unwrap());
+    assert!(db.is_favorite(media_id).unwrap());
+
+    assert!(!db.toggle_favorite(media_id).unwrap());
+    assert!(!db.is_favorite(media_id).unwrap());
+
+    assert!(!db.is_favorite(9999).unwrap());
+
+    let deleted_id = db
+        .upsert_media(fid, &sample_media("/photos/b.jpg"))
+        .unwrap();
+    db.toggle_favorite(deleted_id).unwrap();
+    db.set_deleted(deleted_id, true).unwrap();
+    assert!(!db.is_favorite(deleted_id).unwrap());
+}
+
+#[test]
 fn test_soft_delete_and_cleanup() {
     let db = create_test_db();
     let fid = insert_folder_id(&db, "/photos");

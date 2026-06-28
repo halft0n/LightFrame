@@ -31,8 +31,12 @@ export function SelectionToolbar() {
   }, [count]);
 
   const refreshMedia = useCallback(async () => {
-    const [items, total] = await Promise.all([getMediaList(0, 60), getMediaCount()]);
-    setMedia(items, total);
+    try {
+      const [items, total] = await Promise.all([getMediaList(0, 60), getMediaCount()]);
+      setMedia(items, total);
+    } catch (err) {
+      console.error("Failed to refresh media:", err);
+    }
   }, []);
 
   const handleDelete = async () => {
@@ -41,6 +45,8 @@ export function SelectionToolbar() {
       await batchDeleteMedia(selectedMediaIds);
       clearMediaSelection();
       await refreshMedia();
+    } catch (err) {
+      console.error("Failed to delete selected media:", err);
     } finally {
       setBusy(false);
       setShowDeleteConfirm(false);
@@ -52,6 +58,8 @@ export function SelectionToolbar() {
     try {
       await batchToggleFavorite(selectedMediaIds, true);
       clearMediaSelection();
+    } catch (err) {
+      console.error("Failed to favorite selected media:", err);
     } finally {
       setBusy(false);
     }
@@ -63,6 +71,8 @@ export function SelectionToolbar() {
       await batchAddToAlbum(albumId, selectedMediaIds);
       clearMediaSelection();
       setShowAlbumPicker(false);
+    } catch (err) {
+      console.error("Failed to add selected media to album:", err);
     } finally {
       setBusy(false);
     }

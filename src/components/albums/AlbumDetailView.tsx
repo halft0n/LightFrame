@@ -34,6 +34,9 @@ export function AlbumDetailView() {
     Math.floor((containerWidth + GAP) / (MIN_COLUMN_WIDTH + GAP)),
   );
 
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+
   const loadAlbum = useCallback(async () => {
     if (selectedAlbumId == null) return;
     setLoading(true);
@@ -44,6 +47,7 @@ export function AlbumDetailView() {
       ]);
       setAlbum(albums.find((a) => a.id === selectedAlbumId) ?? null);
       setMedia(items);
+      setHasMore(items.length >= PAGE_SIZE);
     } finally {
       setLoading(false);
     }
@@ -52,6 +56,31 @@ export function AlbumDetailView() {
   useEffect(() => {
     void loadAlbum();
   }, [loadAlbum]);
+
+  const loadMore = useCallback(async () => {
+    if (selectedAlbumId == null || loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const items = await getAlbumMedia(selectedAlbumId, media.length, PAGE_SIZE);
+      setMedia((prev) => [...prev, ...items]);
+      setHasMore(items.length >= PAGE_SIZE);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [selectedAlbumId, loadingMore, hasMore, media.length]);
+
+  useEffect(() => {
+    const el = parentRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      if (scrollHeight - scrollTop - clientHeight < 200) {
+        void loadMore();
+      }
+    };
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, [loadMore]);
 
   useEffect(() => {
     const el = parentRef.current;

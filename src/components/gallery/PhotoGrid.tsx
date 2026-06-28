@@ -57,6 +57,8 @@ export function PhotoGrid() {
     try {
       const items = await getMediaList(mediaItems.length, PAGE_SIZE);
       appendMedia(items);
+    } catch (err) {
+      console.error("Failed to load more photos:", err);
     } finally {
       setLoadingMore(false);
     }

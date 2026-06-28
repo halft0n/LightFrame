@@ -42,6 +42,51 @@ describe("parseEditParams", () => {
     expect(result.contrast).toBe(0);
     expect(result.rotate).toBe(0);
   });
+
+  it("should deep merge levels and preserve nested curves/selectiveColor objects", () => {
+    const json = JSON.stringify({
+      curves: { rgb: [[0, 0], [255, 255]], r: [[0, 0], [255, 255]] },
+      levels: { inputBlack: 20 },
+      selectiveColor: { reds: { hue: 10, saturation: 0, luminance: 0 } },
+    });
+    const result = parseEditParams(json);
+
+    expect(result.curves?.rgb).toEqual([[0, 0], [255, 255]]);
+    expect(result.curves?.r).toEqual([[0, 0], [255, 255]]);
+    expect(result.levels).toEqual({
+      inputBlack: 20,
+      inputWhite: 255,
+      gamma: 1.0,
+      outputBlack: 0,
+      outputWhite: 255,
+    });
+    expect(result.selectiveColor?.reds).toEqual({ hue: 10, saturation: 0, luminance: 0 });
+  });
+
+  it("should merge partial levels JSON with defaults", () => {
+    const result = parseEditParams(JSON.stringify({ levels: { gamma: 1.5, outputWhite: 240 } }));
+    expect(result.levels).toEqual({
+      inputBlack: 0,
+      inputWhite: 255,
+      gamma: 1.5,
+      outputBlack: 0,
+      outputWhite: 240,
+    });
+  });
+
+  it("should preserve partial selectiveColor JSON as provided", () => {
+    const result = parseEditParams(
+      JSON.stringify({
+        selectiveColor: {
+          blues: { saturation: -15 },
+          greens: { hue: 5, luminance: 10 },
+        },
+      }),
+    );
+    expect(result.selectiveColor?.blues).toEqual({ saturation: -15 });
+    expect(result.selectiveColor?.greens).toEqual({ hue: 5, luminance: 10 });
+    expect(result.selectiveColor?.reds).toBeUndefined();
+  });
 });
 
 describe("serializeEditParams", () => {
@@ -120,6 +165,42 @@ describe("isDefaultEditParams", () => {
   it("should return false when perspectiveV is non-zero", () => {
     expect(isDefaultEditParams({ ...DEFAULT_EDIT_PARAMS, perspectiveV: 10 })).toBe(false);
   });
+
+  it("should return false for non-default curves rgb channel", () => {
+    expect(
+      isDefaultEditParams({
+        ...DEFAULT_EDIT_PARAMS,
+        curves: { rgb: [[0, 0], [128, 200], [255, 255]] },
+      }),
+    ).toBe(false);
+  });
+
+  it("should return true for identity curves", () => {
+    expect(
+      isDefaultEditParams({
+        ...DEFAULT_EDIT_PARAMS,
+        curves: { rgb: [[0, 0], [128, 128], [255, 255]] },
+      }),
+    ).toBe(true);
+  });
+
+  it("should return false for non-default levels inputWhite", () => {
+    expect(
+      isDefaultEditParams({
+        ...DEFAULT_EDIT_PARAMS,
+        levels: { inputBlack: 0, inputWhite: 240, gamma: 1.0, outputBlack: 0, outputWhite: 255 },
+      }),
+    ).toBe(false);
+  });
+
+  it("should return false for non-default selectiveColor channel", () => {
+    expect(
+      isDefaultEditParams({
+        ...DEFAULT_EDIT_PARAMS,
+        selectiveColor: { cyans: { hue: 0, saturation: 3, luminance: 0 } },
+      }),
+    ).toBe(false);
+  });
 });
 
 describe("buildCssFilter", () => {
@@ -143,6 +224,33 @@ describe("buildCssFilter", () => {
   it("should add hue-rotate for warmth", () => {
     const filter = buildCssFilter({ ...DEFAULT_EDIT_PARAMS, warmth: 10 });
     expect(filter).toContain("hue-rotate(3.0deg)");
+  });
+
+  it("should adjust filter when levels are non-default", () => {
+    const defaultFilter = buildCssFilter(DEFAULT_EDIT_PARAMS);
+    const levelsFilter = buildCssFilter({
+      ...DEFAULT_EDIT_PARAMS,
+      levels: {
+        inputBlack: 10,
+        inputWhite: 245,
+        gamma: 1.2,
+        outputBlack: 5,
+        outputWhite: 250,
+      },
+    });
+    expect(levelsFilter).not.toBe(defaultFilter);
+    expect(levelsFilter).toMatch(/brightness\([\d.]+\)/);
+    expect(levelsFilter).toMatch(/contrast\([\d.]+\)/);
+  });
+
+  it("should adjust filter when curves rgb is non-identity", () => {
+    const defaultFilter = buildCssFilter(DEFAULT_EDIT_PARAMS);
+    const curvesFilter = buildCssFilter({
+      ...DEFAULT_EDIT_PARAMS,
+      curves: { rgb: [[0, 0], [128, 180], [255, 255]] },
+    });
+    expect(curvesFilter).not.toBe(defaultFilter);
+    expect(curvesFilter).toMatch(/contrast\([\d.]+\)/);
   });
 });
 
@@ -190,6 +298,16 @@ describe("buildClipPath", () => {
     const clip = buildClipPath({ x: 0.1, y: 0.2, width: 0.5, height: 0.4 });
     expect(clip).toBe("inset(20% 40% 40% 10%)");
   });
+
+  it("should return undefined for negative width or height", () => {
+    expect(buildClipPath({ x: 0, y: 0, width: -0.1, height: 0.5 })).toBeUndefined();
+    expect(buildClipPath({ x: 0, y: 0, width: 0.5, height: -0.2 })).toBeUndefined();
+  });
+
+  it("should handle edge crop at image bounds", () => {
+    const clip = buildClipPath({ x: 0, y: 0, width: 1, height: 1 });
+    expect(clip).toBe("inset(0% 0% 0% 0%)");
+  });
 });
 
 describe("aspectRatioValue", () => {
@@ -208,6 +326,14 @@ describe("aspectRatioValue", () => {
   it("should return 16/9 for 16:9", () => {
     expect(aspectRatioValue("16:9", 1.5)).toBeCloseTo(16 / 9);
   });
+
+  it("should return correct ratios for all presets", () => {
+    expect(aspectRatioValue("4:3", 2)).toBeCloseTo(4 / 3);
+    expect(aspectRatioValue("3:2", 2)).toBeCloseTo(3 / 2);
+    expect(aspectRatioValue("4:5", 2)).toBeCloseTo(4 / 5);
+    expect(aspectRatioValue("5:7", 2)).toBeCloseTo(5 / 7);
+    expect(aspectRatioValue("3:5", 2)).toBeCloseTo(3 / 5);
+  });
 });
 
 describe("formatSliderValue", () => {
@@ -219,5 +345,13 @@ describe("formatSliderValue", () => {
   it("should format float with one decimal", () => {
     expect(formatSliderValue(3.14)).toBe("3.1");
     expect(formatSliderValue(-2.56)).toBe("-2.6");
+  });
+
+  it("should distinguish integer from decimal values", () => {
+    expect(formatSliderValue(10)).toBe("10");
+    expect(formatSliderValue(10.0)).toBe("10");
+    expect(formatSliderValue(10.4)).toBe("10.4");
+    expect(Number.isInteger(10.0)).toBe(true);
+    expect(Number.isInteger(10.4)).toBe(false);
   });
 });

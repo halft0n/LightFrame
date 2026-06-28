@@ -115,11 +115,13 @@ export function SmartAlbumListView() {
         <div className="flex-1 overflow-y-auto px-1 py-1">
           <div className="grid gap-[3px] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {albums.map((album) => (
-              <button
+              <div
                 key={album.id}
-                type="button"
+                role="button"
+                tabIndex={0}
                 onClick={() => openSmartAlbumDetail(album.id)}
-                className="group relative flex flex-col overflow-hidden rounded-lg border border-neutral-200/80 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900/50 text-left transition hover:border-neutral-300 dark:hover:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800/80"
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") openSmartAlbumDetail(album.id); }}
+                className="group relative flex cursor-pointer flex-col overflow-hidden rounded-lg border border-neutral-200/80 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900/50 text-left transition hover:border-neutral-300 dark:hover:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800/80"
               >
                 <div className="flex aspect-square w-full items-center justify-center bg-neutral-800 text-5xl">
                   {album.icon ?? "📂"}
@@ -140,7 +142,7 @@ export function SmartAlbumListView() {
                     ✕
                   </button>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         </div>

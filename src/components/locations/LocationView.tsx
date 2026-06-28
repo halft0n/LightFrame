@@ -102,7 +102,7 @@ const LocationGroupCard = memo(function LocationGroupCard({
         />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate font-medium text-neutral-100">
+        <p className="truncate font-medium text-neutral-800 dark:text-neutral-100">
           {group.city ?? group.country}
         </p>
         <p className="text-sm text-neutral-500">{countLabel}</p>
@@ -133,15 +133,27 @@ export function LocationView() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    void Promise.all([getLocationGroups(), getLocationStats()]).then(([groupData, statsData]) => {
-      if (!cancelled) {
-        setGroups(groupData);
-        setStats(statsData);
-        setVisibleCount(CARD_PAGE_SIZE);
-        setLoading(false);
+
+    async function loadInitial() {
+      setLoading(true);
+      try {
+        const [groupData, statsData] = await Promise.all([
+          getLocationGroups(),
+          getLocationStats(),
+        ]);
+        if (!cancelled) {
+          setGroups(groupData);
+          setStats(statsData);
+          setVisibleCount(CARD_PAGE_SIZE);
+        }
+      } catch (err) {
+        console.error("Failed to load location data:", err);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    });
+    }
+
+    void loadInitial();
     return () => {
       cancelled = true;
     };
@@ -155,6 +167,8 @@ export function LocationView() {
         const items = await getMediaByLocation(country, city, offset, PAGE_SIZE);
         setMedia((prev) => (append ? [...prev, ...items] : items));
         setHasMore(items.length >= PAGE_SIZE);
+      } catch (err) {
+        console.error("Failed to load location media:", err);
       } finally {
         setMediaLoading(false);
         setLoadingMore(false);
@@ -250,7 +264,7 @@ export function LocationView() {
           >
             ← {t("locations.allPhotos")}
           </button>
-          <span className="text-sm text-neutral-300">{selected.label}</span>
+          <span className="text-sm text-neutral-700 dark:text-neutral-300">{selected.label}</span>
           <span className="text-sm text-neutral-500">
             {t("gallery.count", { count: media.length })}
           </span>
@@ -295,7 +309,7 @@ export function LocationView() {
     <div className="flex flex-1 flex-col overflow-hidden">
       {stats && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3 text-sm text-neutral-500 dark:text-neutral-400">
-          <span className="font-medium text-neutral-200">{t("locations.title")}</span>
+          <span className="font-medium text-neutral-700 dark:text-neutral-200">{t("locations.title")}</span>
           <span>{t("locations.photosWithGps", { count: stats.total_with_gps })}</span>
           <span>{t("locations.countries", { count: stats.countries })}</span>
           <span>{t("locations.cities", { count: stats.cities })}</span>
@@ -336,7 +350,7 @@ export function LocationView() {
         <div ref={parentRef} className="flex-1 overflow-y-auto px-1 py-1">
           {[...byCountry.entries()].map(([country, cityGroups]) => (
             <section key={country} className="mb-6">
-              <h2 className="mb-3 text-base font-semibold text-neutral-100">{country}</h2>
+              <h2 className="mb-3 text-base font-semibold text-neutral-800 dark:text-neutral-100">{country}</h2>
               <div className="grid gap-[3px] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {cityGroups.map((group) => (
                   <LocationGroupCard

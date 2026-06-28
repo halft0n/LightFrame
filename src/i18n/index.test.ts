@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
+import zhCN from "./locales/zh-CN.json";
+import en from "./locales/en.json";
 import { t, getLocale, setLocale, subscribe } from "./index";
 
 beforeEach(() => {
@@ -60,9 +62,51 @@ describe("i18n", () => {
       setLocale("zh-CN");
       const zh = t(key);
       setLocale("en");
-      const en = t(key);
+      const enVal = t(key);
       expect(zh).not.toBe(key);
-      expect(en).not.toBe(key);
+      expect(enVal).not.toBe(key);
     }
+  });
+
+  it("all locale keys match between zh-CN and en", () => {
+    const zhKeys = Object.keys(zhCN).sort();
+    const enKeys = Object.keys(en).sort();
+    expect(zhKeys).toEqual(enKeys);
+
+    for (const key of zhKeys) {
+      setLocale("zh-CN");
+      const zh = t(key);
+      setLocale("en");
+      const enVal = t(key);
+      expect(zh).not.toBe(key);
+      expect(enVal).not.toBe(key);
+      expect(typeof zh).toBe("string");
+      expect(typeof enVal).toBe("string");
+    }
+  });
+
+  it("includes recently added translation keys", () => {
+    const newKeys = [
+      "deleted.confirmPermanent",
+      "theme.subtitle",
+      "gallery.loadError",
+    ] as const;
+
+    for (const key of newKeys) {
+      setLocale("zh-CN");
+      expect(t(key)).not.toBe(key);
+      setLocale("en");
+      expect(t(key)).not.toBe(key);
+    }
+
+    setLocale("zh-CN");
+    expect(t("deleted.confirmPermanent")).toContain("永久删除");
+    expect(t("theme.subtitle")).toContain("主题");
+    expect(t("gallery.loadError")).toContain("加载");
+
+    setLocale("en");
+    expect(t("deleted.confirmPermanent")).toContain("Permanently delete");
+    expect(t("theme.subtitle")).toContain("appearance");
+    expect(t("gallery.loadError")).toContain("Failed");
   });
 });

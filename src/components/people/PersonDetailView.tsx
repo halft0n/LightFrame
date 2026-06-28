@@ -30,7 +30,7 @@ export function PersonDetailView() {
     1,
     Math.floor((containerWidth + GAP) / (MIN_COLUMN_WIDTH + GAP)),
   );
-  const hasMore = person != null && media.length < person.face_count;
+  const hasMore = person != null && media.length < person.face_count && media.length % PAGE_SIZE === 0;
 
   const loadInitial = useCallback(async () => {
     if (selectedPersonId == null) return;

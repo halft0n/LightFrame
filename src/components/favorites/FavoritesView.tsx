@@ -32,6 +32,8 @@ export function FavoritesView() {
       ]);
       setMedia(items);
       setTotalCount(count);
+    } catch (err) {
+      console.error("Failed to load favorites:", err);
     } finally {
       setLoading(false);
     }
@@ -60,6 +62,8 @@ export function FavoritesView() {
     try {
       const items = await getFavorites(media.length, PAGE_SIZE);
       setMedia((prev) => [...prev, ...items]);
+    } catch (err) {
+      console.error("Failed to load more favorites:", err);
     } finally {
       setLoadingMore(false);
     }

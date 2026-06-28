@@ -309,6 +309,14 @@ export async function toggleFavorite(mediaId: number): Promise<boolean> {
   return invoke<boolean>("toggle_favorite", { mediaId });
 }
 
+export async function getFavoriteState(mediaId: number): Promise<boolean> {
+  try {
+    return invoke<boolean>("is_favorite", { mediaId });
+  } catch {
+    return false;
+  }
+}
+
 export async function getFavorites(offset: number, limit: number): Promise<MediaItem[]> {
   return invoke<MediaItem[]>("get_favorites", { offset, limit });
 }

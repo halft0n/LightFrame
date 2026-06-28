@@ -56,6 +56,7 @@ export function DeletedView() {
   };
 
   const handlePermanentDelete = async (mediaId: number) => {
+    if (!confirm(t("deleted.confirmPermanent"))) return;
     await permanentlyDelete(mediaId);
     await loadDeleted();
   };

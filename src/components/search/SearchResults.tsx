@@ -40,6 +40,8 @@ export function SearchResults() {
       ]);
       setMedia(items);
       setTotalCount(count);
+    } catch (err) {
+      console.error("Failed to search media:", err);
     } finally {
       setLoading(false);
     }
@@ -69,6 +71,8 @@ export function SearchResults() {
     try {
       const items = await searchMedia(trimmed, PAGE_SIZE, media.length);
       setMedia((prev) => [...prev, ...items]);
+    } catch (err) {
+      console.error("Failed to load more search results:", err);
     } finally {
       setLoadingMore(false);
     }
@@ -100,7 +104,7 @@ export function SearchResults() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3">
-        <h2 className="text-sm font-medium text-neutral-200">{t("search.results")}</h2>
+        <h2 className="text-sm font-medium text-neutral-700 dark:text-neutral-200">{t("search.results")}</h2>
         <p className="mt-0.5 text-sm text-neutral-500">
           {searchQuery.trim() && (
             <>

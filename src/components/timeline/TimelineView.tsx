@@ -101,16 +101,25 @@ export function TimelineView() {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    void getTimelineGroups(PAGE_SIZE, 0).then((data) => {
-      if (!cancelled) {
-        const itemCount = data.reduce((sum, g) => sum + g.media.length, 0);
-        setGroups(data);
-        setHasMore(itemCount >= PAGE_SIZE);
-        setOffset(itemCount);
-        setLoading(false);
+
+    async function loadInitial() {
+      setLoading(true);
+      try {
+        const data = await getTimelineGroups(PAGE_SIZE, 0);
+        if (!cancelled) {
+          const itemCount = data.reduce((sum, g) => sum + g.media.length, 0);
+          setGroups(data);
+          setHasMore(itemCount >= PAGE_SIZE);
+          setOffset(itemCount);
+        }
+      } catch (err) {
+        console.error("Failed to load timeline groups:", err);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    });
+    }
+
+    void loadInitial();
     return () => {
       cancelled = true;
     };
@@ -143,6 +152,8 @@ export function TimelineView() {
       });
       setHasMore(itemCount >= PAGE_SIZE);
       setOffset((prev) => prev + itemCount);
+    } catch (err) {
+      console.error("Failed to load more timeline groups:", err);
     } finally {
       setLoadingMore(false);
     }
@@ -250,7 +261,7 @@ export function TimelineView() {
                   }}
                 >
                   <div className="sticky top-0 z-10 flex items-center gap-3 bg-white/95 dark:bg-neutral-950/95 py-3 backdrop-blur-sm">
-                    <h2 className="text-base font-semibold text-neutral-100">
+                    <h2 className="text-base font-semibold text-neutral-800 dark:text-neutral-100">
                       {formatDateHeader(row.date, locale, t)}
                     </h2>
                     <span className="text-sm text-neutral-500">
