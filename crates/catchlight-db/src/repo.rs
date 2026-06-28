@@ -1,6 +1,6 @@
 use crate::Database;
 use catchlight_core::media::{MediaFile, MediaType};
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,6 +77,126 @@ fn map_album_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Album> {
         created_at: row.get(5)?,
         updated_at: row.get(6)?,
     })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmartAlbum {
+    pub id: i64,
+    pub name: String,
+    pub icon: Option<String>,
+    pub rule_json: String,
+    pub media_count: i64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmartAlbumRule {
+    pub media_type: Option<String>,
+    pub date_from: Option<String>,
+    pub date_to: Option<String>,
+    pub country: Option<String>,
+    pub city: Option<String>,
+    pub is_favorite: Option<bool>,
+    pub min_size: Option<i64>,
+    pub has_gps: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Memory {
+    pub id: i64,
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub cover_media_id: i64,
+    pub media_count: i64,
+    pub date_from: String,
+    pub date_to: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Person {
+    pub id: i64,
+    pub name: Option<String>,
+    pub face_count: i64,
+    pub cover_face_id: Option<i64>,
+    pub sample_media_ids: Vec<i64>,
+    pub created_at: String,
+}
+
+fn map_smart_album_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SmartAlbum> {
+    Ok(SmartAlbum {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        icon: row.get(2)?,
+        rule_json: row.get(3)?,
+        media_count: row.get(4)?,
+        created_at: row.get(5)?,
+    })
+}
+
+fn map_memory_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Memory> {
+    Ok(Memory {
+        id: row.get(0)?,
+        title: row.get(1)?,
+        subtitle: row.get(2)?,
+        cover_media_id: row.get(3)?,
+        media_count: row.get(4)?,
+        date_from: row.get(5)?,
+        date_to: row.get(6)?,
+        created_at: row.get(7)?,
+    })
+}
+
+fn build_smart_album_filter(rule: &SmartAlbumRule) -> (String, Vec<Box<dyn rusqlite::ToSql>>) {
+    let mut conditions = vec!["is_deleted = 0".to_string()];
+    let mut params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+    if let Some(ref media_type) = rule.media_type {
+        conditions.push("media_type = ?".to_string());
+        params.push(Box::new(media_type.clone()));
+    }
+    if let Some(ref date_from) = rule.date_from {
+        conditions.push("date(COALESCE(created_at, modified_at)) >= date(?)".to_string());
+        params.push(Box::new(date_from.clone()));
+    }
+    if let Some(ref date_to) = rule.date_to {
+        conditions.push("date(COALESCE(created_at, modified_at)) <= date(?)".to_string());
+        params.push(Box::new(date_to.clone()));
+    }
+    if let Some(ref country) = rule.country {
+        conditions.push("country = ?".to_string());
+        params.push(Box::new(country.clone()));
+    }
+    if let Some(ref city) = rule.city {
+        conditions.push("city = ?".to_string());
+        params.push(Box::new(city.clone()));
+    }
+    if let Some(is_favorite) = rule.is_favorite {
+        conditions.push("is_favorite = ?".to_string());
+        params.push(Box::new(if is_favorite { 1i64 } else { 0i64 }));
+    }
+    if let Some(min_size) = rule.min_size {
+        conditions.push("size_bytes >= ?".to_string());
+        params.push(Box::new(min_size));
+    }
+    if let Some(has_gps) = rule.has_gps {
+        if has_gps {
+            conditions.push("latitude IS NOT NULL AND longitude IS NOT NULL".to_string());
+        } else {
+            conditions.push("(latitude IS NULL OR longitude IS NULL)".to_string());
+        }
+    }
+
+    (conditions.join(" AND "), params)
+}
+
+fn smart_album_media_count(db: &Database, rule: &SmartAlbumRule) -> catchlight_core::Result<i64> {
+    let (where_clause, filter_params) = build_smart_album_filter(rule);
+    let sql = format!("SELECT COUNT(*) FROM media_files WHERE {where_clause}");
+    let conn = db.conn();
+    let param_refs: Vec<&dyn rusqlite::ToSql> = filter_params.iter().map(|p| p.as_ref()).collect();
+    conn.query_row(&sql, param_refs.as_slice(), |row| row.get(0))
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -998,6 +1118,69 @@ impl Database {
         Ok(())
     }
 
+    pub fn batch_set_deleted(&self, media_ids: &[i64], deleted: bool) -> catchlight_core::Result<usize> {
+        if media_ids.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.conn();
+        let placeholders: Vec<String> = media_ids.iter().enumerate().map(|(i, _)| format!("?{}", i + 1)).collect();
+        let sql = if deleted {
+            format!(
+                "UPDATE media_files SET is_deleted = 1, deleted_at = datetime('now') WHERE id IN ({})",
+                placeholders.join(", ")
+            )
+        } else {
+            format!(
+                "UPDATE media_files SET is_deleted = 0, deleted_at = NULL WHERE id IN ({})",
+                placeholders.join(", ")
+            )
+        };
+        let params: Vec<&dyn rusqlite::ToSql> = media_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+        let affected = conn
+            .execute(&sql, params.as_slice())
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(affected)
+    }
+
+    pub fn batch_set_favorite(&self, media_ids: &[i64], favorite: bool) -> catchlight_core::Result<usize> {
+        if media_ids.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.conn();
+        let placeholders: Vec<String> = media_ids.iter().enumerate().map(|(i, _)| format!("?{}", i + 2)).collect();
+        let sql = format!(
+            "UPDATE media_files SET is_favorite = ?1 WHERE is_deleted = 0 AND id IN ({})",
+            placeholders.join(", ")
+        );
+        let fav_value: i64 = if favorite { 1 } else { 0 };
+        let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(fav_value)];
+        for id in media_ids {
+            params.push(Box::new(*id));
+        }
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let affected = conn
+            .execute(&sql, param_refs.as_slice())
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(affected)
+    }
+
+    pub fn batch_permanent_delete(&self, media_ids: &[i64]) -> catchlight_core::Result<usize> {
+        if media_ids.is_empty() {
+            return Ok(0);
+        }
+        let conn = self.conn();
+        let placeholders: Vec<String> = media_ids.iter().enumerate().map(|(i, _)| format!("?{}", i + 1)).collect();
+        let sql = format!(
+            "DELETE FROM media_files WHERE is_deleted = 1 AND id IN ({})",
+            placeholders.join(", ")
+        );
+        let params: Vec<&dyn rusqlite::ToSql> = media_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+        let affected = conn
+            .execute(&sql, params.as_slice())
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(affected)
+    }
+
     pub fn cleanup_deleted_older_than(&self, days: i64) -> catchlight_core::Result<usize> {
         if days <= 0 {
             return Err(catchlight_core::Error::Other(
@@ -1248,6 +1431,287 @@ impl Database {
         Ok(())
     }
 
+    pub fn create_smart_album(
+        &self,
+        name: &str,
+        icon: Option<&str>,
+        rule: &SmartAlbumRule,
+    ) -> catchlight_core::Result<SmartAlbum> {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            return Err(catchlight_core::Error::Other(
+                "smart album name cannot be empty".to_string(),
+            ));
+        }
+
+        let rule_json = serde_json::to_string(rule).map_err(|e| {
+            catchlight_core::Error::Other(format!("failed to serialize rule: {e}"))
+        })?;
+
+        let conn = self.conn();
+        conn.execute(
+            "INSERT INTO smart_albums (name, icon, rule_json) VALUES (?1, ?2, ?3)",
+            params![trimmed, icon, rule_json],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let id = conn.last_insert_rowid();
+        let media_count = smart_album_media_count(self, rule)?;
+
+        Ok(SmartAlbum {
+            id,
+            name: trimmed.to_string(),
+            icon: icon.map(str::to_string),
+            rule_json,
+            media_count,
+            created_at: conn
+                .query_row(
+                    "SELECT created_at FROM smart_albums WHERE id = ?1",
+                    params![id],
+                    |row| row.get(0),
+                )
+                .map_err(|e| catchlight_core::Error::Database(e.to_string()))?,
+        })
+    }
+
+    pub fn list_smart_albums(&self) -> catchlight_core::Result<Vec<SmartAlbum>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, icon, rule_json, 0 AS media_count, created_at
+                 FROM smart_albums
+                 ORDER BY created_at ASC",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map([], map_smart_album_row)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let mut albums: Vec<SmartAlbum> = rows
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        for album in &mut albums {
+            let rule: SmartAlbumRule = serde_json::from_str(&album.rule_json).map_err(|e| {
+                catchlight_core::Error::Other(format!("invalid rule_json for album {}: {e}", album.id))
+            })?;
+            album.media_count = smart_album_media_count(self, &rule)?;
+        }
+
+        Ok(albums)
+    }
+
+    pub fn delete_smart_album(&self, id: i64) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        conn.execute("DELETE FROM smart_albums WHERE id = ?1", params![id])
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn get_smart_album_media(
+        &self,
+        id: i64,
+        limit: i64,
+        offset: i64,
+    ) -> catchlight_core::Result<Vec<MediaFile>> {
+        let conn = self.conn();
+        let rule_json: String = conn
+            .query_row(
+                "SELECT rule_json FROM smart_albums WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rule: SmartAlbumRule = serde_json::from_str(&rule_json).map_err(|e| {
+            catchlight_core::Error::Other(format!("invalid rule_json for smart album {id}: {e}"))
+        })?;
+
+        let (where_clause, filter_params) = build_smart_album_filter(&rule);
+        let sql = format!(
+            "SELECT id, path, filename, media_type, size_bytes, width, height,
+                    created_at, modified_at, blake3_hash, dhash, latitude, longitude
+             FROM media_files
+             WHERE {where_clause}
+             ORDER BY COALESCE(created_at, modified_at) DESC
+             LIMIT ? OFFSET ?"
+        );
+
+        let mut all_params: Vec<Box<dyn rusqlite::ToSql>> = filter_params;
+        all_params.push(Box::new(limit));
+        all_params.push(Box::new(offset));
+        let param_refs: Vec<&dyn rusqlite::ToSql> = all_params.iter().map(|p| p.as_ref()).collect();
+
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(param_refs.as_slice(), Self::map_media_row)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn generate_memories(&self) -> catchlight_core::Result<Vec<Memory>> {
+        let conn = self.conn();
+        conn.execute("DELETE FROM memories", [])
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let mut group_stmt = conn
+            .prepare(
+                "SELECT strftime('%Y', created_at) AS year,
+                        strftime('%m', created_at) AS month,
+                        COALESCE(country, '') AS country,
+                        COUNT(*) AS cnt
+                 FROM media_files
+                 WHERE is_deleted = 0
+                   AND media_type = 'Photo'
+                   AND created_at IS NOT NULL
+                 GROUP BY year, month, country
+                 HAVING cnt >= 5",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let groups: Vec<(String, String, String, i64)> = group_stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        for (year, month, country, _count) in groups {
+            let month_num: u32 = month.parse().unwrap_or(1);
+            let year_num: i32 = year.parse().unwrap_or(0);
+
+            let mut media_stmt = conn
+                .prepare(
+                    "SELECT id, city, created_at
+                     FROM media_files
+                     WHERE is_deleted = 0
+                       AND media_type = 'Photo'
+                       AND created_at IS NOT NULL
+                       AND strftime('%Y', created_at) = ?1
+                       AND strftime('%m', created_at) = ?2
+                       AND COALESCE(country, '') = ?3
+                     ORDER BY created_at ASC",
+                )
+                .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+            let media_rows: Vec<(i64, Option<String>, String)> = media_stmt
+                .query_map(params![year, month, country], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                })
+                .map_err(|e| catchlight_core::Error::Database(e.to_string()))?
+                .filter_map(|r| r.ok())
+                .collect();
+
+            if media_rows.len() < 5 {
+                continue;
+            }
+
+            let cover_media_id = media_rows[0].0;
+            let date_from = media_rows.first().map(|r| r.2.clone()).unwrap_or_default();
+            let date_to = media_rows.last().map(|r| r.2.clone()).unwrap_or_default();
+
+            let mut city_counts: std::collections::HashMap<String, i64> =
+                std::collections::HashMap::new();
+            for (_, city, _) in &media_rows {
+                if let Some(c) = city {
+                    if !c.is_empty() {
+                        *city_counts.entry(c.clone()).or_insert(0) += 1;
+                    }
+                }
+            }
+            let dominant_city = city_counts
+                .into_iter()
+                .max_by_key(|(_, count)| *count)
+                .map(|(city, _)| city);
+
+            let place = dominant_city
+                .clone()
+                .or_else(|| {
+                    if country.is_empty() {
+                        None
+                    } else {
+                        Some(country.clone())
+                    }
+                })
+                .unwrap_or_else(|| "Unknown".to_string());
+
+            let title = format!("{year_num}年{month_num}月 · {place}");
+            let subtitle = dominant_city.map(|city| format!("{city}, {country}"));
+
+            conn.execute(
+                "INSERT INTO memories (title, subtitle, cover_media_id, date_from, date_to)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![title, subtitle, cover_media_id, date_from, date_to],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+            let memory_id = conn.last_insert_rowid();
+            for (media_id, _, _) in &media_rows {
+                conn.execute(
+                    "INSERT INTO memory_items (memory_id, media_id) VALUES (?1, ?2)",
+                    params![memory_id, media_id],
+                )
+                .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+            }
+        }
+
+        Ok(self.list_memories()?)
+    }
+
+    pub fn list_memories(&self) -> catchlight_core::Result<Vec<Memory>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT m.id, m.title, m.subtitle, m.cover_media_id,
+                        COALESCE(COUNT(mi.media_id), 0) AS media_count,
+                        m.date_from, m.date_to, m.created_at
+                 FROM memories m
+                 LEFT JOIN memory_items mi ON mi.memory_id = m.id
+                 GROUP BY m.id
+                 ORDER BY m.date_from DESC",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map([], map_memory_row)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn get_memory_media(
+        &self,
+        memory_id: i64,
+        limit: i64,
+        offset: i64,
+    ) -> catchlight_core::Result<Vec<MediaFile>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT mf.id, mf.path, mf.filename, mf.media_type, mf.size_bytes, mf.width, mf.height,
+                        mf.created_at, mf.modified_at, mf.blake3_hash, mf.dhash, mf.latitude, mf.longitude
+                 FROM memory_items mi
+                 JOIN media_files mf ON mf.id = mi.media_id
+                 WHERE mi.memory_id = ?1 AND mf.is_deleted = 0
+                 ORDER BY COALESCE(mf.created_at, mf.modified_at) ASC
+                 LIMIT ?2 OFFSET ?3",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(params![memory_id, limit, offset], Self::map_media_row)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
     pub fn get_favorites(&self, limit: i64, offset: i64) -> catchlight_core::Result<Vec<MediaFile>> {
         let conn = self.conn();
         let mut stmt = conn
@@ -1366,6 +1830,119 @@ impl Database {
             countries,
             cities,
         })
+    }
+
+    fn person_sample_media_ids(
+        conn: &Connection,
+        person_id: i64,
+    ) -> catchlight_core::Result<Vec<i64>> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT DISTINCT media_id FROM face_detections
+                 WHERE person_id = ?1
+                 ORDER BY created_at DESC
+                 LIMIT 4",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(params![person_id], |row| row.get(0))
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn list_persons(&self) -> catchlight_core::Result<Vec<Person>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, face_count, cover_face_id, created_at
+                 FROM persons
+                 ORDER BY face_count DESC, created_at DESC",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, Option<i64>>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            })
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let mut persons = Vec::new();
+        for row in rows {
+            let (id, name, face_count, cover_face_id, created_at) =
+                row.map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+            let sample_media_ids = Self::person_sample_media_ids(&conn, id)?;
+            persons.push(Person {
+                id,
+                name,
+                face_count,
+                cover_face_id,
+                sample_media_ids,
+                created_at,
+            });
+        }
+
+        Ok(persons)
+    }
+
+    pub fn get_person_media(
+        &self,
+        person_id: i64,
+        limit: i64,
+        offset: i64,
+    ) -> catchlight_core::Result<Vec<MediaFile>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT DISTINCT mf.id, mf.path, mf.filename, mf.media_type, mf.size_bytes,
+                        mf.width, mf.height, mf.created_at, mf.modified_at, mf.blake3_hash,
+                        mf.dhash, mf.latitude, mf.longitude
+                 FROM face_detections fd
+                 JOIN media_files mf ON mf.id = fd.media_id
+                 WHERE fd.person_id = ?1 AND mf.is_deleted = 0
+                 ORDER BY COALESCE(mf.created_at, mf.modified_at) DESC
+                 LIMIT ?2 OFFSET ?3",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(params![person_id, limit, offset], Self::map_media_row)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn rename_person(&self, person_id: i64, name: &str) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        let updated = conn
+            .execute(
+                "UPDATE persons SET name = ?1 WHERE id = ?2",
+                params![name, person_id],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        if updated == 0 {
+            return Err(catchlight_core::Error::Database(format!(
+                "person {person_id} not found"
+            )));
+        }
+
+        Ok(())
+    }
+
+    pub fn get_persons_count(&self) -> catchlight_core::Result<i64> {
+        let conn = self.conn();
+        conn.query_row("SELECT COUNT(*) FROM persons", [], |row| row.get(0))
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
     }
 }
 

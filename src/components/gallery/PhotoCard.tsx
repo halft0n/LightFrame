@@ -5,7 +5,7 @@ import { getThumbnailUrl } from "@/lib/tauri";
 interface PhotoCardProps {
   item: MediaItem;
   selected: boolean;
-  onSelect: (id: number) => void;
+  onSelect: (id: number, event: React.MouseEvent) => void;
   onOpen?: (id: number) => void;
 }
 
@@ -24,7 +24,7 @@ export function PhotoCard({ item, selected, onSelect, onOpen }: PhotoCardProps) 
   return (
     <button
       type="button"
-      onClick={() => onSelect(item.id)}
+      onClick={(e) => onSelect(item.id, e)}
       onDoubleClick={() => onOpen?.(item.id)}
       className={`photo-card group relative aspect-square w-full overflow-hidden rounded-lg bg-neutral-800 text-left transition-shadow ${
         selected ? "ring-2 ring-blue-500 ring-offset-2 ring-offset-neutral-950" : ""

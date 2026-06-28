@@ -3,7 +3,7 @@ pub mod repo;
 
 pub use repo::{
     Album, DuplicateGroup, DuplicateGroupDetail, DuplicateMember, LocationGroup, LocationStats,
-    MediaNeighbors, TimelineGroup, WatchedFolder,
+    MediaNeighbors, Memory, Person, SmartAlbum, SmartAlbumRule, TimelineGroup, WatchedFolder,
 };
 
 use catchlight_core::config;

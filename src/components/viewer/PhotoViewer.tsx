@@ -9,6 +9,7 @@ import {
 } from "@/lib/tauri";
 import { closeViewer, openViewer } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
+import { VideoPlayer } from "./VideoPlayer";
 
 interface PhotoViewerProps {
   mediaId: number;
@@ -96,7 +97,10 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         closeViewer();
-      } else if (e.key === "ArrowLeft") {
+        return;
+      }
+      if (media?.media_type === "Video") return;
+      if (e.key === "ArrowLeft") {
         navigate(neighbors.prev_id);
       } else if (e.key === "ArrowRight") {
         navigate(neighbors.next_id);
@@ -105,7 +109,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [navigate, neighbors]);
+  }, [navigate, neighbors, media?.media_type]);
 
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
@@ -149,6 +153,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
     setUseOriginal(true);
   }, []);
 
+  const isVideo = media?.media_type === "Video";
   const imageSrc = media
     ? useOriginal
       ? getOriginalUrl(media.path)
@@ -182,28 +187,32 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
         </div>
 
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setZoom((z) => Math.min(MAX_ZOOM, z + 0.25))}
-            className="rounded-lg px-3 py-1.5 text-sm text-neutral-300 transition hover:bg-white/10"
-            title={t("viewer.zoomIn")}
-          >
-            +
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setZoom((z) => {
-                const next = Math.max(MIN_ZOOM, z - 0.25);
-                if (next <= 1) setPan({ x: 0, y: 0 });
-                return next;
-              });
-            }}
-            className="rounded-lg px-3 py-1.5 text-sm text-neutral-300 transition hover:bg-white/10"
-            title={t("viewer.zoomOut")}
-          >
-            −
-          </button>
+          {!isVideo && (
+            <>
+              <button
+                type="button"
+                onClick={() => setZoom((z) => Math.min(MAX_ZOOM, z + 0.25))}
+                className="rounded-lg px-3 py-1.5 text-sm text-neutral-300 transition hover:bg-white/10"
+                title={t("viewer.zoomIn")}
+              >
+                +
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setZoom((z) => {
+                    const next = Math.max(MIN_ZOOM, z - 0.25);
+                    if (next <= 1) setPan({ x: 0, y: 0 });
+                    return next;
+                  });
+                }}
+                className="rounded-lg px-3 py-1.5 text-sm text-neutral-300 transition hover:bg-white/10"
+                title={t("viewer.zoomOut")}
+              >
+                −
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => setShowInfo((v) => !v)}
@@ -226,106 +235,119 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
       </div>
 
       <div className="relative flex flex-1 overflow-hidden">
-        <div
-          className={`flex flex-1 items-center justify-center overflow-hidden ${
-            zoom > 1 ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""
-          }`}
-          onWheel={handleWheel}
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerUp}
-          onPointerCancel={handlePointerUp}
-        >
-          {media && (
-            <>
-              {!useOriginal && (
-                <img
-                  src={getThumbnailUrl(media.id, "large")}
-                  alt={media.filename}
-                  onLoad={handleLargeLoaded}
-                  className="hidden"
-                  aria-hidden="true"
-                />
+        {isVideo && media ? (
+          <VideoPlayer
+            src={getOriginalUrl(media.path)}
+            mediaId={mediaId}
+            filmstripIds={filmstrip.map((item) => item.id)}
+            onNavigate={openViewer}
+          />
+        ) : (
+          <>
+            <div
+              className={`flex flex-1 items-center justify-center overflow-hidden ${
+                zoom > 1 ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""
+              }`}
+              onWheel={handleWheel}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+            >
+              {media && (
+                <>
+                  {!useOriginal && (
+                    <img
+                      src={getThumbnailUrl(media.id, "large")}
+                      alt={media.filename}
+                      onLoad={handleLargeLoaded}
+                      className="hidden"
+                      aria-hidden="true"
+                    />
+                  )}
+                  <img
+                    src={imageSrc}
+                    alt={media.filename}
+                    draggable={false}
+                    style={{
+                      transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                      transition: dragging ? "none" : "transform 0.1s ease-out",
+                      maxHeight: "100%",
+                      maxWidth: "100%",
+                      objectFit: "contain",
+                    }}
+                    className="select-none"
+                  />
+                </>
               )}
-              <img
-                src={imageSrc}
-                alt={media.filename}
-                draggable={false}
-                style={{
-                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-                  transition: dragging ? "none" : "transform 0.1s ease-out",
-                  maxHeight: "100%",
-                  maxWidth: "100%",
-                  objectFit: "contain",
-                }}
-                className="select-none"
-              />
-            </>
-          )}
-        </div>
+            </div>
 
-        {showInfo && media && (
-          <aside className="w-72 shrink-0 overflow-y-auto border-l border-white/10 bg-black/60 p-4 text-sm">
-            <dl className="space-y-3">
-              <div>
-                <dt className="text-neutral-500">{t("viewer.filename")}</dt>
-                <dd className="mt-0.5 break-all text-neutral-200">{media.filename}</dd>
-              </div>
-              <div>
-                <dt className="text-neutral-500">{t("viewer.size")}</dt>
-                <dd className="mt-0.5 text-neutral-200">{formatFileSize(media.size_bytes)}</dd>
-              </div>
-              <div>
-                <dt className="text-neutral-500">{t("viewer.date")}</dt>
-                <dd className="mt-0.5 text-neutral-200">{formatMediaDate(media, locale)}</dd>
-              </div>
-              {media.width != null && media.height != null && (
-                <div>
-                  <dt className="text-neutral-500">{t("viewer.dimensions")}</dt>
-                  <dd className="mt-0.5 text-neutral-200">
-                    {media.width} × {media.height}
-                  </dd>
-                </div>
-              )}
-              <div>
-                <dt className="text-neutral-500">{t("viewer.type")}</dt>
-                <dd className="mt-0.5 text-neutral-200">{media.media_type}</dd>
-              </div>
-              {(media.latitude != null || media.longitude != null) && (
-                <div>
-                  <dt className="text-neutral-500">{t("viewer.location")}</dt>
-                  <dd className="mt-0.5 text-neutral-200">
-                    {media.latitude?.toFixed(4)}, {media.longitude?.toFixed(4)}
-                  </dd>
-                </div>
-              )}
-            </dl>
-          </aside>
+            {showInfo && media && (
+              <aside className="w-72 shrink-0 overflow-y-auto border-l border-white/10 bg-black/60 p-4 text-sm">
+                <dl className="space-y-3">
+                  <div>
+                    <dt className="text-neutral-500">{t("viewer.filename")}</dt>
+                    <dd className="mt-0.5 break-all text-neutral-200">{media.filename}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-neutral-500">{t("viewer.size")}</dt>
+                    <dd className="mt-0.5 text-neutral-200">{formatFileSize(media.size_bytes)}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-neutral-500">{t("viewer.date")}</dt>
+                    <dd className="mt-0.5 text-neutral-200">{formatMediaDate(media, locale)}</dd>
+                  </div>
+                  {media.width != null && media.height != null && (
+                    <div>
+                      <dt className="text-neutral-500">{t("viewer.dimensions")}</dt>
+                      <dd className="mt-0.5 text-neutral-200">
+                        {media.width} × {media.height}
+                      </dd>
+                    </div>
+                  )}
+                  <div>
+                    <dt className="text-neutral-500">{t("viewer.type")}</dt>
+                    <dd className="mt-0.5 text-neutral-200">{media.media_type}</dd>
+                  </div>
+                  {(media.latitude != null || media.longitude != null) && (
+                    <div>
+                      <dt className="text-neutral-500">{t("viewer.location")}</dt>
+                      <dd className="mt-0.5 text-neutral-200">
+                        {media.latitude?.toFixed(4)}, {media.longitude?.toFixed(4)}
+                      </dd>
+                    </div>
+                  )}
+                </dl>
+              </aside>
+            )}
+          </>
         )}
       </div>
 
-      <div
-        ref={filmstripRef}
-        className="flex gap-2 overflow-x-auto border-t border-white/10 px-4 py-3"
-      >
-        {filmstrip.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            data-id={item.id}
-            onClick={() => openViewer(item.id)}
-            className={`h-16 w-16 shrink-0 overflow-hidden rounded-md transition ${
-              item.id === mediaId ? "ring-2 ring-blue-500" : "opacity-70 hover:opacity-100"
-            }`}
-          >
-            <img
-              src={getThumbnailUrl(item.id, "small")}
-              alt={item.filename}
-              className="h-full w-full object-cover"
-            />
-          </button>
-        ))}
-      </div>
+      {!isVideo && (
+        <div
+          ref={filmstripRef}
+          className="flex gap-2 overflow-x-auto border-t border-white/10 px-4 py-3"
+        >
+          {filmstrip.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              data-id={item.id}
+              onClick={() => openViewer(item.id)}
+              className={`h-16 w-16 shrink-0 overflow-hidden rounded-md transition ${
+                item.id === mediaId ? "ring-2 ring-blue-500" : "opacity-70 hover:opacity-100"
+              }`}
+            >
+              <img
+                src={getThumbnailUrl(item.id, "small")}
+                alt={item.filename}
+                className="h-full w-full object-cover"
+              />
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

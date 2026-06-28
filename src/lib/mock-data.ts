@@ -9,6 +9,11 @@ import type {
   LocationGroup,
   LocationStats,
   Album,
+  SmartAlbum,
+  SmartAlbumRule,
+  Memory,
+  Person,
+  AiStatus,
 } from "./tauri";
 
 const MOCK_COUNT = 36;
@@ -69,6 +74,9 @@ export function getMockThumbnailUrl(id: number, size: "micro" | "small" | "large
 }
 
 export function getMockOriginalUrl(path: string): string {
+  if (path.endsWith(".mp4")) {
+    return "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4";
+  }
   const id = parseInt(path.match(/(\d+)\./)?.[1] ?? "1", 10);
   return `https://picsum.photos/seed/${id * 7 + 42}/1920/1280`;
 }
@@ -407,6 +415,57 @@ export async function mockPermanentlyDelete(mediaId: number): Promise<void> {
   }
 }
 
+export async function mockBatchDeleteMedia(mediaIds: number[]): Promise<number> {
+  let count = 0;
+  for (const id of mediaIds) {
+    if (!mockDeletedIds.has(id)) {
+      mockDeletedIds.add(id);
+      count++;
+    }
+  }
+  return count;
+}
+
+export async function mockBatchToggleFavorite(
+  mediaIds: number[],
+  favorite: boolean,
+): Promise<number> {
+  let count = 0;
+  for (const id of mediaIds) {
+    if (mockDeletedIds.has(id)) continue;
+    if (favorite) {
+      if (!mockFavoriteIds.has(id)) count++;
+      mockFavoriteIds.add(id);
+    } else {
+      if (mockFavoriteIds.has(id)) count++;
+      mockFavoriteIds.delete(id);
+    }
+  }
+  return count;
+}
+
+export async function mockBatchRestoreMedia(mediaIds: number[]): Promise<number> {
+  let count = 0;
+  for (const id of mediaIds) {
+    if (mockDeletedIds.has(id)) {
+      mockDeletedIds.delete(id);
+      count++;
+    }
+  }
+  return count;
+}
+
+export async function mockBatchPermanentDelete(mediaIds: number[]): Promise<number> {
+  let count = 0;
+  for (const id of mediaIds) {
+    if (mockDeletedIds.has(id)) {
+      await mockPermanentlyDelete(id);
+      count++;
+    }
+  }
+  return count;
+}
+
 function filterMockSearch(query: string): MediaItem[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
@@ -423,4 +482,203 @@ export async function mockSearchMedia(
 
 export async function mockSearchMediaCount(query: string): Promise<number> {
   return filterMockSearch(query).length;
+}
+
+const BUILTIN_SMART_ALBUMS: SmartAlbum[] = [
+  {
+    id: 1,
+    name: "All Videos",
+    icon: "🎬",
+    rule_json: JSON.stringify({ media_type: "Video" }),
+    media_count: 0,
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 2,
+    name: "All Screenshots",
+    icon: "📱",
+    rule_json: JSON.stringify({ media_type: "Screenshot" }),
+    media_count: 0,
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: 3,
+    name: "With GPS",
+    icon: "📍",
+    rule_json: JSON.stringify({ has_gps: true }),
+    media_count: 0,
+    created_at: new Date().toISOString(),
+  },
+];
+
+const mockSmartAlbums: SmartAlbum[] = BUILTIN_SMART_ALBUMS.map((a) => ({ ...a }));
+let nextSmartAlbumId = 4;
+
+function matchesSmartAlbumRule(item: MediaItem, rule: SmartAlbumRule): boolean {
+  if (rule.media_type && item.media_type !== rule.media_type) return false;
+  if (rule.is_favorite != null) {
+    const fav = mockFavoriteIds.has(item.id);
+    if (fav !== rule.is_favorite) return false;
+  }
+  if (rule.min_size != null && item.size_bytes < rule.min_size) return false;
+  if (rule.has_gps === true && (item.latitude == null || item.longitude == null)) return false;
+  if (rule.has_gps === false && item.latitude != null && item.longitude != null) return false;
+  const date = item.created_at ?? item.modified_at;
+  if (rule.date_from && date.slice(0, 10) < rule.date_from) return false;
+  if (rule.date_to && date.slice(0, 10) > rule.date_to) return false;
+  return true;
+}
+
+function countSmartAlbumMedia(rule: SmartAlbumRule): number {
+  return visibleMedia().filter((m) => matchesSmartAlbumRule(m, rule)).length;
+}
+
+function refreshSmartAlbumCounts() {
+  for (const album of mockSmartAlbums) {
+    const rule = JSON.parse(album.rule_json) as SmartAlbumRule;
+    album.media_count = countSmartAlbumMedia(rule);
+  }
+}
+
+refreshSmartAlbumCounts();
+
+const mockMemories: Memory[] = [];
+const mockMemoryItems = new Map<number, number[]>();
+
+export async function mockCreateSmartAlbum(
+  name: string,
+  icon: string | null,
+  rule: SmartAlbumRule,
+): Promise<SmartAlbum> {
+  const album: SmartAlbum = {
+    id: nextSmartAlbumId++,
+    name,
+    icon,
+    rule_json: JSON.stringify(rule),
+    media_count: countSmartAlbumMedia(rule),
+    created_at: new Date().toISOString(),
+  };
+  mockSmartAlbums.push(album);
+  return album;
+}
+
+export async function mockListSmartAlbums(): Promise<SmartAlbum[]> {
+  refreshSmartAlbumCounts();
+  return mockSmartAlbums.map((a) => ({ ...a }));
+}
+
+export async function mockDeleteSmartAlbum(id: number): Promise<void> {
+  const idx = mockSmartAlbums.findIndex((a) => a.id === id);
+  if (idx >= 0) mockSmartAlbums.splice(idx, 1);
+}
+
+export async function mockGetSmartAlbumMedia(
+  id: number,
+  offset: number,
+  limit: number,
+): Promise<MediaItem[]> {
+  const album = mockSmartAlbums.find((a) => a.id === id);
+  if (!album) return [];
+  const rule = JSON.parse(album.rule_json) as SmartAlbumRule;
+  return visibleMedia()
+    .filter((m) => matchesSmartAlbumRule(m, rule))
+    .slice(offset, offset + limit);
+}
+
+export async function mockGenerateMemories(): Promise<Memory[]> {
+  mockMemories.length = 0;
+  mockMemoryItems.clear();
+  const groups = new Map<string, MediaItem[]>();
+
+  for (const item of visibleMedia()) {
+    if (item.media_type !== "Photo" || !item.created_at) continue;
+    const d = new Date(item.created_at);
+    const year = String(d.getFullYear());
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const country = MOCK_LOCATIONS.find(
+      (l) => l.lat === item.latitude && l.lon === item.longitude,
+    )?.country ?? "CN";
+    const key = `${year}-${month}-${country}`;
+    const list = groups.get(key) ?? [];
+    list.push(item);
+    groups.set(key, list);
+  }
+
+  let nextId = 1;
+  for (const [, items] of groups) {
+    if (items.length < 5) continue;
+    items.sort((a, b) => (a.created_at ?? "").localeCompare(b.created_at ?? ""));
+    const d = new Date(items[0].created_at!);
+    const loc = MOCK_LOCATIONS.find(
+      (l) => l.lat === items[0].latitude && l.lon === items[0].longitude,
+    );
+    const place = loc?.city ?? loc?.country ?? "Unknown";
+    mockMemories.push({
+      id: nextId,
+      title: `${d.getFullYear()}年${d.getMonth() + 1}月 · ${place}`,
+      subtitle: loc ? `${loc.city}, ${loc.country}` : null,
+      cover_media_id: items[0].id,
+      media_count: items.length,
+      date_from: items[0].created_at!,
+      date_to: items[items.length - 1].created_at!,
+      created_at: new Date().toISOString(),
+    });
+    mockMemoryItems.set(
+      nextId,
+      items.map((m) => m.id),
+    );
+    nextId += 1;
+  }
+
+  return mockListMemories();
+}
+
+export async function mockListMemories(): Promise<Memory[]> {
+  return mockMemories.map((m) => ({ ...m }));
+}
+
+export async function mockGetMemoryMedia(
+  memoryId: number,
+  offset: number,
+  limit: number,
+): Promise<MediaItem[]> {
+  const ids = mockMemoryItems.get(memoryId);
+  if (!ids) return [];
+  return ids
+    .slice(offset, offset + limit)
+    .map((id) => allMedia.find((m) => m.id === id))
+    .filter((m): m is MediaItem => m != null && !mockDeletedIds.has(m.id));
+}
+
+const mockPersons: Person[] = [];
+
+export async function mockGetAiStatus(): Promise<AiStatus> {
+  return {
+    python_available: false,
+    clip_available: false,
+    face_available: false,
+    status_message: "Python AI extension (catchlight_ai_py) not found",
+  };
+}
+
+export async function mockListPersons(): Promise<Person[]> {
+  return mockPersons.map((p) => ({ ...p, sample_media_ids: [...p.sample_media_ids] }));
+}
+
+export async function mockGetPersonMedia(
+  personId: number,
+  offset: number,
+  limit: number,
+): Promise<MediaItem[]> {
+  const person = mockPersons.find((p) => p.id === personId);
+  if (!person) return [];
+  return person.sample_media_ids
+    .slice(offset, offset + limit)
+    .map((id) => allMedia.find((m) => m.id === id))
+    .filter((m): m is MediaItem => m != null && !mockDeletedIds.has(m.id));
+}
+
+export async function mockRenamePerson(personId: number, name: string): Promise<void> {
+  const person = mockPersons.find((p) => p.id === personId);
+  if (person) person.name = name;
 }

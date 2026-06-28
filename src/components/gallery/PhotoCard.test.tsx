@@ -50,6 +50,6 @@ describe("PhotoCard", () => {
     render(<PhotoCard item={photoItem} selected={false} onSelect={onSelect} />);
 
     fireEvent.click(screen.getByRole("button"));
-    expect(onSelect).toHaveBeenCalledWith(1);
+    expect(onSelect).toHaveBeenCalledWith(1, expect.any(Object));
   });
 });

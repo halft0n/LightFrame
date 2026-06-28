@@ -10,6 +10,8 @@ const NAV_SECTIONS = [
       { key: "sidebar.locations", icon: "📍", view: "locations" as const },
       { key: "sidebar.favorites", icon: "❤️", view: "favorites" as const },
       { key: "sidebar.albums", icon: "📁", view: "albums" as const },
+      { key: "sidebar.smartAlbums", icon: "✨", view: "smart-albums" as const },
+      { key: "sidebar.memories", icon: "🕰", view: "memories" as const },
       { key: "sidebar.people", icon: "👤", view: "people" as const },
     ],
   },
@@ -67,7 +69,10 @@ export function Sidebar() {
                     onClick={() => handleNav(item.view)}
                     className={navButtonClass(
                       currentView === item.view ||
-                        (item.view === "albums" && currentView === "album-detail"),
+                        (item.view === "albums" && currentView === "album-detail") ||
+                        (item.view === "smart-albums" && currentView === "smart-album-detail") ||
+                        (item.view === "memories" && currentView === "memory-detail") ||
+                        (item.view === "people" && currentView === "person-detail"),
                     )}
                   >
                     <span className="text-base">{item.icon}</span>

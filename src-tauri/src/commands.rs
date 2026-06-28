@@ -2,9 +2,10 @@ use crate::scan;
 use crate::state::{AppState, ScanProgress};
 use catchlight_core::config::AppConfig;
 use catchlight_core::media::MediaFile;
+use catchlight_ai::AiStatus;
 use catchlight_db::{
-    Album, DuplicateGroupDetail, LocationGroup, LocationStats, MediaNeighbors, TimelineGroup,
-    WatchedFolder,
+    Album, DuplicateGroupDetail, LocationGroup, LocationStats, MediaNeighbors, Memory, Person,
+    SmartAlbum, SmartAlbumRule, TimelineGroup, WatchedFolder,
 };
 use serde::Serialize;
 use tauri::{AppHandle, State};
@@ -386,6 +387,54 @@ pub fn permanently_delete(state: State<'_, AppState>, media_id: i64) -> Result<(
 }
 
 #[tauri::command]
+pub fn batch_delete_media(state: State<'_, AppState>, media_ids: Vec<i64>) -> Result<usize, String> {
+    state
+        .db
+        .batch_set_deleted(&media_ids, true)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn batch_add_to_album(
+    state: State<'_, AppState>,
+    album_id: i64,
+    media_ids: Vec<i64>,
+) -> Result<(), String> {
+    state
+        .db
+        .add_to_album(album_id, &media_ids)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn batch_toggle_favorite(
+    state: State<'_, AppState>,
+    media_ids: Vec<i64>,
+    favorite: bool,
+) -> Result<usize, String> {
+    state
+        .db
+        .batch_set_favorite(&media_ids, favorite)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn batch_restore_media(state: State<'_, AppState>, media_ids: Vec<i64>) -> Result<usize, String> {
+    state
+        .db
+        .batch_set_deleted(&media_ids, false)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn batch_permanent_delete(state: State<'_, AppState>, media_ids: Vec<i64>) -> Result<usize, String> {
+    state
+        .db
+        .batch_permanent_delete(&media_ids)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn search_media(
     state: State<'_, AppState>,
     query: String,
@@ -405,5 +454,117 @@ pub fn search_media_count(state: State<'_, AppState>, query: String) -> Result<i
     state
         .db
         .search_media_count(&query)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn create_smart_album(
+    state: State<'_, AppState>,
+    name: String,
+    icon: Option<String>,
+    rule: SmartAlbumRule,
+) -> Result<SmartAlbum, String> {
+    if name.trim().is_empty() {
+        return Err("smart album name cannot be empty".to_string());
+    }
+    state
+        .db
+        .create_smart_album(&name, icon.as_deref(), &rule)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_smart_albums(state: State<'_, AppState>) -> Result<Vec<SmartAlbum>, String> {
+    state
+        .db
+        .list_smart_albums()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_smart_album(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    state
+        .db
+        .delete_smart_album(id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_smart_album_media(
+    state: State<'_, AppState>,
+    id: i64,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<MediaFile>, String> {
+    let limit = limit.clamp(1, 500);
+    let offset = offset.max(0);
+    state
+        .db
+        .get_smart_album_media(id, limit, offset)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn generate_memories(state: State<'_, AppState>) -> Result<Vec<Memory>, String> {
+    let db = state.db.clone();
+    tokio::task::spawn_blocking(move || db.generate_memories().map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn list_memories(state: State<'_, AppState>) -> Result<Vec<Memory>, String> {
+    state.db.list_memories().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_memory_media(
+    state: State<'_, AppState>,
+    memory_id: i64,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<MediaFile>, String> {
+    let limit = limit.clamp(1, 500);
+    let offset = offset.max(0);
+    state
+        .db
+        .get_memory_media(memory_id, limit, offset)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_ai_status() -> AiStatus {
+    catchlight_ai::check_ai_status()
+}
+
+#[tauri::command]
+pub fn list_persons(state: State<'_, AppState>) -> Result<Vec<Person>, String> {
+    state.db.list_persons().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_person_media(
+    state: State<'_, AppState>,
+    person_id: i64,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<MediaFile>, String> {
+    let limit = limit.clamp(1, 500);
+    let offset = offset.max(0);
+    state
+        .db
+        .get_person_media(person_id, limit, offset)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn rename_person(
+    state: State<'_, AppState>,
+    person_id: i64,
+    name: String,
+) -> Result<(), String> {
+    state
+        .db
+        .rename_person(person_id, &name)
         .map_err(|e| e.to_string())
 }

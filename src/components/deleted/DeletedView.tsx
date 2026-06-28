@@ -98,7 +98,9 @@ export function DeletedView() {
                 <PhotoCard
                   item={item}
                   selected={false}
-                  onSelect={() => openViewer(item.id)}
+                  onSelect={(_id, e) => {
+                    if (!e.ctrlKey && !e.metaKey && !e.shiftKey) openViewer(item.id);
+                  }}
                   onOpen={openViewer}
                 />
                 <div className="absolute inset-x-0 bottom-0 flex gap-1 bg-gradient-to-t from-black/90 to-transparent p-2 opacity-0 transition group-hover:opacity-100">

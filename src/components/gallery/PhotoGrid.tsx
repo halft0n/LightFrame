@@ -1,10 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PhotoCard } from "./PhotoCard";
+import { SelectionToolbar } from "./SelectionToolbar";
 import { getMediaList } from "@/lib/tauri";
 import {
   appendMedia,
+  clearMediaSelection,
   openViewer,
+  selectMediaRange,
+  setSingleMediaSelection,
   toggleMediaSelection,
   useAppStore,
 } from "@/store/appStore";
@@ -19,6 +23,7 @@ export function PhotoGrid() {
   const { t } = useTranslation();
   const { mediaItems, totalCount, selectedMediaIds } = useAppStore();
   const parentRef = useRef<HTMLDivElement>(null);
+  const lastSelectedRef = useRef<number | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
 
@@ -83,6 +88,32 @@ export function PhotoGrid() {
 
   const selectedSet = new Set(selectedMediaIds);
 
+  const handleSelect = useCallback(
+    (id: number, event: React.MouseEvent) => {
+      if (event.shiftKey && lastSelectedRef.current != null) {
+        selectMediaRange(lastSelectedRef.current, id);
+      } else if (event.ctrlKey || event.metaKey) {
+        toggleMediaSelection(id);
+        lastSelectedRef.current = id;
+      } else {
+        setSingleMediaSelection(id);
+        lastSelectedRef.current = id;
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && selectedMediaIds.length > 0) {
+        clearMediaSelection();
+        lastSelectedRef.current = null;
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedMediaIds.length]);
+
   if (mediaItems.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center text-neutral-500">
@@ -137,7 +168,7 @@ export function PhotoGrid() {
                         key={item.id}
                         item={item}
                         selected={selectedSet.has(item.id)}
-                        onSelect={toggleMediaSelection}
+                        onSelect={handleSelect}
                         onOpen={openViewer}
                       />
                     );
@@ -154,6 +185,8 @@ export function PhotoGrid() {
           </div>
         )}
       </div>
+
+      <SelectionToolbar />
     </div>
   );
 }

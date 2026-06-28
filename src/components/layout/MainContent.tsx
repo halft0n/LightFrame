@@ -9,6 +9,12 @@ import { AlbumListView } from "@/components/albums/AlbumListView";
 import { AlbumDetailView } from "@/components/albums/AlbumDetailView";
 import { FavoritesView } from "@/components/favorites/FavoritesView";
 import { DeletedView } from "@/components/deleted/DeletedView";
+import { SmartAlbumListView } from "@/components/smart-albums/SmartAlbumListView";
+import { SmartAlbumView } from "@/components/smart-albums/SmartAlbumView";
+import { MemoriesView } from "@/components/memories/MemoriesView";
+import { MemoryDetailView } from "@/components/memories/MemoryDetailView";
+import { PeopleView } from "@/components/people/PeopleView";
+import { PersonDetailView } from "@/components/people/PersonDetailView";
 import { SearchResults } from "@/components/search/SearchResults";
 import { PhotoViewer } from "@/components/viewer/PhotoViewer";
 import { ViewerOverlay } from "@/components/viewer/ViewerOverlay";
@@ -109,6 +115,60 @@ export function MainContent() {
     return (
       <>
         <AlbumDetailView />
+        <ViewerLayer />
+      </>
+    );
+  }
+
+  if (currentView === "smart-albums") {
+    return (
+      <>
+        <SmartAlbumListView />
+        <ViewerLayer />
+      </>
+    );
+  }
+
+  if (currentView === "smart-album-detail") {
+    return (
+      <>
+        <SmartAlbumView />
+        <ViewerLayer />
+      </>
+    );
+  }
+
+  if (currentView === "memories") {
+    return (
+      <>
+        <MemoriesView />
+        <ViewerLayer />
+      </>
+    );
+  }
+
+  if (currentView === "memory-detail") {
+    return (
+      <>
+        <MemoryDetailView />
+        <ViewerLayer />
+      </>
+    );
+  }
+
+  if (currentView === "people") {
+    return (
+      <>
+        <PeopleView />
+        <ViewerLayer />
+      </>
+    );
+  }
+
+  if (currentView === "person-detail") {
+    return (
+      <>
+        <PersonDetailView />
         <ViewerLayer />
       </>
     );

@@ -36,6 +36,14 @@ pub fn run(conn: &Connection) -> catchlight_core::Result<()> {
         v5(conn)?;
     }
 
+    if current < 6 {
+        v6(conn)?;
+    }
+
+    if current < 7 {
+        v7(conn)?;
+    }
+
     Ok(())
 }
 
@@ -229,6 +237,91 @@ fn v5(conn: &Connection) -> catchlight_core::Result<()> {
             WHERE is_deleted = 1;
 
         INSERT OR IGNORE INTO schema_version (version) VALUES (5);",
+    )
+    .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+fn v6(conn: &Connection) -> catchlight_core::Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS smart_albums (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            icon TEXT,
+            rule_json TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS memories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            subtitle TEXT,
+            cover_media_id INTEGER REFERENCES media_files(id),
+            date_from TEXT NOT NULL,
+            date_to TEXT NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS memory_items (
+            memory_id INTEGER NOT NULL REFERENCES memories(id) ON DELETE CASCADE,
+            media_id INTEGER NOT NULL REFERENCES media_files(id) ON DELETE CASCADE,
+            PRIMARY KEY (memory_id, media_id)
+        );
+
+        INSERT INTO smart_albums (name, icon, rule_json)
+        SELECT 'All Videos', '🎬', '{\"media_type\":\"Video\"}'
+        WHERE NOT EXISTS (SELECT 1 FROM smart_albums WHERE name = 'All Videos');
+
+        INSERT INTO smart_albums (name, icon, rule_json)
+        SELECT 'All Screenshots', '📱', '{\"media_type\":\"Screenshot\"}'
+        WHERE NOT EXISTS (SELECT 1 FROM smart_albums WHERE name = 'All Screenshots');
+
+        INSERT INTO smart_albums (name, icon, rule_json)
+        SELECT 'With GPS', '📍', '{\"has_gps\":true}'
+        WHERE NOT EXISTS (SELECT 1 FROM smart_albums WHERE name = 'With GPS');
+
+        INSERT OR IGNORE INTO schema_version (version) VALUES (6);",
+    )
+    .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+fn v7(conn: &Connection) -> catchlight_core::Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS media_embeddings (
+            media_id INTEGER PRIMARY KEY REFERENCES media_files(id) ON DELETE CASCADE,
+            clip_embedding BLOB,
+            embedding_model TEXT,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS face_detections (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            media_id INTEGER NOT NULL REFERENCES media_files(id) ON DELETE CASCADE,
+            face_embedding BLOB,
+            bbox_x REAL NOT NULL,
+            bbox_y REAL NOT NULL,
+            bbox_w REAL NOT NULL,
+            bbox_h REAL NOT NULL,
+            confidence REAL NOT NULL,
+            person_id INTEGER,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE TABLE IF NOT EXISTS persons (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT,
+            face_count INTEGER NOT NULL DEFAULT 0,
+            cover_face_id INTEGER REFERENCES face_detections(id),
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_faces_media ON face_detections(media_id);
+        CREATE INDEX IF NOT EXISTS idx_faces_person ON face_detections(person_id);
+
+        INSERT OR IGNORE INTO schema_version (version) VALUES (7);",
     )
     .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 

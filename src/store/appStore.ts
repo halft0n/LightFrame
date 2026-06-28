@@ -6,17 +6,27 @@ export type AppView =
   | "timeline"
   | "locations"
   | "people"
+  | "person-detail"
   | "duplicates"
   | "screenshots"
   | "albums"
   | "album-detail"
+  | "smart-albums"
+  | "smart-album-detail"
+  | "memories"
+  | "memory-detail"
   | "favorites"
   | "deleted"
   | "settings";
 
+export type Theme = "light" | "dark" | "system";
+
 export interface AppState {
   currentView: AppView;
   selectedAlbumId: number | null;
+  selectedSmartAlbumId: number | null;
+  selectedMemoryId: number | null;
+  selectedPersonId: number | null;
   selectedMediaIds: number[];
   watchedFolders: WatchedFolder[];
   mediaItems: MediaItem[];
@@ -25,11 +35,15 @@ export interface AppState {
   scanProgress: ScanProgress | null;
   viewingMediaId: number | null;
   searchQuery: string;
+  theme: Theme;
 }
 
 const initialState: AppState = {
   currentView: "all",
   selectedAlbumId: null,
+  selectedSmartAlbumId: null,
+  selectedMemoryId: null,
+  selectedPersonId: null,
   selectedMediaIds: [],
   watchedFolders: [],
   mediaItems: [],
@@ -38,6 +52,7 @@ const initialState: AppState = {
   scanProgress: null,
   viewingMediaId: null,
   searchQuery: "",
+  theme: "dark",
 };
 
 let state: AppState = { ...initialState };
@@ -64,7 +79,13 @@ export function getSnapshot(): AppState {
 }
 
 export function setView(view: AppView) {
-  setState({ currentView: view, selectedAlbumId: view === "album-detail" ? state.selectedAlbumId : null });
+  setState({
+    currentView: view,
+    selectedAlbumId: view === "album-detail" ? state.selectedAlbumId : null,
+    selectedSmartAlbumId: view === "smart-album-detail" ? state.selectedSmartAlbumId : null,
+    selectedMemoryId: view === "memory-detail" ? state.selectedMemoryId : null,
+    selectedPersonId: view === "person-detail" ? state.selectedPersonId : null,
+  });
 }
 
 export function openAlbumDetail(albumId: number) {
@@ -73,6 +94,30 @@ export function openAlbumDetail(albumId: number) {
 
 export function closeAlbumDetail() {
   setState({ currentView: "albums", selectedAlbumId: null });
+}
+
+export function openSmartAlbumDetail(smartAlbumId: number) {
+  setState({ currentView: "smart-album-detail", selectedSmartAlbumId: smartAlbumId });
+}
+
+export function closeSmartAlbumDetail() {
+  setState({ currentView: "smart-albums", selectedSmartAlbumId: null });
+}
+
+export function openMemoryDetail(memoryId: number) {
+  setState({ currentView: "memory-detail", selectedMemoryId: memoryId });
+}
+
+export function closeMemoryDetail() {
+  setState({ currentView: "memories", selectedMemoryId: null });
+}
+
+export function openPersonDetail(personId: number) {
+  setState({ currentView: "person-detail", selectedPersonId: personId });
+}
+
+export function closePersonDetail() {
+  setState({ currentView: "people", selectedPersonId: null });
 }
 
 export function setWatchedFolders(folders: WatchedFolder[]) {
@@ -120,8 +165,31 @@ export function toggleMediaSelection(id: number) {
   setState({ selectedMediaIds: [...selected] });
 }
 
+export function setSingleMediaSelection(id: number) {
+  setState({ selectedMediaIds: [id] });
+}
+
+export function selectMediaRange(fromId: number, toId: number) {
+  const items = state.mediaItems;
+  const fromIdx = items.findIndex((m) => m.id === fromId);
+  const toIdx = items.findIndex((m) => m.id === toId);
+  if (fromIdx === -1 || toIdx === -1) return;
+  const start = Math.min(fromIdx, toIdx);
+  const end = Math.max(fromIdx, toIdx);
+  const ids = items.slice(start, end + 1).map((m) => m.id);
+  setState({ selectedMediaIds: ids });
+}
+
+export function setMediaSelection(ids: number[]) {
+  setState({ selectedMediaIds: ids });
+}
+
 export function clearMediaSelection() {
   setState({ selectedMediaIds: [] });
+}
+
+export function setTheme(theme: Theme) {
+  setState({ theme });
 }
 
 export function openViewer(id: number) {

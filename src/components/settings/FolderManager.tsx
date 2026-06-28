@@ -5,7 +5,8 @@ import {
   removeWatchedFolder,
   type ScanStatus,
 } from "@/lib/tauri";
-import { addFolder, removeFolder, useAppStore } from "@/store/appStore";
+import { addFolder, removeFolder, useAppStore, type Theme } from "@/store/appStore";
+import { changeTheme } from "@/hooks/useTheme";
 import { useTranslation } from "@/i18n/useTranslation";
 
 function ScanIndicator({ status }: { status: ScanStatus }) {
@@ -38,8 +39,14 @@ function formatLastScan(value?: string | null): string {
 
 export function FolderManager() {
   const { t } = useTranslation();
-  const { watchedFolders } = useAppStore();
+  const { watchedFolders, theme } = useAppStore();
   const [adding, setAdding] = useState(false);
+
+  const themeOptions: { value: Theme; labelKey: string }[] = [
+    { value: "light", labelKey: "theme.light" },
+    { value: "dark", labelKey: "theme.dark" },
+    { value: "system", labelKey: "theme.system" },
+  ];
 
   const handleAddFolder = async () => {
     const selected = await open({
@@ -66,8 +73,30 @@ export function FolderManager() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex items-center justify-between border-b border-neutral-800 px-6 py-4">
-        <h2 className="text-lg font-semibold text-neutral-100">{t("settings.folders")}</h2>
+      <div className="border-b border-neutral-200 px-6 py-4 dark:border-neutral-800">
+        <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+          {t("theme.title")}
+        </h2>
+        <div className="mt-3 flex gap-2">
+          {themeOptions.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => changeTheme(opt.value)}
+              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+                theme === opt.value
+                  ? "bg-blue-600 text-white"
+                  : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+              }`}
+            >
+              {t(opt.labelKey)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4 dark:border-neutral-800">
+        <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{t("settings.folders")}</h2>
         <button
           type="button"
           onClick={() => void handleAddFolder()}
@@ -86,11 +115,11 @@ export function FolderManager() {
             {watchedFolders.map((folder) => (
               <li
                 key={folder.id}
-                className="rounded-lg border border-neutral-800 bg-neutral-900/50 p-4"
+                className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-800 dark:bg-neutral-900/50"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-neutral-100">
+                    <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-100">
                       {folder.path.split(/[/\\]/).pop() ?? folder.path}
                     </p>
                     <p className="mt-1 truncate text-xs text-neutral-500">
