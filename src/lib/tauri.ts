@@ -166,6 +166,19 @@ export interface FaceInfo {
   person_id: number | null;
 }
 
+export interface SearchResult {
+  media_id: number;
+  file_name: string;
+  file_path: string;
+  relevance: number;
+}
+
+export interface PersonClusterInfo {
+  person_id: number;
+  name: string | null;
+  face_count: number;
+}
+
 export function getThumbnailUrl(id: number, size: "small" | "large" | "micro" = "small"): string {
   return `thumb://localhost/${id}/${size}`;
 }
@@ -429,6 +442,10 @@ export async function searchMediaCount(query: string): Promise<number> {
   return invoke<number>("search_media_count", { query });
 }
 
+export async function semanticSearch(query: string, limit?: number): Promise<SearchResult[]> {
+  return invoke<SearchResult[]>("semantic_search", { queryText: query, limit: limit ?? 50 });
+}
+
 export async function createSmartAlbum(
   name: string,
   icon: string | null,
@@ -510,6 +527,14 @@ export async function getPersonMedia(
 
 export async function renamePerson(personId: number, name: string): Promise<void> {
   return invoke("rename_person", { personId, name });
+}
+
+export async function clusterFaces(threshold?: number): Promise<PersonClusterInfo[]> {
+  return invoke<PersonClusterInfo[]>("cluster_faces", { threshold: threshold ?? null });
+}
+
+export async function mergePersons(personIds: number[]): Promise<void> {
+  return invoke("merge_persons", { personIds });
 }
 
 export async function saveEdit(mediaId: number, params: string): Promise<void> {

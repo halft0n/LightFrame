@@ -13,5 +13,11 @@ thiserror.workspace = true
 tracing.workspace = true
 tokio.workspace = true
 
+[[bench]]
+name = "db_bench"
+harness = false
+
 [dev-dependencies]
 chrono = { version = "0.4", features = ["serde"] }
+criterion = { version = "0.5", features = ["html_reports"] }
+tempfile = "3"

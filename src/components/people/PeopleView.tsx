@@ -1,8 +1,11 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
+  clusterFaces,
   getAiStatus,
   getThumbnailUrl,
   listPersons,
+  mergePersons,
+  renamePerson,
   type AiStatus,
   type Person,
 } from "@/lib/tauri";
@@ -19,43 +22,101 @@ interface PersonCardProps {
   person: Person;
   nameLabel: string;
   faceCountLabel: string;
+  selected: boolean;
   onOpen: (personId: number) => void;
+  onToggleSelect: (personId: number) => void;
+  onRename: (personId: number, name: string) => void;
 }
 
 const PersonCard = memo(function PersonCard({
   person,
   nameLabel,
   faceCountLabel,
+  selected,
   onOpen,
+  onToggleSelect,
+  onRename,
 }: PersonCardProps) {
+  const { t } = useTranslation();
   const coverId = personCoverMediaId(person);
+  const [editing, setEditing] = useState(false);
+  const [draftName, setDraftName] = useState(nameLabel);
+
+  const commitRename = () => {
+    const trimmed = draftName.trim();
+    if (trimmed && trimmed !== nameLabel) {
+      onRename(person.id, trimmed);
+    }
+    setEditing(false);
+  };
 
   return (
-    <button
-      type="button"
-      onClick={() => onOpen(person.id)}
-      className="card-list-item group flex flex-col items-center gap-2 rounded-lg border border-neutral-200/80 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900/50 p-4 text-center transition hover:border-neutral-300 dark:hover:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800/80"
+    <div
+      className={`card-list-item group relative flex flex-col items-center gap-2 rounded-lg border p-4 text-center transition ${
+        selected
+          ? "border-blue-500/60 bg-blue-500/10"
+          : "border-neutral-200/80 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900/50 hover:border-neutral-300 dark:hover:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800/80"
+      }`}
     >
-      <div className="h-20 w-20 overflow-hidden rounded-full bg-neutral-800 ring-2 ring-neutral-700 transition group-hover:ring-neutral-500">
-        {coverId != null ? (
-          <img
-            src={getThumbnailUrl(coverId, "small")}
-            alt=""
-            className="card-thumb h-full w-full object-cover"
-            loading="lazy"
-            decoding="async"
+      <button
+        type="button"
+        onClick={() => onToggleSelect(person.id)}
+        className="absolute left-2 top-2 flex h-5 w-5 items-center justify-center rounded border border-neutral-500/50 bg-neutral-900/60 text-xs text-white"
+        aria-label={t("people.selectPerson")}
+      >
+        {selected ? "✓" : ""}
+      </button>
+      <button
+        type="button"
+        onClick={() => onOpen(person.id)}
+        className="flex flex-col items-center gap-2"
+      >
+        <div className="h-20 w-20 overflow-hidden rounded-full bg-neutral-800 ring-2 ring-neutral-700 transition group-hover:ring-neutral-500">
+          {coverId != null ? (
+            <img
+              src={getThumbnailUrl(coverId, "small")}
+              alt=""
+              className="card-thumb h-full w-full object-cover"
+              loading="lazy"
+              decoding="async"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-2xl text-neutral-600">
+              👤
+            </div>
+          )}
+        </div>
+      </button>
+      <div className="min-w-0 w-full">
+        {editing ? (
+          <input
+            type="text"
+            value={draftName}
+            onChange={(e) => setDraftName(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitRename();
+              if (e.key === "Escape") setEditing(false);
+            }}
+            className="w-full rounded border border-neutral-600 bg-neutral-900 px-2 py-1 text-center text-sm text-neutral-100"
+            autoFocus
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-2xl text-neutral-600">
-            👤
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setDraftName(nameLabel);
+              setEditing(true);
+            }}
+            className="truncate text-sm font-medium text-neutral-100 hover:underline"
+            title={t("people.rename")}
+          >
+            {nameLabel}
+          </button>
         )}
-      </div>
-      <div className="min-w-0 w-full">
-        <p className="truncate text-sm font-medium text-neutral-100">{nameLabel}</p>
         <p className="mt-0.5 text-xs text-neutral-500">{faceCountLabel}</p>
       </div>
-    </button>
+    </div>
   );
 });
 
@@ -64,6 +125,9 @@ export function PeopleView() {
   const [persons, setPersons] = useState<Person[]>([]);
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [clustering, setClustering] = useState(false);
+  const [merging, setMerging] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [visibleCount, setVisibleCount] = useState(CARD_PAGE_SIZE);
 
   const load = useCallback(async () => {
@@ -86,6 +150,56 @@ export function PeopleView() {
     openPersonDetail(personId);
   }, []);
 
+  const handleToggleSelect = useCallback((personId: number) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(personId)) {
+        next.delete(personId);
+      } else {
+        next.add(personId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleRename = useCallback(async (personId: number, name: string) => {
+    try {
+      await renamePerson(personId, name);
+      setPersons((prev) =>
+        prev.map((p) => (p.id === personId ? { ...p, name } : p)),
+      );
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const handleCluster = useCallback(async () => {
+    setClustering(true);
+    try {
+      await clusterFaces();
+      setSelectedIds(new Set());
+      await load();
+    } catch {
+      // ignore
+    } finally {
+      setClustering(false);
+    }
+  }, [load]);
+
+  const handleMerge = useCallback(async () => {
+    if (selectedIds.size < 2) return;
+    setMerging(true);
+    try {
+      await mergePersons([...selectedIds]);
+      setSelectedIds(new Set());
+      await load();
+    } catch {
+      // ignore
+    } finally {
+      setMerging(false);
+    }
+  }, [load, selectedIds]);
+
   const visiblePersons = useMemo(
     () => persons.slice(0, visibleCount),
     [persons, visibleCount],
@@ -104,28 +218,53 @@ export function PeopleView() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex items-center justify-between border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3">
         <h2 className="text-sm font-medium text-neutral-200">{t("people.title")}</h2>
-        {aiStatus && (
-          <span
-            className={`text-xs ${
-              aiReady ? "text-green-400" : "text-neutral-500"
-            }`}
-            title={aiStatus.status_message}
+        <div className="flex flex-wrap items-center gap-2">
+          {selectedIds.size >= 2 && (
+            <button
+              type="button"
+              onClick={() => void handleMerge()}
+              disabled={merging}
+              className="rounded-lg border border-neutral-600 px-3 py-1 text-xs text-neutral-300 transition hover:bg-neutral-800 disabled:opacity-50"
+            >
+              {merging ? t("people.merging") : t("people.mergeSelected", { count: selectedIds.size })}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => void handleCluster()}
+            disabled={clustering}
+            className="rounded-lg border border-neutral-600 px-3 py-1 text-xs text-neutral-300 transition hover:bg-neutral-800 disabled:opacity-50"
           >
-            {t("ai.status")}:{" "}
-            {aiReady ? t("ai.available") : t("ai.unavailable")}
-          </span>
-        )}
+            {clustering ? t("people.clustering") : t("people.clusterFaces")}
+          </button>
+          {aiStatus && (
+            <span
+              className={`text-xs ${aiReady ? "text-green-400" : "text-neutral-500"}`}
+              title={aiStatus.status_message}
+            >
+              {t("ai.status")}: {aiReady ? t("ai.available") : t("ai.unavailable")}
+            </span>
+          )}
+        </div>
       </div>
 
       {persons.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center text-neutral-500">
+        <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-neutral-500">
           <div className="text-5xl">👤</div>
           <p className="text-lg">{t("people.empty")}</p>
           <p className="max-w-sm text-sm text-neutral-600">
             {!aiStatus?.face_available && t("people.emptyHint")}
           </p>
+          <button
+            type="button"
+            onClick={() => void handleCluster()}
+            disabled={clustering}
+            className="rounded-lg border border-neutral-600 px-4 py-2 text-sm text-neutral-300 transition hover:bg-neutral-800 disabled:opacity-50"
+          >
+            {clustering ? t("people.clustering") : t("people.clusterFaces")}
+          </button>
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto px-1 py-1">
@@ -136,7 +275,10 @@ export function PeopleView() {
                 person={person}
                 nameLabel={person.name ?? t("people.unnamed")}
                 faceCountLabel={t("people.faceCount", { count: person.face_count })}
+                selected={selectedIds.has(person.id)}
                 onOpen={handleOpenPerson}
+                onToggleSelect={handleToggleSelect}
+                onRename={handleRename}
               />
             ))}
           </div>

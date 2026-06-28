@@ -448,13 +448,17 @@ mod tests {
 
     #[test]
     fn score_ultrawide_resolution_with_status_bars() {
-        let img = screenshot_like_image(3440, 1440, true, true);
-        let path = temp_png("ultrawide.png", &img);
-        let score = detect_screenshot(&path, 3440, 1440).unwrap();
+        let with_bars = screenshot_like_image(3440, 1440, true, true);
+        let without_bars = screenshot_like_image(3440, 1440, false, false);
+        let path_with = temp_png("ultrawide_with.png", &with_bars);
+        let path_without = temp_png("ultrawide_without.png", &without_bars);
+        let score_with = detect_screenshot(&path_with, 3440, 1440).unwrap();
+        let score_without = detect_screenshot(&path_without, 3440, 1440).unwrap();
         assert!(
-            score.confidence >= 0.15,
-            "ultrawide with status bars should gain visual signals, got {}",
-            score.confidence
+            score_with.confidence > score_without.confidence,
+            "ultrawide with status bars should gain visual signals, with={} without={}",
+            score_with.confidence,
+            score_without.confidence
         );
     }
 
@@ -516,5 +520,46 @@ mod tests {
             with_exif.confidence < without_exif.confidence,
             "EXIF penalties should reduce confidence vs bare filename heuristic"
         );
+    }
+
+    #[test]
+    fn score_1x1_image_unlikely_screenshot() {
+        let img = RgbaImage::from_pixel(1, 1, Rgba([128, 128, 128, 255]));
+        let path = temp_png("tiny_1x1.png", &img);
+        let score = detect_screenshot(&path, 1, 1).unwrap();
+        assert!(!score.is_likely_screenshot());
+        assert!((0.0..=1.0).contains(&score.confidence));
+    }
+
+    #[test]
+    fn score_8k_resolution_png_moderate_confidence() {
+        let path = Path::new("8k.png");
+        let score = detect_screenshot(path, 7680, 4320).unwrap();
+        assert!(score.confidence >= 0.0);
+        assert!(score.confidence <= 1.0);
+    }
+
+    #[test]
+    fn non_standard_aspect_ratio_1_to_3() {
+        assert!(!matches_screenshot_aspect_ratio(300, 900));
+        let path = Path::new("tall.png");
+        let score = detect_screenshot(path, 300, 900).unwrap();
+        assert!(!score.is_likely_screenshot());
+    }
+
+    #[test]
+    fn partial_exif_make_without_model_still_detects_make() {
+        let jpeg_with_exif = include_bytes!("../tests/fixtures/camera_exif.jpg");
+        let dir = std::env::temp_dir().join("catchlight_screenshot_tests");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("partial_exif.jpg");
+        std::fs::write(&path, jpeg_with_exif).unwrap();
+
+        let signals = read_exif_signals(&path).unwrap();
+        assert!(signals.has_any_exif);
+        assert!(signals.has_camera_info || signals.has_exposure_info);
+
+        let score = detect_screenshot(&path, 1920, 1080).unwrap();
+        assert!(score.confidence < 0.5 || !score.is_likely_screenshot());
     }
 }

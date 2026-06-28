@@ -13,9 +13,7 @@ use tracing_subscriber::EnvFilter;
 
 pub fn run() {
     tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env().add_directive("catchlight=debug".parse().unwrap()),
-        )
+        .with_env_filter(EnvFilter::from_default_env())
         .init();
 
     let app_state = AppState::new().expect("failed to initialize application state");
@@ -85,6 +83,7 @@ pub fn run() {
             commands::batch_permanent_delete,
             commands::search_media,
             commands::search_media_count,
+            commands::semantic_search,
             commands::create_smart_album,
             commands::list_smart_albums,
             commands::delete_smart_album,
@@ -101,6 +100,8 @@ pub fn run() {
             commands::list_persons,
             commands::get_person_media,
             commands::rename_person,
+            commands::cluster_faces,
+            commands::merge_persons,
             commands::save_edit,
             commands::get_edit,
             commands::revert_edit,

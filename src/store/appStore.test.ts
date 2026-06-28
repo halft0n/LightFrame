@@ -15,6 +15,8 @@ import {
   closeViewer,
   setSearchQuery,
   setTheme,
+  setThumbnailSize,
+  setMediaSelection,
   openAlbumDetail,
   closeAlbumDetail,
   openSmartAlbumDetail,
@@ -38,6 +40,7 @@ function resetStore() {
   closeViewer();
   setSearchQuery("");
   setTheme("dark");
+  setThumbnailSize("medium");
   closeAlbumDetail();
   closeSmartAlbumDetail();
   closeMemoryDetail();
@@ -213,6 +216,57 @@ describe("appStore", () => {
 
     setTheme("dark");
     expect(getSnapshot().theme).toBe("dark");
+  });
+
+  it("setThumbnailSize persists thumbnail size preference", () => {
+    expect(getSnapshot().thumbnailSize).toBe("medium");
+
+    setThumbnailSize("small");
+    expect(getSnapshot().thumbnailSize).toBe("small");
+
+    setThumbnailSize("large");
+    expect(getSnapshot().thumbnailSize).toBe("large");
+  });
+
+  it("navigates to all primary views", () => {
+    const views = [
+      "all",
+      "videos",
+      "timeline",
+      "favorites",
+      "people",
+      "duplicates",
+      "screenshots",
+      "albums",
+      "smart-albums",
+      "memories",
+      "deleted",
+      "settings",
+      "locations",
+    ] as const;
+
+    for (const view of views) {
+      setView(view);
+      expect(getSnapshot().currentView).toBe(view);
+    }
+  });
+
+  it("select all and clear selection edge cases", () => {
+    const items = [
+      sampleMedia,
+      { ...sampleMedia, id: 2 },
+      { ...sampleMedia, id: 3 },
+    ];
+    setMedia(items, 3);
+
+    setMediaSelection(items.map((m) => m.id));
+    expect(getSnapshot().selectedMediaIds).toEqual([1, 2, 3]);
+
+    clearMediaSelection();
+    expect(getSnapshot().selectedMediaIds).toEqual([]);
+
+    setMediaSelection([]);
+    expect(getSnapshot().selectedMediaIds).toEqual([]);
   });
 
   it("album detail navigation", () => {

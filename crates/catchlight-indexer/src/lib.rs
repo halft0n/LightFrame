@@ -1,6 +1,9 @@
 pub mod scanner;
 pub mod watcher;
 
+#[cfg(target_os = "windows")]
+mod mft;
+
 pub use watcher::{
     FolderWatcher, is_media_change_event, is_media_remove_event, is_media_rename_event,
 };
@@ -16,6 +19,22 @@ const PHOTO_EXTENSIONS: &[&str] = &[
 const VIDEO_EXTENSIONS: &[&str] = &[
     "mp4", "mov", "avi", "mkv", "wmv", "flv", "webm", "m4v", "3gp", "mts", "m2ts", "ts",
 ];
+
+#[cfg(target_os = "windows")]
+const MEDIA_EXTENSIONS: &[&str] = &[
+    "jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "tif", "heic", "heif", "avif", "svg",
+    "ico", "raw", "cr2", "cr3", "nef", "arw", "dng", "orf", "rw2", "pef", "raf", "mp4", "mov",
+    "avi", "mkv", "wmv", "flv", "webm", "m4v", "3gp", "mts", "m2ts", "ts",
+];
+
+#[cfg(target_os = "windows")]
+fn get_volume_letter(path: &Path) -> char {
+    path.to_str()
+        .and_then(|s| s.chars().next())
+        .filter(|c| c.is_ascii_alphabetic())
+        .map(|c| c.to_ascii_uppercase())
+        .unwrap_or('C')
+}
 
 pub fn is_media_file(path: &Path) -> bool {
     path.extension()
@@ -53,7 +72,18 @@ pub fn classify_extension(path: &Path) -> catchlight_core::media::MediaType {
 }
 
 pub async fn scan_folder(folder: &Path) -> Result<Vec<PathBuf>> {
-    scanner::scan(folder).await
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(scanner) = mft::mft::MftScanner::new(get_volume_letter(folder)) {
+            if let Ok(entries) = scanner.scan_media_files(MEDIA_EXTENSIONS) {
+                if !entries.is_empty() {
+                    return Ok(entries.into_iter().map(|e| e.path).collect());
+                }
+            }
+        }
+    }
+
+    scanner::scan_with_walkdir(folder).await
 }
 
 #[cfg(test)]
@@ -127,5 +157,40 @@ mod tests {
     fn classify_unknown() {
         assert_eq!(classify_extension(Path::new("a.txt")), MediaType::Unknown);
         assert_eq!(classify_extension(Path::new("noext")), MediaType::Unknown);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn get_volume_letter_extracts_drive() {
+        assert_eq!(get_volume_letter(Path::new("/home/user/photos")), 'C');
+        assert_eq!(get_volume_letter(Path::new("D:\\Photos\\vacation")), 'D');
+    }
+
+    #[tokio::test]
+    async fn scan_folder_falls_back_to_walkdir() {
+        let dir = tempfile::tempdir().unwrap();
+        let photo = dir.path().join("test.jpg");
+        std::fs::write(&photo, b"fake jpeg").unwrap();
+        std::fs::write(dir.path().join("readme.txt"), b"hello").unwrap();
+
+        let results = scan_folder(dir.path()).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0], photo);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn mft_scanner_placeholder_returns_empty() {
+        let scanner = mft::mft::MftScanner::new('C').unwrap();
+        let entries = scanner.scan_media_files(&["jpg"]).unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn usn_journal_placeholder_returns_empty() {
+        let journal = mft::mft::UsnJournal::new('C').unwrap();
+        let changes = journal.poll_changes().unwrap();
+        assert!(changes.is_empty());
     }
 }

@@ -15,6 +15,7 @@ import {
   loadMedia,
   setScanning,
   setSearchQuery,
+  setSearchMode,
   setWatchedFolders,
   updateFolder,
   useAppStore,
@@ -24,7 +25,7 @@ import { useTheme } from "@/hooks/useTheme";
 export default function App() {
   const { t } = useTranslation();
   useTheme();
-  const { totalCount, searchQuery, searchHistory } = useAppStore();
+  const { totalCount, searchQuery, searchHistory, searchMode } = useAppStore();
   const [inputValue, setInputValue] = useState(searchQuery);
   const [searchFocused, setSearchFocused] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -213,7 +214,8 @@ export default function App() {
               <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
             </svg>
           </button>
-          <div ref={searchContainerRef} className="relative flex flex-1 max-w-2xl">
+          <div ref={searchContainerRef} className="relative flex flex-1 max-w-2xl items-center gap-2">
+            <div className="relative flex-1">
             <svg
               className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
               viewBox="0 0 24 24"
@@ -263,6 +265,31 @@ export default function App() {
                 </ul>
               </div>
             )}
+            </div>
+            <div className="hidden shrink-0 sm:flex rounded-lg border border-neutral-200/80 dark:border-neutral-700 p-0.5">
+              <button
+                type="button"
+                onClick={() => setSearchMode("text")}
+                className={`rounded-md px-2 py-1 text-[11px] transition ${
+                  searchMode === "text"
+                    ? "bg-neutral-200 text-neutral-900 dark:bg-neutral-700 dark:text-neutral-100"
+                    : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+                }`}
+              >
+                {t("search.modeText")}
+              </button>
+              <button
+                type="button"
+                onClick={() => setSearchMode("semantic")}
+                className={`rounded-md px-2 py-1 text-[11px] transition ${
+                  searchMode === "semantic"
+                    ? "bg-neutral-200 text-neutral-900 dark:bg-neutral-700 dark:text-neutral-100"
+                    : "text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+                }`}
+              >
+                {t("search.modeSemantic")}
+              </button>
+            </div>
           </div>
           {totalCount > 0 && !searchQuery.trim() && (
             <span className="shrink-0 text-[11px] tabular-nums text-neutral-400 dark:text-neutral-500">

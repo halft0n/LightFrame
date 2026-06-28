@@ -1,5 +1,5 @@
 use catchlight_core::media::{MediaFile, MediaType};
-use catchlight_db::Database;
+use catchlight_db::{Database, FaceDetectionInput};
 use chrono::NaiveDateTime;
 use std::path::Path;
 
@@ -979,4 +979,269 @@ fn concurrent_read_access_from_multiple_threads() {
     for handle in handles {
         assert_eq!(handle.join().expect("thread panicked"), 20);
     }
+}
+
+#[test]
+fn clip_embeddings_store_retrieve_and_overwrite() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/clip.jpg"))
+        .unwrap();
+
+    let embedding_v1 = vec![0.1, 0.2, 0.3];
+    db.store_clip_embedding(media_id, &embedding_v1).unwrap();
+    assert_eq!(
+        db.get_clip_embedding(media_id).unwrap(),
+        Some(embedding_v1.clone())
+    );
+
+    let embedding_v2 = vec![0.9, 0.8, 0.7];
+    db.store_clip_embedding(media_id, &embedding_v2).unwrap();
+    assert_eq!(db.get_clip_embedding(media_id).unwrap(), Some(embedding_v2));
+}
+
+#[test]
+fn clip_embedding_missing_media_returns_none() {
+    let db = create_test_db();
+    assert!(db.get_clip_embedding(9999).unwrap().is_none());
+}
+
+#[test]
+fn face_detections_store_and_retrieve() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/face.jpg"))
+        .unwrap();
+
+    let faces = vec![FaceDetectionInput {
+        bbox: [10.0, 20.0, 110.0, 120.0],
+        confidence: 0.95,
+        embedding: vec![1.0, 0.0, 0.5],
+    }];
+    db.store_face_detections(media_id, &faces).unwrap();
+
+    let stored = db.get_faces_for_media(media_id).unwrap();
+    assert_eq!(stored.len(), 1);
+    assert!((stored[0].confidence - 0.95).abs() < f32::EPSILON);
+}
+
+#[test]
+fn face_detections_empty_media_returns_empty() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/noface.jpg"))
+        .unwrap();
+    assert!(db.get_faces_for_media(media_id).unwrap().is_empty());
+}
+
+#[test]
+fn person_create_rename_and_merge() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/person.jpg"))
+        .unwrap();
+
+    db.store_face_detections(
+        media_id,
+        &[FaceDetectionInput {
+            bbox: [0.0, 0.0, 10.0, 10.0],
+            confidence: 0.99,
+            embedding: vec![1.0, 0.0],
+        }],
+    )
+    .unwrap();
+    let faces = db.get_faces_for_media(media_id).unwrap();
+    let face_id = faces[0].id;
+
+    let person_a = db.create_person(Some("Alice")).unwrap();
+    let person_b = db.create_person(Some("Bob")).unwrap();
+    db.assign_face_to_person(face_id, person_a).unwrap();
+
+    db.rename_person(person_a, "Alicia").unwrap();
+    let persons = db.list_persons().unwrap();
+    assert_eq!(
+        persons
+            .iter()
+            .find(|p| p.id == person_a)
+            .and_then(|p| p.name.as_deref()),
+        Some("Alicia")
+    );
+
+    db.merge_persons(person_a, &[person_b]).unwrap();
+    assert_eq!(db.get_persons_count().unwrap(), 1);
+}
+
+#[test]
+fn person_rename_empty_string_allowed() {
+    let db = create_test_db();
+    let person_id = db.create_person(Some("Named")).unwrap();
+    db.rename_person(person_id, "").unwrap();
+    let persons = db.list_persons().unwrap();
+    assert_eq!(persons[0].name.as_deref(), Some(""));
+}
+
+#[test]
+fn merge_single_person_is_no_op() {
+    let db = create_test_db();
+    let person_id = db.create_person(Some("Solo")).unwrap();
+    db.merge_persons(person_id, &[person_id]).unwrap();
+    assert_eq!(db.get_persons_count().unwrap(), 1);
+}
+
+#[test]
+fn album_very_long_name_and_duplicate_names() {
+    let db = create_test_db();
+    let long_name = "A".repeat(500);
+    let album1 = db.create_album(&long_name, None).unwrap();
+    assert_eq!(album1.name, long_name);
+
+    let album2 = db.create_album("Vacation", None).unwrap();
+    let album3 = db.create_album("Vacation", None).unwrap();
+    assert_ne!(album2.id, album3.id);
+}
+
+#[test]
+fn album_add_same_media_twice_is_idempotent() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/a.jpg"))
+        .unwrap();
+    let album = db.create_album("Dup Items", None).unwrap();
+
+    db.add_to_album(album.id, &[media_id]).unwrap();
+    db.add_to_album(album.id, &[media_id]).unwrap();
+
+    let updated = db.get_album(album.id).unwrap().expect("album exists");
+    assert_eq!(updated.media_count, 1);
+}
+
+#[test]
+fn search_fts5_chinese_characters() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let mut media = sample_media("/photos/日落.jpg");
+    media.filename = "日落海滩.jpg".to_string();
+    db.upsert_media(fid, &media).unwrap();
+
+    let results = db.search_media("日落", 10, 0).unwrap();
+    assert_eq!(results.len(), 1);
+    assert!(results[0].filename.contains('日'));
+}
+
+#[test]
+fn search_special_sql_characters_do_not_break_query() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    db.upsert_media(fid, &sample_media("/photos/100_percent.jpg"))
+        .unwrap();
+
+    assert!(db.search_media("100%", 10, 0).is_ok());
+    assert!(db.search_media("test_query", 10, 0).is_ok());
+    assert!(db.search_media("it's fine", 10, 0).is_ok());
+}
+
+#[test]
+fn batch_delete_with_many_items() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let mut ids = Vec::new();
+    for i in 0..1001 {
+        let id = db
+            .upsert_media(fid, &sample_media(&format!("/photos/batch_{i}.jpg")))
+            .unwrap();
+        ids.push(id);
+    }
+
+    let deleted = db.batch_set_deleted(&ids, true).unwrap();
+    assert_eq!(deleted, 1001);
+    assert_eq!(db.get_media_count().unwrap(), 0);
+}
+
+#[test]
+fn get_media_page_cursor_at_end_returns_empty() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let dates: Vec<String> = (0..3)
+        .map(|i| format!("2024-07-{:02} 10:00:00", 10 + i))
+        .collect();
+    for (i, date) in dates.iter().enumerate() {
+        let mut media = sample_media(&format!("/photos/end_{i}.jpg"));
+        media.created_at = Some(NaiveDateTime::parse_from_str(date, "%Y-%m-%d %H:%M:%S").unwrap());
+        db.upsert_media(fid, &media).unwrap();
+    }
+
+    let page = db.get_media_page(10, None).unwrap();
+    assert_eq!(page.len(), 3);
+    let last = page.last().unwrap();
+    let cursor = (dates[0].clone(), last.id);
+    let beyond = db.get_media_page(10, Some(cursor)).unwrap();
+    assert!(beyond.is_empty());
+}
+
+#[test]
+fn get_media_page_cursor_after_deleted_item_still_pages() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let dates: Vec<String> = (0..4)
+        .map(|i| format!("2024-08-{:02} 10:00:00", 10 + i))
+        .collect();
+    let mut ids = Vec::new();
+    for (i, date) in dates.iter().enumerate() {
+        let mut media = sample_media(&format!("/photos/del_{i}.jpg"));
+        media.created_at = Some(NaiveDateTime::parse_from_str(date, "%Y-%m-%d %H:%M:%S").unwrap());
+        ids.push(db.upsert_media(fid, &media).unwrap());
+    }
+
+    db.set_deleted(ids[1], true).unwrap();
+    let page1 = db.get_media_page(2, None).unwrap();
+    assert_eq!(page1.len(), 2);
+
+    let cursor = (dates[2].clone(), page1[1].id);
+    let page2 = db.get_media_page(2, Some(cursor)).unwrap();
+    assert!(!page2.is_empty());
+}
+
+#[test]
+fn timeline_groups_all_same_date() {
+    let db = create_test_db();
+    let folder_id = db.add_watched_folder("/photos").unwrap().id;
+    let same_time =
+        NaiveDateTime::parse_from_str("2024-06-15 10:00:00", "%Y-%m-%d %H:%M:%S").unwrap();
+
+    for i in 0..5 {
+        let mut media = sample_media(&format!("/photos/same_{i}.jpg"));
+        media.created_at = Some(same_time);
+        db.upsert_media(folder_id, &media).unwrap();
+    }
+
+    let groups = db.get_timeline_groups(100, 0).unwrap();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].count, 5);
+}
+
+#[test]
+fn timeline_groups_spanning_years() {
+    let db = create_test_db();
+    let folder_id = db.add_watched_folder("/photos").unwrap().id;
+
+    let dates = [
+        "2022-01-01 12:00:00",
+        "2023-06-15 12:00:00",
+        "2024-12-31 12:00:00",
+    ];
+    for (i, date) in dates.iter().enumerate() {
+        let mut media = sample_media(&format!("/photos/year_{i}.jpg"));
+        media.created_at = Some(NaiveDateTime::parse_from_str(date, "%Y-%m-%d %H:%M:%S").unwrap());
+        db.upsert_media(folder_id, &media).unwrap();
+    }
+
+    let groups = db.get_timeline_groups(100, 0).unwrap();
+    assert_eq!(groups.len(), 3);
+    assert_eq!(groups[0].date, "2024-12-31");
+    assert_eq!(groups[2].date, "2022-01-01");
 }

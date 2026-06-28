@@ -165,4 +165,74 @@ mod tests {
         let clusters = FaceDetector::cluster_faces(&detections).unwrap();
         assert_eq!(clusters.len(), 2);
     }
+
+    fn face_detection(embedding: Vec<f32>) -> FaceDetection {
+        FaceDetection {
+            bbox: [0.0, 0.0, 10.0, 10.0],
+            confidence: 0.99,
+            embedding,
+        }
+    }
+
+    #[test]
+    fn cluster_faces_empty_input_returns_empty() {
+        let clusters = FaceDetector::cluster_faces(&[]).unwrap();
+        assert!(clusters.is_empty());
+    }
+
+    #[test]
+    fn cluster_faces_single_face_single_cluster() {
+        let detections = vec![(1, vec![face_detection(vec![1.0, 0.0])])];
+        let clusters = FaceDetector::cluster_faces(&detections).unwrap();
+        assert_eq!(clusters.len(), 1);
+        assert_eq!(clusters[0].faces.len(), 1);
+    }
+
+    #[test]
+    fn cluster_faces_three_distinct_groups() {
+        let detections = vec![
+            (1, vec![face_detection(vec![1.0, 0.0, 0.0])]),
+            (2, vec![face_detection(vec![0.99, 0.01, 0.0])]),
+            (3, vec![face_detection(vec![0.0, 1.0, 0.0])]),
+            (4, vec![face_detection(vec![0.0, 0.99, 0.01])]),
+            (5, vec![face_detection(vec![0.0, 0.0, 1.0])]),
+            (6, vec![face_detection(vec![0.01, 0.0, 0.99])]),
+        ];
+        let clusters = FaceDetector::cluster_faces(&detections).unwrap();
+        assert_eq!(clusters.len(), 3);
+    }
+
+    #[test]
+    fn cluster_faces_identical_embeddings_one_cluster() {
+        let detections = vec![
+            (1, vec![face_detection(vec![0.6, 0.8])]),
+            (2, vec![face_detection(vec![0.6, 0.8])]),
+            (3, vec![face_detection(vec![0.6, 0.8])]),
+        ];
+        let clusters = FaceDetector::cluster_faces(&detections).unwrap();
+        assert_eq!(clusters.len(), 1);
+        assert_eq!(clusters[0].faces.len(), 3);
+    }
+
+    #[test]
+    fn cluster_faces_maximally_different_yields_n_clusters() {
+        let detections = vec![
+            (1, vec![face_detection(vec![1.0, 0.0])]),
+            (2, vec![face_detection(vec![0.0, 1.0])]),
+            (3, vec![face_detection(vec![-1.0, 0.0])]),
+        ];
+        let clusters = FaceDetector::cluster_faces(&detections).unwrap();
+        assert_eq!(clusters.len(), 3);
+    }
+
+    #[test]
+    fn cluster_faces_skips_empty_embeddings() {
+        let detections = vec![
+            (1, vec![face_detection(vec![])]),
+            (2, vec![face_detection(vec![1.0, 0.0])]),
+        ];
+        let clusters = FaceDetector::cluster_faces(&detections).unwrap();
+        assert_eq!(clusters.len(), 1);
+        assert_eq!(clusters[0].faces.len(), 1);
+    }
 }

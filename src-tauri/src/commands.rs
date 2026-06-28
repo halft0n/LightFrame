@@ -83,6 +83,7 @@ pub fn get_media_list(
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state))]
 pub fn get_media_page(
     state: State<'_, AppState>,
     limit: i64,
@@ -195,6 +196,7 @@ pub fn get_media_by_id(state: State<'_, AppState>, id: i64) -> Result<Option<Med
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(app, state))]
 pub fn scan_folder(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -620,6 +622,7 @@ pub fn batch_permanent_delete(
 }
 
 #[tauri::command]
+#[tracing::instrument(skip(state))]
 pub fn search_media(
     state: State<'_, AppState>,
     query: String,
@@ -640,6 +643,45 @@ pub fn search_media_count(state: State<'_, AppState>, query: String) -> Result<i
         .db
         .search_media_count(&query)
         .map_err(|e| e.to_string())
+}
+
+#[derive(Serialize)]
+pub struct SearchResult {
+    pub media_id: i64,
+    pub file_name: String,
+    pub file_path: String,
+    pub relevance: f32,
+}
+
+#[tauri::command]
+pub fn semantic_search(
+    state: State<'_, AppState>,
+    query_text: String,
+    limit: Option<usize>,
+) -> Result<Vec<SearchResult>, String> {
+    let limit = limit.unwrap_or(50).clamp(1, 500) as i64;
+    let trimmed = query_text.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // For now, fall back to FTS5 text search.
+    // In future: encode query text with CLIP text encoder, search embedding index.
+    let media = state
+        .db
+        .search_media(trimmed, limit, 0)
+        .map_err(|e| e.to_string())?;
+
+    Ok(media
+        .into_iter()
+        .enumerate()
+        .map(|(i, m)| SearchResult {
+            media_id: m.id,
+            file_name: m.filename,
+            file_path: m.path,
+            relevance: 1.0 - (i as f32 * 0.01).min(0.9),
+        })
+        .collect())
 }
 
 #[tauri::command]
@@ -918,6 +960,68 @@ pub fn rename_person(
     state
         .db
         .rename_person(person_id, &name)
+        .map_err(|e| e.to_string())
+}
+
+#[derive(Serialize)]
+pub struct PersonClusterInfo {
+    pub person_id: i64,
+    pub name: Option<String>,
+    pub face_count: i64,
+}
+
+const DEFAULT_FACE_CLUSTER_THRESHOLD: f32 = 0.45;
+
+#[tauri::command]
+pub async fn cluster_faces(
+    state: State<'_, AppState>,
+    threshold: Option<f32>,
+) -> Result<Vec<PersonClusterInfo>, String> {
+    let threshold = threshold.unwrap_or(DEFAULT_FACE_CLUSTER_THRESHOLD);
+    let db = state.db.clone();
+    tokio::task::spawn_blocking(move || {
+        let faces = db.get_all_face_embeddings().map_err(|e| e.to_string())?;
+        if faces.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        db.clear_person_clusters().map_err(|e| e.to_string())?;
+
+        let clusters = catchlight_ai::cluster_face_embeddings(&faces, threshold);
+        let mut results = Vec::with_capacity(clusters.len());
+
+        for cluster in clusters {
+            let person_id = db.create_person(None).map_err(|e| e.to_string())?;
+            for face_id in cluster.face_ids {
+                db.assign_face_to_person(face_id, person_id)
+                    .map_err(|e| e.to_string())?;
+            }
+            let face_count = db
+                .get_person_face_count(person_id)
+                .map_err(|e| e.to_string())?;
+            results.push(PersonClusterInfo {
+                person_id,
+                name: None,
+                face_count,
+            });
+        }
+
+        Ok(results)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn merge_persons(state: State<'_, AppState>, person_ids: Vec<i64>) -> Result<(), String> {
+    if person_ids.len() < 2 {
+        return Err("need at least two persons to merge".to_string());
+    }
+    let target_id = person_ids[0];
+    let source_ids: Vec<i64> = person_ids[1..].to_vec();
+    state
+        .db
+        .merge_persons(target_id, &source_ids)
         .map_err(|e| e.to_string())
 }
 

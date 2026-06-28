@@ -5,12 +5,12 @@ use std::path::{Path, PathBuf};
 use tauri::http::Response;
 
 pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
-    let raw = request_path
-        .trim_start_matches('/')
-        .trim_start_matches("localhost/");
+    tracing::debug!("original protocol request: {request_path}");
+
+    let raw = strip_scheme_path(request_path);
 
     let decoded = percent_decode(raw);
-    let file_path = PathBuf::from(&decoded);
+    let file_path = normalize_file_path(&decoded);
 
     let watched_folders = match state.db.list_watched_folders() {
         Ok(folders) => folders,
@@ -35,11 +35,12 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
                 .status(StatusCode::OK)
                 .header(header::CONTENT_TYPE, mime)
                 .header(header::CACHE_CONTROL, "max-age=3600")
+                .header("Access-Control-Allow-Origin", "*")
                 .body(bytes)
                 .unwrap()
         }
         Err(e) => {
-            tracing::warn!("original protocol read error: {e}");
+            tracing::warn!(path = %file_path.display(), "original protocol read error: {e}");
             error_response(StatusCode::INTERNAL_SERVER_ERROR, "read failed")
         }
     }
@@ -66,6 +67,33 @@ fn path_is_under_folder(path: &Path, folder: &str) -> bool {
         }
     }
     false
+}
+
+fn strip_scheme_path(request_path: &str) -> &str {
+    let mut path = request_path.trim_start_matches('/');
+    if let Some(rest) = path.strip_prefix("localhost/") {
+        path = rest;
+    } else if path == "localhost" {
+        path = "";
+    }
+    path.trim_start_matches('/')
+}
+
+fn normalize_file_path(decoded: &str) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let normalized = decoded.replace('/', "\\");
+        let trimmed = normalized.trim_start_matches('\\');
+        if trimmed.len() >= 2 && trimmed.as_bytes()[1] == b':' {
+            PathBuf::from(trimmed)
+        } else {
+            PathBuf::from(normalized)
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        PathBuf::from(decoded)
+    }
 }
 
 fn guess_mime(path: &Path) -> &'static str {
@@ -117,6 +145,7 @@ fn error_response(status: StatusCode, message: &str) -> Response<Vec<u8>> {
     Response::builder()
         .status(status)
         .header(header::CONTENT_TYPE, "text/plain")
+        .header("Access-Control-Allow-Origin", "*")
         .body(message.as_bytes().to_vec())
         .unwrap()
 }
@@ -283,5 +312,94 @@ mod tests {
 
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(*resp.body(), b"jpeg-data".to_vec());
+    }
+
+    #[test]
+    fn handle_chinese_characters_in_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(dir.path());
+        let file = dir.path().join("照片.jpg");
+        std::fs::write(&file, b"chinese-photo").unwrap();
+
+        let resp = handle(&state, &request_path_for_file(&file));
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(*resp.body(), b"chinese-photo".to_vec());
+    }
+
+    #[test]
+    fn handle_spaces_in_filename() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(dir.path());
+        let file = dir.path().join("my photo.jpg");
+        std::fs::write(&file, b"spaced-name").unwrap();
+
+        let resp = handle(&state, &request_path_for_file(&file));
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(*resp.body(), b"spaced-name".to_vec());
+    }
+
+    #[test]
+    fn handle_special_characters_in_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(dir.path());
+        let file = dir.path().join("file#1?test&.jpg");
+        std::fs::write(&file, b"special").unwrap();
+
+        let resp = handle(&state, &request_path_for_file(&file));
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(*resp.body(), b"special".to_vec());
+    }
+
+    #[test]
+    fn handle_empty_watched_folders_list_returns_forbidden() {
+        let db = Arc::new(Database::open(Path::new(":memory:")).expect("in-memory db"));
+        let state = AppState {
+            db,
+            config: AppConfig::default(),
+            scan_status: crate::state::ScanStatus::new(),
+            scan_concurrency: 2,
+            scanning: Arc::new(AtomicBool::new(false)),
+            watch_manager: crate::watcher::WatchManager::new(),
+            thumb_cache: crate::thumb_cache::ThumbCache::new(),
+            ai: Arc::new(tokio::sync::Mutex::new(catchlight_ai::AiDispatcher::new())),
+        };
+
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("orphan.jpg");
+        std::fs::write(&file, b"orphan").unwrap();
+
+        let resp = handle(&state, &request_path_for_file(&file));
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn handle_long_filename_in_watched_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(dir.path());
+        let long_name = format!("{}.jpg", "a".repeat(200));
+        let file = dir.path().join(&long_name);
+        std::fs::write(&file, b"long-path").unwrap();
+
+        let resp = handle(&state, &request_path_for_file(&file));
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(*resp.body(), b"long-path".to_vec());
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn handle_symlink_inside_watched_folder_serves_target_content() {
+        let watched = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(watched.path());
+
+        let outside = tempfile::tempdir().unwrap();
+        let secret = outside.path().join("outside.jpg");
+        std::fs::write(&secret, b"outside").unwrap();
+
+        let link = watched.path().join("link.jpg");
+        std::os::unix::fs::symlink(&secret, &link).unwrap();
+
+        let resp = handle(&state, &request_path_for_file(&link));
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(*resp.body(), b"outside".to_vec());
     }
 }

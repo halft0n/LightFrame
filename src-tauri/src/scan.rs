@@ -286,9 +286,80 @@ async fn process_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+    use std::path::Path;
 
     #[test]
     fn scan_module_compiles() {
         let _: fn(AppHandle, &AppState, i64) = spawn_scan;
+    }
+
+    #[tokio::test]
+    async fn discover_valid_images_in_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("photo1.jpg"), b"fake jpg").unwrap();
+        fs::write(dir.path().join("photo2.png"), b"fake png").unwrap();
+
+        let files = discover_files(dir.path()).await.unwrap();
+        assert_eq!(files.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn discover_nonexistent_directory_returns_empty() {
+        let files = discover_files(Path::new("/nonexistent/catchlight/scan-test"))
+            .await
+            .unwrap();
+        assert!(files.is_empty());
+    }
+
+    #[tokio::test]
+    async fn discover_regular_file_path_yields_that_file_if_media() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("solo.jpg");
+        fs::write(&file, b"solo").unwrap();
+
+        let files = discover_files(&file).await.unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0], file);
+    }
+
+    #[tokio::test]
+    async fn discover_regular_file_non_media_returns_empty() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("readme.txt");
+        fs::write(&file, b"text").unwrap();
+
+        let files = discover_files(&file).await.unwrap();
+        assert!(files.is_empty());
+    }
+
+    #[tokio::test]
+    async fn discover_empty_directory_returns_no_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let files = discover_files(dir.path()).await.unwrap();
+        assert!(files.is_empty());
+    }
+
+    #[tokio::test]
+    async fn discover_nested_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        let nested = dir.path().join("a").join("b");
+        fs::create_dir_all(&nested).unwrap();
+        fs::write(dir.path().join("root.jpg"), b"root").unwrap();
+        fs::write(nested.join("deep.png"), b"deep").unwrap();
+
+        let files = discover_files(dir.path()).await.unwrap();
+        assert_eq!(files.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn discover_files_without_extension_are_ignored() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("noext"), b"unknown").unwrap();
+        fs::write(dir.path().join("valid.jpg"), b"jpg").unwrap();
+
+        let files = discover_files(dir.path()).await.unwrap();
+        assert_eq!(files.len(), 1);
+        assert!(files[0].extension().and_then(|e| e.to_str()) == Some("jpg"));
     }
 }

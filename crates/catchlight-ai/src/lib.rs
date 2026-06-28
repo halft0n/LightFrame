@@ -15,7 +15,7 @@ pub mod face;
 pub use dispatcher::AiDispatcher;
 pub use python_sidecar::PythonSidecar;
 pub use screenshot::{ScreenshotScore, classify_screenshot, detect_screenshot};
-pub use similar::{cosine_similarity, find_similar};
+pub use similar::{cluster_face_embeddings, cosine_similarity, find_similar};
 pub use status::{AiStatus, check_ai_status};
 pub use types::FaceDetection;
 

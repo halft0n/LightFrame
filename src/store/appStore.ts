@@ -36,6 +36,8 @@ export const THUMBNAIL_WIDTHS: Record<ThumbnailSize, number> = {
   large: 260,
 };
 
+export type SearchMode = "text" | "semantic";
+
 export interface AppState {
   currentView: AppView;
   selectedAlbumId: number | null;
@@ -53,6 +55,7 @@ export interface AppState {
   scanProgress: ScanProgress | null;
   viewingMediaId: number | null;
   searchQuery: string;
+  searchMode: SearchMode;
   searchHistory: string[];
   thumbnailSize: ThumbnailSize;
   theme: Theme;
@@ -75,6 +78,7 @@ const initialState: AppState = {
   scanProgress: null,
   viewingMediaId: null,
   searchQuery: "",
+  searchMode: "text",
   searchHistory: [],
   thumbnailSize: "medium",
   theme: "dark",
@@ -274,6 +278,10 @@ export function closeViewer() {
 
 export function setSearchQuery(query: string) {
   setState({ searchQuery: query });
+}
+
+export function setSearchMode(mode: SearchMode) {
+  setState({ searchMode: mode });
 }
 
 export function addSearchHistory(query: string) {

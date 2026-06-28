@@ -1,6 +1,6 @@
 {
   "productName": "CatchLight",
-  "version": "0.1.0",
+  "version": "0.0.9",
   "identifier": "com.catchlight.app",
   "build": {
     "frontendDist": "../dist",
@@ -28,13 +28,33 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["deb", "rpm", "appimage", "nsis", "msi", "dmg", "app"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "fileAssociations": [
+      {
+        "ext": ["jpg", "jpeg", "png", "webp", "gif", "bmp", "tiff", "heic", "heif"],
+        "name": "Image files",
+        "description": "Image files",
+        "role": "Viewer"
+      }
+    ],
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": false
+      }
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": false
+      }
+    }
   }
 }

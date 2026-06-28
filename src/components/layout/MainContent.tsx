@@ -17,7 +17,7 @@ import { MemoriesView } from "@/components/memories/MemoriesView";
 import { MemoryDetailView } from "@/components/memories/MemoryDetailView";
 import { PeopleView } from "@/components/people/PeopleView";
 import { PersonDetailView } from "@/components/people/PersonDetailView";
-import { SearchResults } from "@/components/search/SearchResults";
+import { SearchResultsView } from "@/components/search/SearchResultsView";
 import { FolderView } from "@/components/folders/FolderView";
 import { PhotoViewer } from "@/components/viewer/PhotoViewer";
 import { useAppStore } from "@/store/appStore";
@@ -31,7 +31,7 @@ export function MainContent() {
   }
 
   if (searchQuery.trim()) {
-    return <SearchResults />;
+    return <SearchResultsView />;
   }
 
   if (watchedFolders.length === 0 && currentView !== "settings") {

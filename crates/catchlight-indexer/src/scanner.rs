@@ -3,6 +3,10 @@ use catchlight_core::Result;
 use std::path::{Path, PathBuf};
 use tracing::info;
 
+pub async fn scan_with_walkdir(root: &Path) -> Result<Vec<PathBuf>> {
+    scan(root).await
+}
+
 pub async fn scan(root: &Path) -> Result<Vec<PathBuf>> {
     let root = root.to_path_buf();
 

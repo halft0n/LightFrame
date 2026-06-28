@@ -2282,6 +2282,74 @@ impl Database {
         Ok(())
     }
 
+    pub fn get_all_face_embeddings(&self) -> catchlight_core::Result<Vec<(i64, Vec<f32>)>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, face_embedding FROM face_detections
+                 WHERE face_embedding IS NOT NULL",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                let id: i64 = row.get(0)?;
+                let blob: Vec<u8> = row.get(1)?;
+                Ok((id, blob_to_f32_vec(&blob)))
+            })
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        Ok(rows
+            .filter_map(|r| r.ok())
+            .filter(|(_, emb)| !emb.is_empty())
+            .collect())
+    }
+
+    pub fn get_person_face_count(&self, person_id: i64) -> catchlight_core::Result<i64> {
+        let conn = self.conn();
+        conn.query_row(
+            "SELECT COUNT(*) FROM face_detections WHERE person_id = ?1",
+            params![person_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn clear_person_clusters(&self) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        conn.execute("UPDATE face_detections SET person_id = NULL", [])
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        conn.execute("DELETE FROM persons", [])
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn merge_persons(&self, target_id: i64, source_ids: &[i64]) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        for source_id in source_ids {
+            if *source_id == target_id {
+                continue;
+            }
+            conn.execute(
+                "UPDATE face_detections SET person_id = ?1 WHERE person_id = ?2",
+                params![target_id, source_id],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+            conn.execute("DELETE FROM persons WHERE id = ?1", params![source_id])
+                .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        }
+
+        conn.execute(
+            "UPDATE persons SET face_count = (
+                 SELECT COUNT(*) FROM face_detections WHERE person_id = ?1
+             ) WHERE id = ?1",
+            params![target_id],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        Ok(())
+    }
+
     pub fn get_persons_count(&self) -> catchlight_core::Result<i64> {
         let conn = self.conn();
         conn.query_row("SELECT COUNT(*) FROM persons", [], |row| row.get(0))

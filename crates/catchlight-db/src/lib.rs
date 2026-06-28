@@ -22,7 +22,8 @@ impl Database {
             Connection::open(path).map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 
         conn.execute_batch(
-            "PRAGMA journal_mode = WAL;
+            "PRAGMA page_size = 4096;
+             PRAGMA journal_mode = WAL;
              PRAGMA synchronous = NORMAL;
              PRAGMA cache_size = -64000;
              PRAGMA busy_timeout = 5000;
