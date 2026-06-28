@@ -224,4 +224,139 @@ describe("PhotoViewer", () => {
       expect(screen.getByLabelText("返回")).toBeInTheDocument();
     });
   });
+
+  it("rotates clockwise with R key", async () => {
+    render(<PhotoViewer mediaId={1} />);
+
+    await waitFor(() => {
+      expect(getMainImage()).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(window, { key: "r" });
+    expect(screen.getByText("90°")).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "R" });
+    expect(screen.getByText("180°")).toBeInTheDocument();
+  });
+
+  it("rotates counter-clockwise with Shift+R", async () => {
+    render(<PhotoViewer mediaId={1} />);
+
+    await waitFor(() => {
+      expect(getMainImage()).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(window, { key: "r" });
+    fireEvent.keyDown(window, { key: "r" });
+    expect(screen.getByText("180°")).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "R", shiftKey: true });
+    expect(screen.getByText("90°")).toBeInTheDocument();
+  });
+
+  it("toggles favorite with F key", async () => {
+    render(<PhotoViewer mediaId={1} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("收藏")).toHaveTextContent("♡");
+    });
+
+    fireEvent.keyDown(window, { key: "f" });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("收藏")).toHaveTextContent("♥");
+    });
+    expect(invoke).toHaveBeenCalledWith("toggle_favorite", { mediaId: 1 });
+  });
+
+  it("toggles info panel with I key", async () => {
+    render(<PhotoViewer mediaId={1} />);
+
+    await waitFor(() => {
+      expect(getMainImage()).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("文件名")).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "i" });
+    expect(screen.getByText("文件名")).toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "I" });
+    expect(screen.queryByText("文件名")).not.toBeInTheDocument();
+  });
+
+  it("opens editor with E key", async () => {
+    render(<PhotoViewer mediaId={1} />);
+
+    await waitFor(() => {
+      expect(getMainImage()).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(window, { key: "e" });
+    expect(screen.getByRole("heading", { name: "编辑" })).toBeInTheDocument();
+  });
+
+  it("soft-deletes media with Delete key", async () => {
+    const closeViewerSpy = vi.spyOn(appStore, "closeViewer");
+    const loadMediaSpy = vi.spyOn(appStore, "loadMedia").mockResolvedValue(undefined);
+    (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string, _args?: Record<string, unknown>) => {
+      if (cmd === "get_media_by_id") return Promise.resolve(mockPhoto);
+      if (cmd === "get_media_neighbors") return Promise.resolve({ prev_id: null, next_id: null });
+      if (cmd === "get_media_list") return Promise.resolve([mockPhoto]);
+      if (cmd === "has_edits") return Promise.resolve(false);
+      if (cmd === "is_favorite") return Promise.resolve(false);
+      if (cmd === "delete_media") return Promise.resolve(undefined);
+      return Promise.resolve(null);
+    });
+
+    render(<PhotoViewer mediaId={1} />);
+
+    await waitFor(() => {
+      expect(getMainImage()).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(window, { key: "Delete" });
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("delete_media", { mediaId: 1 });
+      expect(closeViewerSpy).toHaveBeenCalled();
+      expect(loadMediaSpy).toHaveBeenCalled();
+    });
+
+    closeViewerSpy.mockRestore();
+    loadMediaSpy.mockRestore();
+  });
+
+  it("preloads adjacent images after main image loads", async () => {
+    const createdImages: Array<{ src: string; onload: (() => void) | null }> = [];
+    const OriginalImage = globalThis.Image;
+
+    class MockImageClass {
+      src = "";
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+
+      constructor() {
+        createdImages.push(this);
+      }
+    }
+
+    vi.stubGlobal("Image", MockImageClass);
+
+    try {
+      render(<PhotoViewer mediaId={1} />);
+
+      await waitFor(() => {
+        expect(getMainImage()).toBeInTheDocument();
+      });
+
+      fireEvent.load(getMainImage()!);
+
+      await waitFor(() => {
+        expect(createdImages.some((img) => img.src.startsWith("original://"))).toBe(true);
+      });
+    } finally {
+      vi.stubGlobal("Image", OriginalImage);
+    }
+  });
 });

@@ -87,6 +87,39 @@ fn generate_from_nonexistent_errors() {
 }
 
 #[test]
+fn thumb_path_sizes_are_distinct() {
+    let hash = "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
+    let micro = thumb_path(hash, ThumbnailSize::Micro);
+    let small = thumb_path(hash, ThumbnailSize::Small);
+    let large = thumb_path(hash, ThumbnailSize::Large);
+
+    assert_ne!(micro, small);
+    assert_ne!(small, large);
+    assert_ne!(micro, large);
+}
+
+#[test]
+fn thumbnail_size_enum_pixel_values() {
+    assert_eq!(ThumbnailSize::Micro.pixels(), 64);
+    assert_eq!(ThumbnailSize::Small.pixels(), 256);
+    assert_eq!(ThumbnailSize::Large.pixels(), 1024);
+}
+
+#[test]
+fn thumb_path_uses_hash_prefix_directories() {
+    let hash = "abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890";
+    let path = thumb_path(hash, ThumbnailSize::Small);
+    let parts: Vec<_> = path
+        .components()
+        .map(|c| c.as_os_str().to_string_lossy().into_owned())
+        .collect();
+
+    assert!(parts.iter().any(|p| p == "ab"));
+    assert!(parts.iter().any(|p| p == "cd"));
+    assert!(parts.last().is_some_and(|p| p.ends_with("_small.webp")));
+}
+
+#[test]
 fn micro_blob_from_nonexistent_errors() {
     let result = generate_micro_blob(std::path::Path::new("/nonexistent.jpg"));
     assert!(result.is_err());

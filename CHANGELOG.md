@@ -10,6 +10,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - (nothing yet)
 
+## [0.0.9] - 2026-06-28
+
+### Added
+- CLIP ONNX image encoding (optional `clip` feature)
+- Cosine similarity search for similar photos
+- `SimilarPhotosPanel` slide-in UI in photo viewer
+- Face detection framework (optional `face` feature)
+- Face database CRUD (store/get detections, create/assign persons)
+- Python sidecar: `check_capabilities`, `compute_clip_embedding`, `detect_faces` methods
+- AI dispatcher with Rust ONNX → Python fallback routing
+- AI status reporting (clip/face/python availability)
+
+### Tests (64 new frontend + 25 new Rust)
+- App routing and responsive layout tests
+- InfoPanel, PhotoViewer keyboard shortcuts, MemoriesView tests
+- FolderView, Sidebar ARIA, SelectionToolbar, dragMedia tests
+- useMediaQuery hook tests
+- Screenshot detection edge cases (ultrawide, tablet, threshold)
+- Keyset pagination, batch ops, smart album counts, concurrent reads
+- PHash/DHash stability and distance tests
+- Thumbnail size path generation tests
+- Cosine similarity and find_similar unit tests
+
+### Fixed
+- `create_smart_album` deadlock (mutex held across DB calls)
+- AI status module name check corrected
+
 ## [0.0.8] - 2026-06-28
 
 ### Added

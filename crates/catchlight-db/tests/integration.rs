@@ -814,3 +814,169 @@ fn test_set_album_cover() {
     let updated = db.get_album(album.id).unwrap().expect("album should exist");
     assert_eq!(updated.cover_media_id, Some(media_id));
 }
+
+#[test]
+fn get_media_page_keyset_pagination_with_cursors() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let dates = [
+        "2024-06-15 10:00:00",
+        "2024-06-14 10:00:00",
+        "2024-06-13 10:00:00",
+        "2024-06-12 10:00:00",
+        "2024-06-11 10:00:00",
+    ];
+
+    for (i, date) in dates.iter().enumerate() {
+        let mut media = sample_media(&format!("/photos/img_{i}.jpg"));
+        media.created_at = Some(NaiveDateTime::parse_from_str(date, "%Y-%m-%d %H:%M:%S").unwrap());
+        db.upsert_media(fid, &media).unwrap();
+    }
+
+    let page1 = db.get_media_page(2, None).unwrap();
+    assert_eq!(page1.len(), 2);
+    assert_eq!(page1[0].filename, "img_0.jpg");
+    assert_eq!(page1[1].filename, "img_1.jpg");
+
+    let cursor = (dates[1].to_string(), page1[1].id);
+    let page2 = db.get_media_page(2, Some(cursor)).unwrap();
+    assert_eq!(page2.len(), 2);
+    assert_eq!(page2[0].filename, "img_2.jpg");
+    assert_eq!(page2[1].filename, "img_3.jpg");
+
+    let cursor2 = (dates[3].to_string(), page2[1].id);
+    let page3 = db.get_media_page(2, Some(cursor2)).unwrap();
+    assert_eq!(page3.len(), 1);
+    assert_eq!(page3[0].filename, "img_4.jpg");
+}
+
+#[test]
+fn batch_operations_with_empty_inputs_are_no_ops() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/a.jpg"))
+        .unwrap();
+
+    assert_eq!(db.batch_set_deleted(&[], true).unwrap(), 0);
+    assert_eq!(db.batch_set_favorite(&[], true).unwrap(), 0);
+    assert_eq!(db.batch_permanent_delete(&[]).unwrap(), 0);
+
+    assert!(db.get_media_by_id(media_id).unwrap().is_some());
+    assert!(!db.is_favorite(media_id).unwrap());
+}
+
+#[test]
+fn smart_album_media_count_batch_query() {
+    use catchlight_db::SmartAlbumRule;
+
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let mut photo = sample_media("/photos/photo.jpg");
+    photo.media_type = MediaType::Photo;
+    db.upsert_media(fid, &photo).unwrap();
+
+    let mut video = sample_media("/photos/clip.mp4");
+    video.media_type = MediaType::Video;
+    video.filename = "clip.mp4".to_string();
+    video.path = "/photos/clip.mp4".to_string();
+    db.upsert_media(fid, &video).unwrap();
+
+    let photo_rule = SmartAlbumRule {
+        media_type: Some("Photo".to_string()),
+        date_from: None,
+        date_to: None,
+        country: None,
+        city: None,
+        is_favorite: None,
+        min_size: None,
+        has_gps: None,
+    };
+    let video_rule = SmartAlbumRule {
+        media_type: Some("Video".to_string()),
+        date_from: None,
+        date_to: None,
+        country: None,
+        city: None,
+        is_favorite: None,
+        min_size: None,
+        has_gps: None,
+    };
+
+    let photo_album = db
+        .create_smart_album("Photos Only", None, &photo_rule)
+        .unwrap();
+    let video_album = db
+        .create_smart_album("Videos Only", None, &video_rule)
+        .unwrap();
+
+    assert_eq!(photo_album.media_count, 1);
+    assert_eq!(video_album.media_count, 1);
+
+    let listed = db.list_smart_albums().unwrap();
+    let photo_entry = listed
+        .iter()
+        .find(|a| a.name == "Photos Only")
+        .expect("photo smart album");
+    let video_entry = listed
+        .iter()
+        .find(|a| a.name == "Videos Only")
+        .expect("video smart album");
+    assert_eq!(photo_entry.media_count, 1);
+    assert_eq!(video_entry.media_count, 1);
+}
+
+#[test]
+fn timeline_groups_ordering_uses_id_tiebreaker() {
+    let db = create_test_db();
+    let folder_id = db.add_watched_folder("/photos").unwrap().id;
+    let same_time =
+        NaiveDateTime::parse_from_str("2024-06-15 10:00:00", "%Y-%m-%d %H:%M:%S").unwrap();
+
+    for i in 0..3 {
+        let mut media = sample_media(&format!("/photos/tie_{i}.jpg"));
+        media.created_at = Some(same_time);
+        db.upsert_media(folder_id, &media).unwrap();
+    }
+
+    let groups = db.get_timeline_groups(100, 0).unwrap();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].count, 3);
+
+    let ids: Vec<i64> = groups[0].media.iter().map(|m| m.id).collect();
+    assert!(
+        ids[0] > ids[1] && ids[1] > ids[2],
+        "same timestamp should order by id DESC: {ids:?}"
+    );
+}
+
+#[test]
+fn concurrent_read_access_from_multiple_threads() {
+    use std::sync::Arc;
+    use std::thread;
+
+    let db = Arc::new(create_test_db());
+    let fid = insert_folder_id(&db, "/photos");
+
+    for i in 0..20 {
+        db.upsert_media(fid, &sample_media(&format!("/photos/img_{i}.jpg")))
+            .unwrap();
+    }
+
+    let handles: Vec<_> = (0..8)
+        .map(|_| {
+            let db = Arc::clone(&db);
+            thread::spawn(move || {
+                let items = db.get_all_media(100, 0).unwrap();
+                assert_eq!(items.len(), 20);
+                db.get_media_count().unwrap()
+            })
+        })
+        .collect();
+
+    for handle in handles {
+        assert_eq!(handle.join().expect("thread panicked"), 20);
+    }
+}

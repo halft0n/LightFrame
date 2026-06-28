@@ -1,3 +1,5 @@
+use crate::models::{clip_model_path, face_detect_model_path, model_exists};
+use crate::python_sidecar::PythonSidecar;
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 
@@ -17,36 +19,25 @@ fn is_python_installed() -> bool {
         .unwrap_or(false)
 }
 
-fn is_sidecar_module_available() -> bool {
-    Command::new("python3")
-        .args(["-c", "import catchlight_ai_py"])
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
-}
-
 pub fn check_ai_status() -> AiStatus {
-    let python_installed = is_python_installed();
-    let sidecar_available = python_installed && is_sidecar_module_available();
+    let clip_available = model_exists(&clip_model_path());
+    let face_available = model_exists(&face_detect_model_path());
+    let python_available = is_python_installed() && PythonSidecar::can_spawn();
 
-    let (clip_available, face_available, status_message) = if !python_installed {
-        (false, false, "Python 3 is not installed".to_string())
-    } else if !sidecar_available {
-        (
-            false,
-            false,
-            "Python AI extension (catchlight_ai_py) not found".to_string(),
-        )
+    let status_message = if clip_available && face_available {
+        "ONNX models available for CLIP and face detection".to_string()
+    } else if clip_available {
+        "CLIP ONNX model available; face model not found".to_string()
+    } else if face_available {
+        "Face detection ONNX model available; CLIP model not found".to_string()
+    } else if !python_available {
+        "Place ONNX models in the data directory or install the Python AI extension".to_string()
     } else {
-        (
-            false,
-            false,
-            "AI extension found; CLIP and face models not yet loaded".to_string(),
-        )
+        "Python AI sidecar available; ONNX models not found locally".to_string()
     };
 
     AiStatus {
-        python_available: sidecar_available,
+        python_available,
         clip_available,
         face_available,
         status_message,
@@ -60,9 +51,6 @@ mod tests {
     #[test]
     fn check_ai_status_returns_struct() {
         let status = check_ai_status();
-        assert!(
-            !status.status_message.is_empty(),
-            "status message should not be empty"
-        );
+        assert!(!status.status_message.is_empty());
     }
 }

@@ -27,6 +27,11 @@ struct SidecarInner {
 }
 
 impl PythonSidecar {
+    /// Returns true when python3 is available and the sidecar package directory can be located.
+    pub fn can_spawn() -> bool {
+        locate_python_dir().is_some()
+    }
+
     pub async fn spawn() -> Result<Self> {
         let python_dir = locate_python_dir().ok_or_else(|| {
             catchlight_core::Error::Ai(

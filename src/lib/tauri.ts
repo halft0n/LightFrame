@@ -152,6 +152,20 @@ export interface Person {
   created_at: string;
 }
 
+export interface SimilarPhoto {
+  media_id: number;
+  similarity: number;
+  file_name: string;
+  file_path: string;
+}
+
+export interface FaceInfo {
+  id: number;
+  bbox: [number, number, number, number];
+  confidence: number;
+  person_id: number | null;
+}
+
 export function getThumbnailUrl(id: number, size: "small" | "large" | "micro" = "small"): string {
   return `thumb://localhost/${id}/${size}`;
 }
@@ -461,6 +475,25 @@ export async function getMemoryMedia(
 
 export async function getAiStatus(): Promise<AiStatus> {
   return invoke<AiStatus>("get_ai_status");
+}
+
+export async function computeClipEmbedding(mediaId: number): Promise<void> {
+  return invoke("compute_clip_embedding", { mediaId });
+}
+
+export async function findSimilarPhotos(
+  mediaId: number,
+  limit?: number,
+): Promise<SimilarPhoto[]> {
+  return invoke<SimilarPhoto[]>("find_similar_photos", { mediaId, limit: limit ?? 20 });
+}
+
+export async function detectFaces(mediaId: number): Promise<FaceInfo[]> {
+  return invoke<FaceInfo[]>("detect_faces", { mediaId });
+}
+
+export async function getFaces(mediaId: number): Promise<FaceInfo[]> {
+  return invoke<FaceInfo[]>("get_faces", { mediaId });
 }
 
 export async function listPersons(): Promise<Person[]> {

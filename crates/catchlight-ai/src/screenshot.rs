@@ -445,4 +445,76 @@ mod tests {
         let signals = read_exif_signals(Path::new("/nonexistent/file.jpg")).unwrap();
         assert!(!signals.has_any_exif);
     }
+
+    #[test]
+    fn score_ultrawide_resolution_with_status_bars() {
+        let img = screenshot_like_image(3440, 1440, true, true);
+        let path = temp_png("ultrawide.png", &img);
+        let score = detect_screenshot(&path, 3440, 1440).unwrap();
+        assert!(
+            score.confidence >= 0.15,
+            "ultrawide with status bars should gain visual signals, got {}",
+            score.confidence
+        );
+    }
+
+    #[test]
+    fn score_tablet_4_3_aspect_ratio() {
+        let path = Path::new("tablet.png");
+        let score = detect_screenshot(path, 768, 1024).unwrap();
+        assert!(
+            matches_screenshot_aspect_ratio(768, 1024),
+            "768×1024 should match 4:3 tablet aspect"
+        );
+        assert!(score.confidence >= 0.15);
+    }
+
+    #[test]
+    fn status_bar_top_only_detection() {
+        let img = screenshot_like_image(1920, 1080, true, false);
+        let path = temp_png("top_bar_only.png", &img);
+        let bands = detect_status_bar_bands(&path, 1920, 1080).unwrap();
+        assert_eq!(
+            bands,
+            StatusBarBands {
+                top: true,
+                bottom: false
+            }
+        );
+    }
+
+    #[test]
+    fn confidence_at_threshold_is_likely_screenshot() {
+        let score = ScreenshotScore {
+            confidence: ScreenshotScore::THRESHOLD,
+        };
+        assert!(score.is_likely_screenshot());
+    }
+
+    #[test]
+    fn confidence_just_below_threshold_is_not_likely_screenshot() {
+        let score = ScreenshotScore {
+            confidence: ScreenshotScore::THRESHOLD - 0.001,
+        };
+        assert!(!score.is_likely_screenshot());
+    }
+
+    #[test]
+    fn exif_exposure_info_reduces_confidence() {
+        let jpeg_with_exif = include_bytes!("../tests/fixtures/camera_exif.jpg");
+        let dir = std::env::temp_dir().join("catchlight_screenshot_tests");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("exposure_exif.jpg");
+        std::fs::write(&path, jpeg_with_exif).unwrap();
+
+        let signals = read_exif_signals(&path).unwrap();
+        assert!(signals.has_exposure_info || signals.has_camera_info);
+
+        let with_exif = detect_screenshot(&path, 1920, 1080).unwrap();
+        let without_exif = detect_screenshot(Path::new("screenshot.png"), 1920, 1080).unwrap();
+        assert!(
+            with_exif.confidence < without_exif.confidence,
+            "EXIF penalties should reduce confidence vs bare filename heuristic"
+        );
+    }
 }

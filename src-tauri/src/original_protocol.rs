@@ -142,6 +142,7 @@ mod tests {
             scanning: Arc::new(AtomicBool::new(false)),
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: crate::thumb_cache::ThumbCache::new(),
+            ai: Arc::new(tokio::sync::Mutex::new(catchlight_ai::AiDispatcher::new())),
         }
     }
 

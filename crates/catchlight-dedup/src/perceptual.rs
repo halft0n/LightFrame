@@ -304,4 +304,112 @@ mod tests {
         let from_dynamic = compute_phash(&decoded.to_dynamic_image());
         assert_eq!(from_decoded, from_dynamic);
     }
+
+    fn gradient_image(width: u32, height: u32) -> RgbImage {
+        ImageBuffer::from_fn(width, height, |x, _| {
+            let v = ((x * 255) / width.max(1)) as u8;
+            Rgb([v, v, v])
+        })
+    }
+
+    #[test]
+    fn gradient_image_dhash_is_consistent() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("gradient.png");
+        save_image(&gradient_image(128, 64), &path);
+
+        let h1 = compute_dhash(&path).unwrap();
+        let h2 = compute_dhash(&path).unwrap();
+        assert_eq!(h1, h2);
+    }
+
+    #[test]
+    fn pure_white_and_black_dhash_are_stable() {
+        let dir = tempfile::tempdir().unwrap();
+        let white_path = dir.path().join("white.png");
+        let black_path = dir.path().join("black.png");
+        save_image(&solid_image(64, 64, 255), &white_path);
+        save_image(&solid_image(64, 64, 0), &black_path);
+
+        let white = compute_dhash(&white_path).unwrap();
+        let black = compute_dhash(&black_path).unwrap();
+        assert_eq!(white, black);
+        assert_eq!(compute_dhash(&white_path).unwrap(), white);
+        assert_eq!(compute_dhash(&black_path).unwrap(), black);
+    }
+
+    #[test]
+    fn gradient_image_dhash_differs_from_solid_white() {
+        let dir = tempfile::tempdir().unwrap();
+        let white_path = dir.path().join("white.png");
+        let pattern_path = dir.path().join("pattern.png");
+        save_image(&solid_image(64, 64, 255), &white_path);
+        let checker: RgbImage = ImageBuffer::from_fn(64, 64, |x, y| {
+            if (x + y) % 2 == 0 {
+                Rgb([255, 255, 255])
+            } else {
+                Rgb([0, 0, 0])
+            }
+        });
+        save_image(&checker, &pattern_path);
+
+        let white = compute_dhash(&white_path).unwrap();
+        let pattern = compute_dhash(&pattern_path).unwrap();
+        assert_ne!(white, pattern);
+        assert!(hamming_distance(white, pattern) >= 1);
+    }
+
+    #[test]
+    fn dhash_and_phash_differ_for_same_gradient_image() {
+        let img = image::DynamicImage::ImageRgb8(gradient_image(128, 64));
+        let dhash = compute_dhash_from_dynamic(&img);
+        let phash = compute_phash(&img);
+        assert_ne!(dhash, phash);
+    }
+
+    #[test]
+    fn similar_gradients_have_smaller_dhash_distance_than_unrelated_images() {
+        let dir = tempfile::tempdir().unwrap();
+        let base_path = dir.path().join("grad_a.png");
+        let similar_path = dir.path().join("grad_b.png");
+        let unrelated_path = dir.path().join("split.png");
+
+        save_image(&gradient_image(128, 64), &base_path);
+        save_image(
+            &ImageBuffer::from_fn(128, 64, |x, y| {
+                let v = (((x + 1) * 255) / 128) as u8;
+                Rgb([v, v.saturating_sub(y as u8 / 4), v])
+            }),
+            &similar_path,
+        );
+        save_image(
+            &ImageBuffer::from_fn(128, 64, |x, _| {
+                if x < 64 {
+                    Rgb([255, 255, 255])
+                } else {
+                    Rgb([0, 0, 0])
+                }
+            }),
+            &unrelated_path,
+        );
+
+        let base = compute_dhash(&base_path).unwrap();
+        let similar = compute_dhash(&similar_path).unwrap();
+        let unrelated = compute_dhash(&unrelated_path).unwrap();
+
+        assert!(hamming_distance(base, similar) < hamming_distance(base, unrelated));
+    }
+
+    fn compute_dhash_from_dynamic(img: &image::DynamicImage) -> u64 {
+        let gray = img.resize_exact(9, 8, FilterType::Lanczos3).to_luma8();
+        let mut hash: u64 = 0;
+        for y in 0..8 {
+            for x in 0..8 {
+                if gray.get_pixel(x, y)[0] > gray.get_pixel(x + 1, y)[0] {
+                    hash |= 1 << (y * 8 + x);
+                }
+            }
+        }
+        hash
+    }
 }

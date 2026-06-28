@@ -19,6 +19,7 @@ import { useTranslation } from "@/i18n/useTranslation";
 import { VideoPlayer } from "./VideoPlayer";
 import { ImageEditor } from "@/components/editor/ImageEditor";
 import { InfoPanel } from "./InfoPanel";
+import { SimilarPhotosPanel } from "./SimilarPhotosPanel";
 import { useImagePreloader } from "@/hooks/useImagePreloader";
 
 interface PhotoViewerProps {
@@ -52,6 +53,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   });
   const [filmstrip, setFilmstrip] = useState<MediaItem[]>([]);
   const [showInfo, setShowInfo] = useState(false);
+  const [showSimilar, setShowSimilar] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [useOriginal, setUseOriginal] = useState(false);
@@ -99,6 +101,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
 
   useEffect(() => {
     resetView();
+    setShowSimilar(false);
     let cancelled = false;
 
     void (async () => {
@@ -346,9 +349,33 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
               {t("editor.hasEdits")}
             </span>
           )}
+          {!isVideo && (
+            <button
+              type="button"
+              onClick={() => {
+                setShowSimilar((v) => {
+                  if (!v) setShowInfo(false);
+                  return !v;
+                });
+              }}
+              className={`rounded-lg px-3 py-1.5 text-sm transition hover:bg-white/10 ${
+                showSimilar ? "bg-white/10 text-white" : "text-neutral-300"
+              }`}
+              title={t("similar.findSimilar")}
+              aria-label={t("similar.findSimilar")}
+              aria-pressed={showSimilar}
+            >
+              ⊞
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => setShowInfo((v) => !v)}
+            onClick={() => {
+              setShowInfo((v) => {
+                if (!v) setShowSimilar(false);
+                return !v;
+              });
+            }}
             className={`rounded-lg px-3 py-1.5 text-sm transition hover:bg-white/10 ${
               showInfo ? "bg-white/10 text-white" : "text-neutral-300"
             }`}
@@ -451,6 +478,9 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
             </div>
 
             {showInfo && media && <InfoPanel media={media} />}
+            {showSimilar && (
+              <SimilarPhotosPanel mediaId={mediaId} onClose={() => setShowSimilar(false)} />
+            )}
           </>
         )}
       </div>

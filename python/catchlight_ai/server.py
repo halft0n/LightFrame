@@ -14,6 +14,24 @@ Handler = Callable[[dict[str, Any]], Any]
 _METHODS: dict[str, Handler] = {}
 _shutdown_requested = False
 
+_CLIP_AVAILABLE = False
+_FACE_AVAILABLE = False
+
+try:
+    import open_clip  # type: ignore[import-not-found]
+    import torch  # type: ignore[import-not-found]
+
+    _CLIP_AVAILABLE = True
+except ImportError:
+    pass
+
+try:
+    import insightface  # type: ignore[import-not-found]
+
+    _FACE_AVAILABLE = True
+except ImportError:
+    pass
+
 
 def _register(name: str):
     def decorator(fn: Handler) -> Handler:
@@ -33,6 +51,70 @@ def _get_version(_params: dict[str, Any]) -> dict[str, str]:
     return {"version": __version__}
 
 
+@_register("check_capabilities")
+def _check_capabilities(_params: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "clip": _CLIP_AVAILABLE,
+        "face_detection": _FACE_AVAILABLE,
+        "onnxruntime": _onnxruntime_available(),
+    }
+
+
+@_register("compute_clip_embedding")
+def _compute_clip_embedding(params: dict[str, Any]) -> dict[str, Any] | None:
+    """Compute a CLIP embedding using open-clip when available."""
+    image_path = params.get("image_path")
+    if not image_path or not isinstance(image_path, str):
+        raise ValueError("params.image_path must be a non-empty string")
+
+    if not _CLIP_AVAILABLE:
+        return None
+
+    from PIL import Image
+
+    model, _, preprocess = open_clip.create_model_and_transforms(  # type: ignore[name-defined]
+        "ViT-B-32", pretrained="openai"
+    )
+    model.eval()
+
+    with torch.no_grad():  # type: ignore[name-defined]
+        image = preprocess(Image.open(image_path).convert("RGB")).unsqueeze(0)
+        embedding = model.encode_image(image)
+        embedding = embedding / embedding.norm(dim=-1, keepdim=True)
+        vector = embedding.squeeze(0).tolist()
+
+    return {"embedding": vector}
+
+
+@_register("detect_faces")
+def _detect_faces(params: dict[str, Any]) -> dict[str, Any]:
+    """Detect faces using insightface when available."""
+    image_path = params.get("image_path")
+    if not image_path or not isinstance(image_path, str):
+        raise ValueError("params.image_path must be a non-empty string")
+
+    if not _FACE_AVAILABLE:
+        return {"faces": []}
+
+    app = insightface.app.FaceAnalysis(providers=["CPUExecutionProvider"])  # type: ignore[attr-defined]
+    app.prepare(ctx_id=0, det_size=(640, 640))
+    detections = app.get(image_path)
+
+    faces = []
+    for face in detections:
+        bbox = face.bbox.astype(float).tolist()
+        embedding = face.embedding.astype(float).tolist() if face.embedding is not None else []
+        faces.append(
+            {
+                "bbox": bbox,
+                "confidence": float(face.det_score),
+                "embedding": embedding,
+            }
+        )
+
+    return {"faces": faces}
+
+
 @_register("classify_screenshot")
 def _classify_screenshot(params: dict[str, Any]) -> dict[str, Any]:
     """Classify a screenshot image (stub — returns confidence placeholder)."""
@@ -40,7 +122,6 @@ def _classify_screenshot(params: dict[str, Any]) -> dict[str, Any]:
     if not path or not isinstance(path, str):
         raise ValueError("params.path must be a non-empty string")
 
-    # Placeholder until CLIP/ONNX models are wired up.
     return {
         "path": path,
         "confidence": 0.5,
@@ -53,6 +134,15 @@ def _shutdown(_params: dict[str, Any]) -> dict[str, bool]:
     global _shutdown_requested
     _shutdown_requested = True
     return {"ok": True}
+
+
+def _onnxruntime_available() -> bool:
+    try:
+        import onnxruntime  # type: ignore[import-not-found]  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
 
 
 def _write_response(response: dict[str, Any]) -> None:

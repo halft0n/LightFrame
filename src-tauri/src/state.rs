@@ -1,3 +1,4 @@
+use catchlight_ai::AiDispatcher;
 use catchlight_core::config::{self, AppConfig};
 use catchlight_db::Database;
 use serde::Serialize;
@@ -80,6 +81,7 @@ pub struct AppState {
     pub scanning: Arc<AtomicBool>,
     pub watch_manager: WatchManager,
     pub thumb_cache: ThumbCache,
+    pub ai: Arc<tokio::sync::Mutex<AiDispatcher>>,
 }
 
 impl AppState {
@@ -101,6 +103,7 @@ impl AppState {
             scanning: Arc::new(AtomicBool::new(false)),
             watch_manager: WatchManager::new(),
             thumb_cache: ThumbCache::new(),
+            ai: Arc::new(tokio::sync::Mutex::new(AiDispatcher::new())),
         })
     }
 }

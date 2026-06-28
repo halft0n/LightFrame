@@ -725,6 +725,170 @@ pub fn get_ai_status() -> AiStatus {
     catchlight_ai::check_ai_status()
 }
 
+#[derive(Serialize)]
+pub struct SimilarPhoto {
+    pub media_id: i64,
+    pub similarity: f32,
+    pub file_name: String,
+    pub file_path: String,
+}
+
+#[derive(Serialize)]
+pub struct FaceInfo {
+    pub id: i64,
+    pub bbox: [f32; 4],
+    pub confidence: f32,
+    pub person_id: Option<i64>,
+}
+
+const SIMILAR_THRESHOLD: f32 = 0.65;
+
+#[tauri::command]
+pub async fn compute_clip_embedding(
+    state: State<'_, AppState>,
+    media_id: i64,
+) -> Result<(), String> {
+    let media = state
+        .db
+        .get_media_by_id(media_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("media {media_id} not found"))?;
+
+    let path = std::path::Path::new(&media.path);
+    if !path.is_file() {
+        return Err(format!("media file not found: {}", media.path));
+    }
+
+    let mut ai = state.ai.lock().await;
+    ai.ensure_python().await.map_err(|e| e.to_string())?;
+
+    let embedding = ai
+        .compute_embedding(path)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| {
+            "CLIP embedding unavailable — place a CLIP ONNX model in the data/models directory or install the Python AI extension".to_string()
+        })?;
+
+    state
+        .db
+        .store_clip_embedding(media_id, &embedding)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn find_similar_photos(
+    state: State<'_, AppState>,
+    media_id: i64,
+    limit: Option<usize>,
+) -> Result<Vec<SimilarPhoto>, String> {
+    let limit = limit.unwrap_or(20).clamp(1, 100);
+
+    if state
+        .db
+        .get_clip_embedding(media_id)
+        .map_err(|e| e.to_string())?
+        .is_none()
+    {
+        compute_clip_embedding(state.clone(), media_id).await?;
+    }
+
+    let similar = state
+        .db
+        .find_similar_media(media_id, SIMILAR_THRESHOLD, limit)
+        .map_err(|e| e.to_string())?;
+
+    let mut results = Vec::with_capacity(similar.len());
+    for (id, score) in similar {
+        let media = state
+            .db
+            .get_media_by_id(id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("media {id} not found"))?;
+        results.push(SimilarPhoto {
+            media_id: id,
+            similarity: score,
+            file_name: media.filename,
+            file_path: media.path,
+        });
+    }
+
+    Ok(results)
+}
+
+#[tauri::command]
+pub async fn detect_faces(
+    state: State<'_, AppState>,
+    media_id: i64,
+) -> Result<Vec<FaceInfo>, String> {
+    let media = state
+        .db
+        .get_media_by_id(media_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("media {media_id} not found"))?;
+
+    let path = std::path::Path::new(&media.path);
+    if !path.is_file() {
+        return Err(format!("media file not found: {}", media.path));
+    }
+
+    let mut ai = state.ai.lock().await;
+    ai.ensure_python().await.map_err(|e| e.to_string())?;
+
+    let faces = ai
+        .detect_faces_in_image(path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !faces.is_empty() {
+        let inputs: Vec<catchlight_db::FaceDetectionInput> = faces
+            .iter()
+            .map(|f| catchlight_db::FaceDetectionInput {
+                bbox: f.bbox,
+                confidence: f.confidence,
+                embedding: f.embedding.clone(),
+            })
+            .collect();
+        state
+            .db
+            .store_face_detections(media_id, &inputs)
+            .map_err(|e| e.to_string())?;
+    }
+
+    let records = state
+        .db
+        .get_faces_for_media(media_id)
+        .map_err(|e| e.to_string())?;
+
+    Ok(records
+        .into_iter()
+        .map(|r| FaceInfo {
+            id: r.id,
+            bbox: [r.bbox_x, r.bbox_y, r.bbox_x + r.bbox_w, r.bbox_y + r.bbox_h],
+            confidence: r.confidence,
+            person_id: r.person_id,
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub fn get_faces(state: State<'_, AppState>, media_id: i64) -> Result<Vec<FaceInfo>, String> {
+    let records = state
+        .db
+        .get_faces_for_media(media_id)
+        .map_err(|e| e.to_string())?;
+
+    Ok(records
+        .into_iter()
+        .map(|r| FaceInfo {
+            id: r.id,
+            bbox: [r.bbox_x, r.bbox_y, r.bbox_x + r.bbox_w, r.bbox_y + r.bbox_h],
+            confidence: r.confidence,
+            person_id: r.person_id,
+        })
+        .collect())
+}
+
 #[tauri::command]
 pub fn list_persons(state: State<'_, AppState>) -> Result<Vec<Person>, String> {
     state.db.list_persons().map_err(|e| e.to_string())

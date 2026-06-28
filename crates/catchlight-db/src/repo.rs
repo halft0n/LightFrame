@@ -127,6 +127,25 @@ pub struct Person {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FaceDetectionRecord {
+    pub id: i64,
+    pub media_id: i64,
+    pub bbox_x: f32,
+    pub bbox_y: f32,
+    pub bbox_w: f32,
+    pub bbox_h: f32,
+    pub confidence: f32,
+    pub person_id: Option<i64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FaceDetectionInput {
+    pub bbox: [f32; 4],
+    pub confidence: f32,
+    pub embedding: Vec<f32>,
+}
+
 fn map_smart_album_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SmartAlbum> {
     Ok(SmartAlbum {
         id: row.get(0)?,
@@ -1705,6 +1724,15 @@ impl Database {
         .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 
         let id = conn.last_insert_rowid();
+        let created_at = conn
+            .query_row(
+                "SELECT created_at FROM smart_albums WHERE id = ?1",
+                params![id],
+                |row| row.get(0),
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        drop(conn);
+
         let media_count = smart_album_media_count(self, rule)?;
 
         Ok(SmartAlbum {
@@ -1713,13 +1741,7 @@ impl Database {
             icon: icon.map(str::to_string),
             rule_json,
             media_count,
-            created_at: conn
-                .query_row(
-                    "SELECT created_at FROM smart_albums WHERE id = ?1",
-                    params![id],
-                    |row| row.get(0),
-                )
-                .map_err(|e| catchlight_core::Error::Database(e.to_string()))?,
+            created_at,
         })
     }
 
@@ -2266,6 +2288,187 @@ impl Database {
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))
     }
 
+    pub fn store_clip_embedding(
+        &self,
+        media_id: i64,
+        embedding: &[f32],
+    ) -> catchlight_core::Result<()> {
+        let blob = f32_slice_to_blob(embedding);
+        let conn = self.conn();
+        conn.execute(
+            "INSERT INTO media_embeddings (media_id, clip_embedding, embedding_model)
+             VALUES (?1, ?2, 'clip-vit-b32')
+             ON CONFLICT(media_id) DO UPDATE SET
+               clip_embedding = excluded.clip_embedding,
+               embedding_model = excluded.embedding_model,
+               created_at = datetime('now')",
+            params![media_id, blob],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn get_clip_embedding(&self, media_id: i64) -> catchlight_core::Result<Option<Vec<f32>>> {
+        let conn = self.conn();
+        let blob: Option<Vec<u8>> = conn
+            .query_row(
+                "SELECT clip_embedding FROM media_embeddings WHERE media_id = ?1",
+                params![media_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        Ok(blob.map(|b| blob_to_f32_vec(&b)).filter(|v| !v.is_empty()))
+    }
+
+    pub fn get_all_clip_embeddings(&self) -> catchlight_core::Result<Vec<(i64, Vec<f32>)>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT media_id, clip_embedding FROM media_embeddings
+                 WHERE clip_embedding IS NOT NULL",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                let id: i64 = row.get(0)?;
+                let blob: Vec<u8> = row.get(1)?;
+                Ok((id, blob_to_f32_vec(&blob)))
+            })
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn find_similar_media(
+        &self,
+        media_id: i64,
+        threshold: f32,
+        limit: usize,
+    ) -> catchlight_core::Result<Vec<(i64, f32)>> {
+        let target = self.get_clip_embedding(media_id)?.ok_or_else(|| {
+            catchlight_core::Error::Database(format!("no CLIP embedding for media {media_id}"))
+        })?;
+
+        let candidates: Vec<(i64, Vec<f32>)> = self
+            .get_all_clip_embeddings()?
+            .into_iter()
+            .filter(|(id, _)| *id != media_id)
+            .collect();
+
+        Ok(find_similar_embeddings(
+            &target,
+            &candidates,
+            threshold,
+            limit,
+        ))
+    }
+
+    pub fn store_face_detections(
+        &self,
+        media_id: i64,
+        faces: &[FaceDetectionInput],
+    ) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        conn.execute(
+            "DELETE FROM face_detections WHERE media_id = ?1",
+            params![media_id],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        for face in faces {
+            let blob = f32_slice_to_blob(&face.embedding);
+            conn.execute(
+                "INSERT INTO face_detections
+                 (media_id, face_embedding, bbox_x, bbox_y, bbox_w, bbox_h, confidence)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    media_id,
+                    blob,
+                    face.bbox[0],
+                    face.bbox[1],
+                    face.bbox[2] - face.bbox[0],
+                    face.bbox[3] - face.bbox[1],
+                    face.confidence,
+                ],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        }
+
+        Ok(())
+    }
+
+    pub fn get_faces_for_media(
+        &self,
+        media_id: i64,
+    ) -> catchlight_core::Result<Vec<FaceDetectionRecord>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, media_id, bbox_x, bbox_y, bbox_w, bbox_h, confidence, person_id
+                 FROM face_detections WHERE media_id = ?1",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(params![media_id], |row| {
+                Ok(FaceDetectionRecord {
+                    id: row.get(0)?,
+                    media_id: row.get(1)?,
+                    bbox_x: row.get(2)?,
+                    bbox_y: row.get(3)?,
+                    bbox_w: row.get(4)?,
+                    bbox_h: row.get(5)?,
+                    confidence: row.get(6)?,
+                    person_id: row.get(7)?,
+                })
+            })
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn create_person(&self, name: Option<&str>) -> catchlight_core::Result<i64> {
+        let conn = self.conn();
+        conn.execute("INSERT INTO persons (name) VALUES (?1)", params![name])
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn assign_face_to_person(
+        &self,
+        face_id: i64,
+        person_id: i64,
+    ) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        let updated = conn
+            .execute(
+                "UPDATE face_detections SET person_id = ?1 WHERE id = ?2",
+                params![person_id, face_id],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        if updated == 0 {
+            return Err(catchlight_core::Error::Database(format!(
+                "face {face_id} not found"
+            )));
+        }
+
+        conn.execute(
+            "UPDATE persons SET face_count = (
+                 SELECT COUNT(*) FROM face_detections WHERE person_id = ?1
+             ) WHERE id = ?1",
+            params![person_id],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        Ok(())
+    }
+
     pub fn save_edit_params(&self, media_id: i64, params: &str) -> catchlight_core::Result<()> {
         let conn = self.conn();
         let updated = conn
@@ -2326,6 +2529,61 @@ impl Database {
             .flatten();
 
         Ok(value.as_ref().is_some_and(|s| !s.trim().is_empty()))
+    }
+}
+
+fn f32_slice_to_blob(values: &[f32]) -> Vec<u8> {
+    values
+        .iter()
+        .flat_map(|v| v.to_le_bytes())
+        .collect::<Vec<u8>>()
+}
+
+fn blob_to_f32_vec(blob: &[u8]) -> Vec<f32> {
+    blob.chunks_exact(4)
+        .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
+        .collect()
+}
+
+fn find_similar_embeddings(
+    target: &[f32],
+    candidates: &[(i64, Vec<f32>)],
+    threshold: f32,
+    limit: usize,
+) -> Vec<(i64, f32)> {
+    let mut scored: Vec<(i64, f32)> = candidates
+        .iter()
+        .filter_map(|(id, emb)| {
+            let score = cosine_similarity(target, emb);
+            (score >= threshold).then_some((*id, score))
+        })
+        .collect();
+
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    scored.truncate(limit);
+    scored
+}
+
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    if a.len() != b.len() || a.is_empty() {
+        return 0.0;
+    }
+
+    let mut dot = 0.0f32;
+    let mut norm_a = 0.0f32;
+    let mut norm_b = 0.0f32;
+
+    for (x, y) in a.iter().zip(b.iter()) {
+        dot += x * y;
+        norm_a += x * x;
+        norm_b += y * y;
+    }
+
+    let denom = norm_a.sqrt() * norm_b.sqrt();
+    if denom < f32::EPSILON {
+        0.0
+    } else {
+        dot / denom
     }
 }
 

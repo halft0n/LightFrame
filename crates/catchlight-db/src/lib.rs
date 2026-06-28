@@ -2,8 +2,9 @@ pub mod migrations;
 pub mod repo;
 
 pub use repo::{
-    Album, DuplicateGroup, DuplicateGroupDetail, DuplicateMember, LocationGroup, LocationStats,
-    MediaNeighbors, Memory, Person, SmartAlbum, SmartAlbumRule, TimelineGroup, WatchedFolder,
+    Album, DuplicateGroup, DuplicateGroupDetail, DuplicateMember, FaceDetectionInput,
+    FaceDetectionRecord, LocationGroup, LocationStats, MediaNeighbors, Memory, Person, SmartAlbum,
+    SmartAlbumRule, TimelineGroup, WatchedFolder,
 };
 
 use catchlight_core::config;

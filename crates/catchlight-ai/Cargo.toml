@@ -4,6 +4,11 @@ version.workspace = true
 edition.workspace = true
 description = "AI dispatcher: Rust ONNX inference + Python sidecar bridge"
 
+[features]
+default = []
+clip = ["dep:ort", "dep:ndarray"]
+face = ["dep:ort", "dep:ndarray"]
+
 [dependencies]
 catchlight-core.workspace = true
 serde.workspace = true
@@ -12,6 +17,8 @@ tokio.workspace = true
 tracing.workspace = true
 kamadak-exif = "0.5"
 image.workspace = true
+ort = { version = "2.0.0-rc.12", optional = true }
+ndarray = { version = "0.16", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }
