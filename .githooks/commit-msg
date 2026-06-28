@@ -1,0 +1,17 @@
+#!/bin/bash
+# Strip auto-added Co-authored-by trailers referencing AI/automated tools.
+# Keeps manually specified Co-authored-by lines with real human names.
+
+MSG_FILE="$1"
+
+if [ ! -f "$MSG_FILE" ]; then
+    exit 0
+fi
+
+# Remove lines matching Co-authored-by with cursor/AI/bot/copilot/automated
+sed -i -E '/^Co-authored-by:.*([Cc]ursor|[Cc]ursoragent|[Aa][Ii]|[Cc]opilot|[Aa]ssistant|[Bb]ot|[Aa]utomated)/d' "$MSG_FILE"
+
+# Remove any trailing blank lines left over
+sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$MSG_FILE"
+
+exit 0
