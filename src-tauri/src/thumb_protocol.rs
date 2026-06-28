@@ -30,6 +30,17 @@ pub fn handle(state: &State<'_, AppState>, request_path: &str) -> Response<Vec<u
         }
     };
 
+    if matches!(size, ThumbnailSize::Micro) {
+        if let Ok(Some(blob)) = state.db.get_micro_thumb(media_id) {
+            return Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "image/jpeg")
+                .header(header::CACHE_CONTROL, "max-age=31536000, immutable")
+                .body(blob)
+                .unwrap();
+        }
+    }
+
     let Some(hash) = media.blake3_hash else {
         return error_response(StatusCode::NOT_FOUND, "no hash for media");
     };

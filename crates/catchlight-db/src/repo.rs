@@ -93,8 +93,39 @@ impl Database {
         )
         .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 
-        let id = conn.last_insert_rowid();
+        let id: i64 = conn
+            .query_row(
+                "SELECT id FROM media_files WHERE path = ?1",
+                params![media.path],
+                |row| row.get(0),
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
         Ok(id)
+    }
+
+    pub fn set_micro_thumb(&self, media_id: i64, blob: &[u8]) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        conn.execute(
+            "UPDATE media_files SET micro_thumb = ?1 WHERE id = ?2",
+            params![blob, media_id],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn get_micro_thumb(&self, media_id: i64) -> catchlight_core::Result<Option<Vec<u8>>> {
+        let conn = self.conn();
+        let result: Option<Option<Vec<u8>>> = conn
+            .query_row(
+                "SELECT micro_thumb FROM media_files WHERE id = ?1",
+                params![media_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        Ok(result.flatten())
     }
 
     pub fn get_all_media(&self, limit: i64, offset: i64) -> catchlight_core::Result<Vec<MediaFile>> {

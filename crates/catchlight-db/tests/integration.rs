@@ -1,5 +1,6 @@
 use catchlight_core::media::{MediaFile, MediaType};
 use catchlight_db::Database;
+use chrono::NaiveDateTime;
 use std::path::Path;
 
 fn create_test_db() -> Database {
@@ -221,4 +222,124 @@ fn watched_folder_media_count() {
 
     let folder = db.get_watched_folder(fid).unwrap().expect("folder should exist");
     assert_eq!(folder.media_count, 2);
+}
+
+#[test]
+fn get_timeline_groups_returns_grouped_media() {
+    let db = create_test_db();
+    let folder_id = db.add_watched_folder("/photos").unwrap().id;
+
+    let mut media1 = sample_media("/photos/a.jpg");
+    media1.created_at =
+        Some(NaiveDateTime::parse_from_str("2024-06-15 10:00:00", "%Y-%m-%d %H:%M:%S").unwrap());
+    db.upsert_media(folder_id, &media1).unwrap();
+
+    let mut media2 = sample_media("/photos/b.jpg");
+    media2.created_at =
+        Some(NaiveDateTime::parse_from_str("2024-06-15 14:00:00", "%Y-%m-%d %H:%M:%S").unwrap());
+    db.upsert_media(folder_id, &media2).unwrap();
+
+    let mut media3 = sample_media("/photos/c.jpg");
+    media3.created_at =
+        Some(NaiveDateTime::parse_from_str("2024-06-14 09:00:00", "%Y-%m-%d %H:%M:%S").unwrap());
+    db.upsert_media(folder_id, &media3).unwrap();
+
+    let groups = db.get_timeline_groups(100, 0).unwrap();
+    assert_eq!(groups.len(), 2, "should have 2 date groups");
+    assert_eq!(groups[0].date, "2024-06-15");
+    assert_eq!(groups[0].count, 2);
+    assert_eq!(groups[0].media.len(), 2);
+    assert_eq!(groups[1].date, "2024-06-14");
+    assert_eq!(groups[1].count, 1);
+}
+
+#[test]
+fn get_timeline_groups_respects_limit_and_offset() {
+    let db = create_test_db();
+    let folder_id = db.add_watched_folder("/photos").unwrap().id;
+
+    for i in 0..10 {
+        let mut media = sample_media(&format!("/photos/img_{i}.jpg"));
+        media.created_at = Some(
+            NaiveDateTime::parse_from_str(
+                &format!("2024-06-{:02} 10:00:00", 10 + i),
+                "%Y-%m-%d %H:%M:%S",
+            )
+            .unwrap(),
+        );
+        db.upsert_media(folder_id, &media).unwrap();
+    }
+
+    let groups = db.get_timeline_groups(5, 0).unwrap();
+    assert!(groups.iter().map(|g| g.count).sum::<i64>() <= 5);
+
+    let all = db.get_timeline_groups(100, 0).unwrap();
+    assert_eq!(all.iter().map(|g| g.count).sum::<i64>(), 10);
+}
+
+#[test]
+fn get_media_neighbors_returns_adjacent_ids() {
+    let db = create_test_db();
+    let folder_id = db.add_watched_folder("/photos").unwrap().id;
+
+    let dates = [
+        "2024-06-10 10:00:00",
+        "2024-06-11 10:00:00",
+        "2024-06-12 10:00:00",
+    ];
+    let mut ids = Vec::new();
+
+    for (i, date) in dates.iter().enumerate() {
+        let mut media = sample_media(&format!("/photos/img_{i}.jpg"));
+        media.created_at =
+            Some(NaiveDateTime::parse_from_str(date, "%Y-%m-%d %H:%M:%S").unwrap());
+        let id = db.upsert_media(folder_id, &media).unwrap();
+        ids.push(id);
+    }
+
+    // Middle photo should have neighbors
+    let nb = db.get_media_neighbors(ids[1]).unwrap();
+    assert_eq!(nb.prev_id, Some(ids[2])); // newer photo (2024-06-12)
+    assert_eq!(nb.next_id, Some(ids[0])); // older photo (2024-06-10)
+
+    // First photo (oldest) has no next
+    let nb = db.get_media_neighbors(ids[0]).unwrap();
+    assert!(nb.next_id.is_none());
+
+    // Last photo (newest) has no prev
+    let nb = db.get_media_neighbors(ids[2]).unwrap();
+    assert!(nb.prev_id.is_none());
+}
+
+#[test]
+fn get_media_neighbors_returns_none_for_nonexistent() {
+    let db = create_test_db();
+    let nb = db.get_media_neighbors(9999).unwrap();
+    assert!(nb.prev_id.is_none());
+    assert!(nb.next_id.is_none());
+}
+
+#[test]
+fn get_timeline_groups_empty_database() {
+    let db = create_test_db();
+    let groups = db.get_timeline_groups(100, 0).unwrap();
+    assert!(groups.is_empty());
+}
+
+#[test]
+fn set_and_get_micro_thumb() {
+    let db = create_test_db();
+    let folder_id = db.add_watched_folder("/photos").unwrap().id;
+    let media = sample_media("/photos/test_thumb.jpg");
+    let media_id = db.upsert_media(folder_id, &media).unwrap();
+
+    let thumb = db.get_micro_thumb(media_id).unwrap();
+    assert!(thumb.is_none());
+
+    let blob = vec![0xFF, 0xD8, 0xFF, 0xE0];
+    db.set_micro_thumb(media_id, &blob).unwrap();
+
+    let retrieved = db.get_micro_thumb(media_id).unwrap();
+    assert!(retrieved.is_some());
+    assert_eq!(retrieved.unwrap(), blob);
 }

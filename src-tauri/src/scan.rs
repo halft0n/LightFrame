@@ -166,6 +166,51 @@ async fn process_file(
         .map_err(|e| catchlight_core::Error::Other(e.to_string()))?;
     }
 
+    if matches!(media_type, MediaType::Video) {
+        let hash = blake3_hash.clone();
+        let vid_path = path.clone();
+        let _ = tokio::task::spawn_blocking(move || -> catchlight_core::Result<()> {
+            if catchlight_video::find_ffmpeg().is_none() {
+                tracing::debug!("ffmpeg not found, skipping video thumbnail");
+                return Ok(());
+            }
+
+            let temp_frame = catchlight_thumbnail::thumb_path(&hash, ThumbnailSize::Small)
+                .with_extension("frame.jpg");
+            if let Some(parent) = temp_frame.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+
+            let status = std::process::Command::new("ffmpeg")
+                .args([
+                    "-y",
+                    "-ss",
+                    "1",
+                    "-i",
+                    &vid_path.to_string_lossy(),
+                    "-vframes",
+                    "1",
+                    "-q:v",
+                    "2",
+                    &temp_frame.to_string_lossy().to_string(),
+                ])
+                .output();
+
+            match status {
+                Ok(output) if output.status.success() && temp_frame.exists() => {
+                    let _ = catchlight_thumbnail::generate(&temp_frame, &hash, ThumbnailSize::Micro);
+                    let _ = catchlight_thumbnail::generate(&temp_frame, &hash, ThumbnailSize::Small);
+                    let _ = std::fs::remove_file(&temp_frame);
+                }
+                _ => {
+                    tracing::debug!(path = %vid_path.display(), "video frame extraction failed");
+                }
+            }
+            Ok(())
+        })
+        .await;
+    }
+
     let media_type = if matches!(media_type, MediaType::Photo) {
         if let (Some(w), Some(h)) = (meta.width, meta.height) {
             if catchlight_ai::detect_screenshot(&path, w, h).unwrap_or(false) {
@@ -178,6 +223,33 @@ async fn process_file(
         }
     } else {
         media_type
+    };
+
+    let micro_blob = if matches!(
+        media_type,
+        MediaType::Photo | MediaType::Raw | MediaType::Screenshot
+    ) {
+        tokio::task::spawn_blocking({
+            let path = path.clone();
+            move || catchlight_thumbnail::generate_micro_blob(&path)
+        })
+        .await
+        .map_err(|e| catchlight_core::Error::Other(e.to_string()))?
+        .ok()
+    } else if matches!(media_type, MediaType::Video) {
+        let hash = blake3_hash.clone();
+        tokio::task::spawn_blocking(move || {
+            let small_thumb = catchlight_thumbnail::thumb_path(&hash, ThumbnailSize::Small);
+            if small_thumb.exists() {
+                catchlight_thumbnail::generate_micro_blob(&small_thumb).ok()
+            } else {
+                None
+            }
+        })
+        .await
+        .map_err(|e| catchlight_core::Error::Other(e.to_string()))?
+    } else {
+        None
     };
 
     let media = MediaFile {
@@ -196,7 +268,11 @@ async fn process_file(
         longitude: meta.longitude,
     };
 
-    db.upsert_media(folder_id, &media)?;
+    let media_id = db.upsert_media(folder_id, &media)?;
+    if let Some(blob) = micro_blob {
+        let _ = db.set_micro_thumb(media_id, &blob);
+    }
+
     Ok(())
 }
 

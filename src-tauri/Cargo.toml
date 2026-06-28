@@ -26,6 +26,7 @@ catchlight-db.workspace = true
 catchlight-indexer.workspace = true
 catchlight-metadata.workspace = true
 catchlight-thumbnail.workspace = true
+catchlight-video.workspace = true
 catchlight-dedup.workspace = true
 catchlight-ai.workspace = true
 futures = "0.3"
