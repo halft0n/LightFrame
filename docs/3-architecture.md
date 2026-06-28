@@ -2,7 +2,7 @@
 
 > **版本：** 1.1  
 > **日期：** 2026-06-28  
-> **状态：** Phase 1 已实现（与代码同步）  
+> **状态：** Phase 1–2 已实现（与代码同步）  
 > **技术栈：** Tauri 2.x + Rust + React 19 + Python AI 扩展（可选）
 
 ---
@@ -359,13 +359,19 @@ pub struct MediaQuery {
 }
 ```
 
+**Phase 2 已实现能力：**
+- **FTS5 全文搜索**：`media_fts` 外部内容表（`filename`、`city`、`country`、`media_type`），INSERT/UPDATE/DELETE 同步触发器；`search.rs` 暴露 `search_media` IPC，查询自动过滤 `is_deleted = 0`
+- **软删除**：`is_deleted` + `deleted_at` 标记；列表/搜索/FTS 默认排除已删项；应用启动时 `cleanup_deleted_older_than(30)` 永久清理超期记录；`DeletedView` 展示最近删除
+
+**Schema 版本（已实现）：** v1 基础表 → v2 `scan_status` → v3 `is_favorite`/`is_deleted`/`deleted_at` → v4 FTS5 → v5 部分索引（`idx_media_not_deleted`、`idx_media_type_active`、`idx_media_deleted_at`）
+
 **依赖：** `catchlight-core`、`rusqlite`（bundled）、`refinery` 或 `rusqlite_migration`。
 
 ---
 
 ##### catchlight-dedup
 
-**职责：** 三级去重：精确（BLAKE3）→ 感知（DHash/PHash）→ 语义（CNN 向量，可选）。
+**职责：** 三级去重：精确（BLAKE3）→ 感知（DHash/PHash）→ 语义（CNN 向量，可选）。**Phase 2 已实现 L1+L2**：BLAKE3 精确分组 + DHash 汉明距离聚类，`DedupView` 工具页展示重复组。
 
 **公开 API：**
 
@@ -404,7 +410,7 @@ pub enum ScreenshotClassification { Screenshot, Document, Code, Chat, CameraPhot
 
 ##### catchlight-geo
 
-**职责：** GPS → 国家/城市/地点名，离线 K-D Tree 查询。
+**职责：** GPS → 国家/城市/地点名，离线 K-D Tree 查询。**Phase 2 已实现**：扫描流水线在 EXIF 提取 GPS 后调用 `reverse_geocode`，结果写入 `country`/`city` 列。
 
 **公开 API：**
 
@@ -542,7 +548,7 @@ pub struct WatchedFolder {
 }
 ```
 
-**扫描流水线（Phase 1 实现）：** `futures::stream` + `buffer_unordered(concurrency)` 有界并发，在信号量预算内并行处理每个文件（EXIF、哈希、缩略图、截图检测），而非 per-file `spawn` 无界任务。
+**扫描流水线（Phase 1–2 实现）：** `futures::stream` + `buffer_unordered(concurrency)` 有界并发，在信号量预算内并行处理每个文件（EXIF、BLAKE3/DHash 哈希、缩略图、截图规则检测、GPS 反向地理编码），而非 per-file `spawn` 无界任务。GPS 坐标经 `catchlight-geo::reverse_geocode`（`reverse_geocoder` / rrgeo）解析为国家/城市后写入 `media_files`，供地点分组视图与 FTS5 索引。
 
 ```rust
 // src-tauri/src/scan.rs
@@ -1151,7 +1157,9 @@ CREATE TRIGGER media_fts_update AFTER UPDATE ON media_files BEGIN
 END;
 ```
 
-**中文搜索：** 文件名含中文时 `unicode61` 分词器按 Unicode 字符切分；如需更好中文支持，Phase 2 评估 `simple` 或外接 jieba 预处理。
+**Phase 2 实现：** 字段为 `filename`、`city`、`country`、`media_type`（与 v4 迁移一致）；`repo::search_media` 通过 `media_fts MATCH` 查询并 JOIN `media_files`，软删除项不参与结果。
+
+**中文搜索：** 文件名含中文时 `unicode61` 分词器按 Unicode 字符切分；如需更好中文支持，后续可评估 `simple` 或外接 jieba 预处理。
 
 #### 4.2.4 索引设计（10 万+ 性能）
 
@@ -1348,7 +1356,7 @@ pub fn create_indexer() -> Box<dyn FileIndexer> {
 **原则：**
 
 1. **最小权限：** 仅读取用户显式添加的监控文件夹及其子目录。
-2. **写入限制：** 软删除/收藏/相簿操作只写 SQLite，不修改照片文件（删除操作需用户确认后调用 `fs:allow-remove`）。
+2. **写入限制：** 软删除/收藏/相簿操作只写 SQLite，不修改照片文件。Phase 2 软删除仅设 `is_deleted=1` + `deleted_at`，不移动原文件；30 天后 `cleanup_deleted_older_than` 从索引移除（永久删除文件为 Phase 3 扩展）。
 3. **动态 scope：** 用户添加监控文件夹时，通过 `tauri::ipc::Scope` 动态扩展允许路径。
 4. **禁止任意路径：** 前端不可传入未授权路径执行读取。
 

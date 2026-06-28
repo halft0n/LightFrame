@@ -2,8 +2,19 @@ use crate::scan;
 use crate::state::{AppState, ScanProgress};
 use catchlight_core::config::AppConfig;
 use catchlight_core::media::MediaFile;
-use catchlight_db::{MediaNeighbors, TimelineGroup, WatchedFolder};
+use catchlight_db::{
+    Album, DuplicateGroupDetail, LocationGroup, LocationStats, MediaNeighbors, TimelineGroup,
+    WatchedFolder,
+};
+use serde::Serialize;
 use tauri::{AppHandle, State};
+
+#[derive(Serialize)]
+pub struct DedupScanResult {
+    pub exact_groups: usize,
+    pub perceptual_groups: usize,
+    pub total_duplicates: usize,
+}
 
 #[tauri::command]
 pub fn get_app_version() -> &'static str {
@@ -114,5 +125,285 @@ pub fn get_media_neighbors(
     state
         .db
         .get_media_neighbors(id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn run_dedup_scan(state: State<'_, AppState>) -> Result<DedupScanResult, String> {
+    let db = state.db.clone();
+    tokio::task::spawn_blocking(move || {
+        db.clear_duplicate_groups()
+            .map_err(|e| e.to_string())?;
+
+        let exact_groups = db.find_exact_duplicates().map_err(|e| e.to_string())?;
+        let perceptual_groups = db
+            .find_perceptual_duplicates(10)
+            .map_err(|e| e.to_string())?;
+
+        let total_duplicates = exact_groups
+            .iter()
+            .chain(perceptual_groups.iter())
+            .map(|g| g.members.len())
+            .sum();
+
+        Ok(DedupScanResult {
+            exact_groups: exact_groups.len(),
+            perceptual_groups: perceptual_groups.len(),
+            total_duplicates,
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn get_duplicate_groups(
+    state: State<'_, AppState>,
+) -> Result<Vec<DuplicateGroupDetail>, String> {
+    let db = state.db.clone();
+    tokio::task::spawn_blocking(move || db.list_duplicate_groups().map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn get_duplicate_count(state: State<'_, AppState>) -> Result<i64, String> {
+    let db = state.db.clone();
+    tokio::task::spawn_blocking(move || db.get_duplicate_groups_count().map_err(|e| e.to_string()))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn resolve_duplicate(
+    state: State<'_, AppState>,
+    group_id: i64,
+    keep_media_id: i64,
+    delete_files: bool,
+) -> Result<(), String> {
+    let db = state.db.clone();
+    tokio::task::spawn_blocking(move || {
+        db.resolve_duplicate_group(group_id, keep_media_id, delete_files)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn dismiss_duplicate_group(
+    state: State<'_, AppState>,
+    group_id: i64,
+) -> Result<(), String> {
+    let db = state.db.clone();
+    tokio::task::spawn_blocking(move || {
+        db.delete_duplicate_group(group_id)
+            .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub fn get_location_groups(state: State<'_, AppState>) -> Result<Vec<LocationGroup>, String> {
+    state
+        .db
+        .get_location_groups()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_media_by_location(
+    state: State<'_, AppState>,
+    country: String,
+    city: Option<String>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<MediaFile>, String> {
+    let limit = limit.clamp(1, 500);
+    let offset = offset.max(0);
+    state
+        .db
+        .get_media_by_location(&country, city.as_deref(), limit, offset)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_location_stats(state: State<'_, AppState>) -> Result<LocationStats, String> {
+    state
+        .db
+        .get_location_stats()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_media_by_type(
+    state: State<'_, AppState>,
+    media_type: String,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<MediaFile>, String> {
+    let limit = limit.clamp(1, 500);
+    let offset = offset.max(0);
+    state
+        .db
+        .get_media_by_type(&media_type, limit, offset)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_media_count_by_type(
+    state: State<'_, AppState>,
+    media_type: String,
+) -> Result<i64, String> {
+    state
+        .db
+        .get_media_count_by_type(&media_type)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn create_album(
+    state: State<'_, AppState>,
+    name: String,
+    description: Option<String>,
+) -> Result<Album, String> {
+    if name.trim().is_empty() {
+        return Err("album name cannot be empty".to_string());
+    }
+    state
+        .db
+        .create_album(&name, description.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_album(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    state.db.delete_album(id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_albums(state: State<'_, AppState>) -> Result<Vec<Album>, String> {
+    state.db.list_albums().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn add_to_album(
+    state: State<'_, AppState>,
+    album_id: i64,
+    media_ids: Vec<i64>,
+) -> Result<(), String> {
+    state
+        .db
+        .add_to_album(album_id, &media_ids)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn remove_from_album(
+    state: State<'_, AppState>,
+    album_id: i64,
+    media_id: i64,
+) -> Result<(), String> {
+    state
+        .db
+        .remove_from_album(album_id, media_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_album_media(
+    state: State<'_, AppState>,
+    album_id: i64,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<MediaFile>, String> {
+    let limit = limit.clamp(1, 500);
+    let offset = offset.max(0);
+    state
+        .db
+        .get_album_media(album_id, limit, offset)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn toggle_favorite(state: State<'_, AppState>, media_id: i64) -> Result<bool, String> {
+    state
+        .db
+        .toggle_favorite(media_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_favorites(
+    state: State<'_, AppState>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<MediaFile>, String> {
+    let limit = limit.clamp(1, 500);
+    let offset = offset.max(0);
+    state
+        .db
+        .get_favorites(limit, offset)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_favorites_count(state: State<'_, AppState>) -> Result<i64, String> {
+    state.db.get_favorites_count().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_media(state: State<'_, AppState>, media_id: i64) -> Result<(), String> {
+    state
+        .db
+        .set_deleted(media_id, true)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_deleted_media(state: State<'_, AppState>) -> Result<Vec<MediaFile>, String> {
+    state
+        .db
+        .list_deleted_media()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn restore_media(state: State<'_, AppState>, media_id: i64) -> Result<(), String> {
+    state
+        .db
+        .set_deleted(media_id, false)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn permanently_delete(state: State<'_, AppState>, media_id: i64) -> Result<(), String> {
+    state
+        .db
+        .permanently_delete_media(media_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn search_media(
+    state: State<'_, AppState>,
+    query: String,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<MediaFile>, String> {
+    let limit = limit.clamp(1, 500);
+    let offset = offset.max(0);
+    state
+        .db
+        .search_media(&query, limit, offset)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn search_media_count(state: State<'_, AppState>, query: String) -> Result<i64, String> {
+    state
+        .db
+        .search_media_count(&query)
         .map_err(|e| e.to_string())
 }

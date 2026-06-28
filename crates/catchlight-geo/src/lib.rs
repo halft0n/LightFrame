@@ -1,4 +1,6 @@
+use reverse_geocoder::ReverseGeocoder;
 use serde::{Deserialize, Serialize};
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Location {
@@ -6,12 +8,74 @@ pub struct Location {
     pub longitude: f64,
     pub city: Option<String>,
     pub country: Option<String>,
+    pub region: Option<String>,
     pub display_name: String,
 }
 
-pub fn reverse_geocode(_lat: f64, _lon: f64) -> Option<Location> {
-    // TODO: integrate rrgeo with GeoNames cities1000.bin
-    None
+static GEOCODER: OnceLock<ReverseGeocoder> = OnceLock::new();
+
+fn geocoder() -> &'static ReverseGeocoder {
+    GEOCODER.get_or_init(ReverseGeocoder::new)
+}
+
+fn build_display_name(
+    city: &Option<String>,
+    region: &Option<String>,
+    country: &Option<String>,
+) -> String {
+    let mut parts = Vec::new();
+    if let Some(c) = city {
+        if !c.is_empty() {
+            parts.push(c.as_str());
+        }
+    }
+    if let Some(r) = region {
+        if !r.is_empty() && !parts.contains(&r.as_str()) {
+            parts.push(r.as_str());
+        }
+    }
+    if let Some(c) = country {
+        if !c.is_empty() {
+            parts.push(c.as_str());
+        }
+    }
+    if parts.is_empty() {
+        "Unknown".to_string()
+    } else {
+        parts.join(", ")
+    }
+}
+
+pub fn reverse_geocode(lat: f64, lon: f64) -> Option<Location> {
+    let result = geocoder().search((lat, lon));
+    let record = result.record;
+
+    let city = if record.name.is_empty() {
+        None
+    } else {
+        Some(record.name.clone())
+    };
+    let region = if record.admin1.is_empty() {
+        None
+    } else {
+        Some(record.admin1.clone())
+    };
+    let country = if record.cc.is_empty() {
+        None
+    } else {
+        Some(record.cc.clone())
+    };
+
+    let display_name = build_display_name(&city, &region, &country);
+
+    Some(Location {
+        latitude: lat,
+        longitude: lon,
+        city,
+        country,
+        region,
+        display_name,
+    })
 }
 
 #[cfg(test)]
@@ -19,9 +83,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn reverse_geocode_returns_none_before_init() {
-        assert!(reverse_geocode(39.9042, 116.4074).is_none());
-        assert!(reverse_geocode(0.0, 0.0).is_none());
+    fn reverse_geocode_beijing() {
+        let loc = reverse_geocode(39.9042, 116.4074).expect("should resolve");
+        assert!(loc.country.is_some());
+        assert!(!loc.display_name.is_empty());
     }
 
     #[test]
@@ -30,8 +95,9 @@ mod tests {
             latitude: 39.9042,
             longitude: 116.4074,
             city: Some("Beijing".into()),
-            country: Some("China".into()),
-            display_name: "Beijing, China".into(),
+            country: Some("CN".into()),
+            region: Some("Beijing".into()),
+            display_name: "Beijing, CN".into(),
         };
 
         let json = serde_json::to_string(&loc).unwrap();
@@ -47,6 +113,7 @@ mod tests {
             longitude: 0.0,
             city: None,
             country: None,
+            region: None,
             display_name: "Unknown".into(),
         };
         assert!(loc.city.is_none());

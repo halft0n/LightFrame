@@ -8,10 +8,15 @@ export type AppView =
   | "people"
   | "duplicates"
   | "screenshots"
+  | "albums"
+  | "album-detail"
+  | "favorites"
+  | "deleted"
   | "settings";
 
 export interface AppState {
   currentView: AppView;
+  selectedAlbumId: number | null;
   selectedMediaIds: number[];
   watchedFolders: WatchedFolder[];
   mediaItems: MediaItem[];
@@ -19,10 +24,12 @@ export interface AppState {
   isScanning: boolean;
   scanProgress: ScanProgress | null;
   viewingMediaId: number | null;
+  searchQuery: string;
 }
 
 const initialState: AppState = {
   currentView: "all",
+  selectedAlbumId: null,
   selectedMediaIds: [],
   watchedFolders: [],
   mediaItems: [],
@@ -30,6 +37,7 @@ const initialState: AppState = {
   isScanning: false,
   scanProgress: null,
   viewingMediaId: null,
+  searchQuery: "",
 };
 
 let state: AppState = { ...initialState };
@@ -56,7 +64,15 @@ export function getSnapshot(): AppState {
 }
 
 export function setView(view: AppView) {
-  setState({ currentView: view });
+  setState({ currentView: view, selectedAlbumId: view === "album-detail" ? state.selectedAlbumId : null });
+}
+
+export function openAlbumDetail(albumId: number) {
+  setState({ currentView: "album-detail", selectedAlbumId: albumId });
+}
+
+export function closeAlbumDetail() {
+  setState({ currentView: "albums", selectedAlbumId: null });
 }
 
 export function setWatchedFolders(folders: WatchedFolder[]) {
@@ -114,6 +130,10 @@ export function openViewer(id: number) {
 
 export function closeViewer() {
   setState({ viewingMediaId: null });
+}
+
+export function setSearchQuery(query: string) {
+  setState({ searchQuery: query });
 }
 
 export function useAppStore(): AppState {

@@ -4,7 +4,7 @@
 > **更新日期**：2026-06-28  
 > **关联文档**：[需求规格说明书](./2-requirements.md) · [技术调研报告](./0-research-report.md) · [技术路线决策](./1-tech-stack-decision.md)  
 > **技术栈**：Tauri 2.x + Rust + React + Python AI 扩展（可选）  
-> **状态**：Phase 1 已实现（本文档与代码同步）
+> **状态**：Phase 1–2 已实现（本文档与代码同步）
 
 ---
 
@@ -71,6 +71,8 @@ flowchart LR
     F --> G[磁盘缓存 + micro BLOB]
     C --> H[DedupQueue]
     C --> I[ScreenshotDet 内联于 scan pipeline]
+    E --> G[GeoResolver / reverse_geocode → country, city]
+    G --> C
     G --> J[thumb:// 协议]
     J --> K[React Gallery]
     C --> K
@@ -556,7 +558,7 @@ impl GenericNotifyIndexer {
 
 ### 1.6 增量扫描策略
 
-#### 1.6.1 首次全量扫描流程（Phase 1 实现）
+#### 1.6.1 首次全量扫描流程（Phase 1–2 实现）
 
 ```mermaid
 sequenceDiagram
@@ -570,9 +572,9 @@ sequenceDiagram
     Scan->>Scan: discover_files (walkdir)
     Scan->>Scan: stream + buffer_unordered 并行 process_file
     loop 每个文件
-        Scan->>Scan: EXIF / BLAKE3 / 缩略图 / 截图检测
+        Scan->>Scan: EXIF / BLAKE3 / DHash / 缩略图 / 截图检测 / GPS 反向编码
         Scan-->>UI: emit scan-progress
-        Scan->>DB: upsert_media + micro_thumb BLOB
+        Scan->>DB: upsert_media + micro_thumb BLOB + country/city
     end
     Scan->>DB: UPDATE watched_folders.last_scan_at, scan_status
     Scan-->>UI: scan-progress (status=complete)
@@ -756,7 +758,9 @@ async fn exiftool_batch(paths: &[PathBuf]) -> Result<Vec<ExifData>> {
 
 ### 2.3 反向地理编码
 
-#### 2.3.1 rrgeo 离线方案
+#### 2.3.1 rrgeo 离线方案（Phase 2 已实现）
+
+**实现 crate：** `catchlight-geo`，依赖 crates.io 上的 `reverse_geocoder`（rrgeo 项目）。扫描流水线 `process_file` 在 EXIF 提取 GPS 后调用 `reverse_geocode(lat, lon)`，将 `country`/`city` 写入 `media_files`，供 `LocationView` 国家→城市分组与 FTS5 索引。
 
 ```rust
 // catchlight-metadata/src/geocode.rs
@@ -1102,6 +1106,8 @@ fn handle_thumb_request(request: &HttpRequest) -> HttpResponse {
 
 ## 4. 去重系统详细设计
 
+**Phase 2 实现摘要：** `catchlight-dedup` 提供 BLAKE3 精确去重（同 `file_size` 预筛）与 DHash 感知去重（汉明距离阈值聚类）；`DedupView` 展示重复组；L3 语义去重（CLIP）留 Phase 3。
+
 ### 4.1 设计决策
 
 三级架构参考调研报告 3.4，对比 Recasa（仅感知哈希）与 Lap（仅 BLAKE3）：
@@ -1267,9 +1273,9 @@ fn dhash_bucket(dhash: u64) -> u16 {
 | L2 视觉 | < 10 ms | 提升 30% | ✅ |
 | L3 CLIP | ~100 ms | 最终分类 | 可选 AI 包 |
 
-### 5.2 三层检测策略（Phase 1：规则层已集成扫描流水线）
+### 5.2 三层检测策略（Phase 2：规则层已集成扫描流水线）
 
-扫描 `process_file` 在写入 DB 前调用 `catchlight_ai::detect_screenshot(path, width, height)`：对 Photo 类型按分辨率/扩展名规则判定，命中则设为 `MediaType::Screenshot`。L2/L3 视觉与 CLIP 分类为 Phase 2+ 扩展。
+扫描 `process_file` 在写入 DB 前调用 `catchlight_ai::detect_screenshot(path, width, height)`：对 Photo 类型按分辨率/扩展名规则判定，命中则设为 `MediaType::Screenshot`，`ScreenshotView` 提供专属浏览。L2/L3 视觉与 CLIP 分类为 Phase 3 扩展。
 
 ```mermaid
 flowchart TD
@@ -1411,6 +1417,8 @@ async fn ensure_models(config: &AiConfig) -> Result<()> {
 
 ## 6. 相簿系统详细设计
 
+**Phase 2 实现摘要：** `albums` + `album_items` 表支持用户相簿 CRUD；`is_favorite` 收藏夹与 `FavoritesView`；软删除（`is_deleted`/`deleted_at`）+ `DeletedView`，启动时 30 天自动清理；前端新增 `AlbumListView`、`AlbumDetailView`、`FavoritesView`、`DeletedView`。
+
 ### 6.1 设计决策
 
 | 类型 | 存储 | 参考 |
@@ -1523,6 +1531,17 @@ fn compile_smart_album(rule: &SmartAlbumRule) -> Result<String> {
 | 截图 | `media_type = 'screenshot'` |
 | RAW | `file_ext IN (...RAW_EXT...)` |
 | 最近 30 天 | `taken_at > unixepoch('now', '-30 days')` |
+
+---
+
+## 6.4 全文搜索（FTS5）— Phase 2 已实现
+
+| 组件 | 实现 |
+|------|------|
+| 虚拟表 | `media_fts`（`filename`、`city`、`country`、`media_type`），外部内容表模式 |
+| 同步 | INSERT/UPDATE/DELETE 触发器；v4 迁移回填存量数据 |
+| 查询 | `repo::search_media` — `media_fts MATCH` + `is_deleted = 0` 过滤 |
+| 前端 | 顶部搜索栏 → `SearchResults` 结果视图 |
 
 ---
 
@@ -1952,23 +1971,24 @@ remove_watched_folder(id) -> ()
 list_watched_folders() -> Vec<WatchedFolder>
 scan_folder(folder_id) -> ()
 get_scan_status() -> ScanProgress
-// WatchedFolder: { id, path, media_count, last_scan?, scan_status }
-// ScanProgress:  { folder_id, scanned, total, status }
 
-// Gallery
-get_media_list(offset, limit) -> Vec<MediaItem>
-get_timeline_groups(limit, offset) -> Vec<TimelineGroup>
-get_micro_thumb(file_id) -> Vec<u8>  // thumb:// micro 读 BLOB
-
-// 相簿
+// 相簿 / 收藏 / 软删除（Phase 2 已实现）
 create_album(name) -> Album
+list_albums() -> Vec<Album>
 add_to_album(album_id, file_ids) -> ()
-compile_smart_album_preview(rule_json) -> u64  // 匹配数量
+remove_from_album(album_id, file_ids) -> ()
+toggle_favorite(file_id) -> ()
+soft_delete(file_id) / restore_deleted(file_id) -> ()
+list_deleted() -> Vec<MediaItem>
 
-// 去重
+// 去重（Phase 2 已实现）
 get_duplicate_groups(type, cursor) -> DuplicateGroupPage
-ignore_duplicate_group(group_id) -> ()
-apply_duplicate_action(group_id, keep_id, delete_ids) -> ()
+start_dedup_scan() -> ()
+
+// 搜索 / 地点（Phase 2 已实现）
+search_media(query, limit) -> Vec<MediaItem>
+list_countries() / list_cities(country) -> Vec<PlaceGroup>
+get_media_by_place(country, city?) -> Vec<MediaItem>
 
 // 配置
 get_setting(key) -> Value
@@ -2766,7 +2786,7 @@ ALTER TABLE media_files ADD COLUMN clip_embed BLOB;
 4. **Week 5**：`catchlight-thumb` + `thumb://` + micro BLOB
 5. **Week 6**：React VirtualGallery + Viewer 基础
 6. **Week 7–8**：相簿 + 配置 + i18n + 设置页
-7. **Phase 2**：去重 + 截图识别 + 地点 + 搜索
+7. **Phase 2**：去重 + 截图识别 + 地点 + 搜索 — ✅ 已完成
 8. **Phase 3**：Python AI sidecar 框架 + 语义搜索 + 截图 OCR + 人脸聚类
 
 ---

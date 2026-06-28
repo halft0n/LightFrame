@@ -41,6 +41,96 @@ pub struct MediaNeighbors {
     pub next_id: Option<i64>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocationGroup {
+    pub country: String,
+    pub city: Option<String>,
+    pub count: i64,
+    pub sample_media_id: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LocationStats {
+    pub total_with_gps: i64,
+    pub countries: i64,
+    pub cities: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Album {
+    pub id: i64,
+    pub name: String,
+    pub description: Option<String>,
+    pub cover_media_id: Option<i64>,
+    pub media_count: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+fn map_album_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Album> {
+    Ok(Album {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        description: row.get(2)?,
+        cover_media_id: row.get(3)?,
+        media_count: row.get(4)?,
+        created_at: row.get(5)?,
+        updated_at: row.get(6)?,
+    })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DuplicateGroup {
+    pub id: i64,
+    pub match_type: String,
+    pub created_at: String,
+    pub members: Vec<DuplicateMember>,
+}
+
+pub type DuplicateGroupDetail = DuplicateGroup;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DuplicateMember {
+    pub media_id: i64,
+    pub similarity: f64,
+    pub path: String,
+    pub filename: String,
+    pub size_bytes: i64,
+    pub width: Option<i64>,
+    pub height: Option<i64>,
+    pub created_at: Option<String>,
+    pub modified_at: String,
+}
+
+/// Escape and tokenize user input for FTS5 MATCH queries.
+fn sanitize_fts_query(query: &str) -> String {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    trimmed
+        .split_whitespace()
+        .filter_map(|term| {
+            let escaped = term.replace('"', "\"\"");
+            if escaped.is_empty() {
+                None
+            } else {
+                Some(format!("\"{escaped}\"*"))
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn hamming_distance(a: u64, b: u64) -> u32 {
+    (a ^ b).count_ones()
+}
+
+fn perceptual_similarity(a: u64, b: u64) -> f64 {
+    1.0 - (hamming_distance(a, b) as f64 / 64.0)
+}
+
 impl Database {
     pub fn add_watched_folder(&self, path: &str) -> catchlight_core::Result<WatchedFolder> {
         let id = {
@@ -78,7 +168,9 @@ impl Database {
                 created_at = COALESCE(excluded.created_at, created_at),
                 modified_at = excluded.modified_at,
                 blake3_hash = COALESCE(excluded.blake3_hash, blake3_hash),
-                dhash = COALESCE(excluded.dhash, dhash)",
+                dhash = COALESCE(excluded.dhash, dhash),
+                latitude = COALESCE(excluded.latitude, latitude),
+                longitude = COALESCE(excluded.longitude, longitude)",
             params![
                 folder_id,
                 media.path,
@@ -139,6 +231,7 @@ impl Database {
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
                         created_at, modified_at, blake3_hash, dhash, latitude, longitude
                  FROM media_files
+                 WHERE is_deleted = 0
                  ORDER BY created_at DESC
                  LIMIT ?1 OFFSET ?2",
             )
@@ -186,8 +279,48 @@ impl Database {
 
     pub fn get_media_count(&self) -> catchlight_core::Result<i64> {
         let conn = self.conn();
-        conn.query_row("SELECT COUNT(*) FROM media_files", [], |row| row.get(0))
+        conn.query_row(
+            "SELECT COUNT(*) FROM media_files WHERE is_deleted = 0",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn get_media_by_type(
+        &self,
+        media_type: &str,
+        limit: i64,
+        offset: i64,
+    ) -> catchlight_core::Result<Vec<MediaFile>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, path, filename, media_type, size_bytes, width, height,
+                        created_at, modified_at, blake3_hash, dhash, latitude, longitude
+                 FROM media_files
+                 WHERE media_type = ?1 AND is_deleted = 0
+                 ORDER BY COALESCE(created_at, modified_at) DESC
+                 LIMIT ?2 OFFSET ?3",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(params![media_type, limit, offset], Self::map_media_row)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn get_media_count_by_type(&self, media_type: &str) -> catchlight_core::Result<i64> {
+        let conn = self.conn();
+        conn.query_row(
+            "SELECT COUNT(*) FROM media_files WHERE media_type = ?1 AND is_deleted = 0",
+            params![media_type],
+            |row| row.get(0),
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))
     }
 
     pub fn list_watched_folders(&self) -> catchlight_core::Result<Vec<WatchedFolder>> {
@@ -196,7 +329,7 @@ impl Database {
             .prepare(
                 "SELECT w.id, w.path, COALESCE(COUNT(m.id), 0) as media_count, w.last_scan_at as last_scan, w.scan_status
                  FROM watched_folders w
-                 LEFT JOIN media_files m ON m.folder_id = w.id
+                 LEFT JOIN media_files m ON m.folder_id = w.id AND m.is_deleted = 0
                  GROUP BY w.id
                  ORDER BY w.added_at",
             )
@@ -215,7 +348,7 @@ impl Database {
         conn.query_row(
             "SELECT w.id, w.path, COALESCE(COUNT(m.id), 0) as media_count, w.last_scan_at as last_scan, w.scan_status
              FROM watched_folders w
-             LEFT JOIN media_files m ON m.folder_id = w.id
+             LEFT JOIN media_files m ON m.folder_id = w.id AND m.is_deleted = 0
              WHERE w.id = ?1
              GROUP BY w.id",
             params![id],
@@ -299,6 +432,7 @@ impl Database {
                         created_at, modified_at, blake3_hash, dhash, latitude, longitude,
                         date(COALESCE(created_at, modified_at)) AS group_date
                  FROM media_files
+                 WHERE is_deleted = 0
                  ORDER BY COALESCE(created_at, modified_at) DESC
                  LIMIT ?1 OFFSET ?2",
             )
@@ -338,8 +472,9 @@ impl Database {
         let prev_id: Option<i64> = conn
             .query_row(
                 "SELECT id FROM media_files
-                 WHERE COALESCE(created_at, modified_at) > (
-                     SELECT COALESCE(created_at, modified_at) FROM media_files WHERE id = ?1
+                 WHERE is_deleted = 0
+                   AND COALESCE(created_at, modified_at) > (
+                     SELECT COALESCE(created_at, modified_at) FROM media_files WHERE id = ?1 AND is_deleted = 0
                  )
                  ORDER BY COALESCE(created_at, modified_at) ASC
                  LIMIT 1",
@@ -352,8 +487,9 @@ impl Database {
         let next_id: Option<i64> = conn
             .query_row(
                 "SELECT id FROM media_files
-                 WHERE COALESCE(created_at, modified_at) < (
-                     SELECT COALESCE(created_at, modified_at) FROM media_files WHERE id = ?1
+                 WHERE is_deleted = 0
+                   AND COALESCE(created_at, modified_at) < (
+                     SELECT COALESCE(created_at, modified_at) FROM media_files WHERE id = ?1 AND is_deleted = 0
                  )
                  ORDER BY COALESCE(created_at, modified_at) DESC
                  LIMIT 1",
@@ -377,5 +513,888 @@ impl Database {
         )
         .optional()
         .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn clear_duplicate_groups(&self) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        conn.execute("DELETE FROM duplicate_groups", [])
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn create_duplicate_group(
+        &self,
+        match_type: &str,
+        media_ids: &[i64],
+        similarities: &[f64],
+    ) -> catchlight_core::Result<i64> {
+        if media_ids.is_empty() {
+            return Err(catchlight_core::Error::Other(
+                "duplicate group requires at least one member".to_string(),
+            ));
+        }
+        if media_ids.len() != similarities.len() {
+            return Err(catchlight_core::Error::Other(
+                "media_ids and similarities length mismatch".to_string(),
+            ));
+        }
+
+        let conn = self.conn();
+        conn.execute(
+            "INSERT INTO duplicate_groups (match_type) VALUES (?1)",
+            params![match_type],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let group_id = conn.last_insert_rowid();
+        for (media_id, similarity) in media_ids.iter().zip(similarities.iter()) {
+            conn.execute(
+                "INSERT INTO duplicate_members (group_id, media_id, similarity) VALUES (?1, ?2, ?3)",
+                params![group_id, media_id, similarity],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        }
+
+        Ok(group_id)
+    }
+
+    pub fn find_exact_duplicates(&self) -> catchlight_core::Result<Vec<DuplicateGroup>> {
+        let hash_groups: Vec<Vec<i64>> = {
+            let conn = self.conn();
+            let mut stmt = conn
+                .prepare(
+                    "SELECT blake3_hash, GROUP_CONCAT(id) AS ids
+                     FROM media_files
+                     WHERE blake3_hash IS NOT NULL AND is_deleted = 0
+                     GROUP BY blake3_hash
+                     HAVING COUNT(*) > 1",
+                )
+                .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+            let rows = stmt
+                .query_map([], |row| {
+                    let ids_str: String = row.get(1)?;
+                    Ok(ids_str)
+                })
+                .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+            let mut groups = Vec::new();
+            for row in rows {
+                let ids_str = row.map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+                let media_ids: Vec<i64> = ids_str
+                    .split(',')
+                    .filter_map(|s| s.parse().ok())
+                    .collect();
+                if media_ids.len() >= 2 {
+                    groups.push(media_ids);
+                }
+            }
+            groups
+        };
+
+        let mut groups = Vec::new();
+        for media_ids in hash_groups {
+            let similarities = vec![1.0; media_ids.len()];
+            let group_id = self.create_duplicate_group("exact", &media_ids, &similarities)?;
+            groups.push(
+                self.get_duplicate_group_by_id(group_id)?
+                    .ok_or_else(|| catchlight_core::Error::Other(format!("group {group_id} not found")))?,
+            );
+        }
+
+        Ok(groups)
+    }
+
+    pub fn find_perceptual_duplicates(
+        &self,
+        threshold: u32,
+    ) -> catchlight_core::Result<Vec<DuplicateGroup>> {
+        let exact_member_ids = self.exact_duplicate_member_ids()?;
+        let candidates = self.load_dhash_candidates(&exact_member_ids)?;
+
+        if candidates.len() < 2 {
+            return Ok(Vec::new());
+        }
+
+        let mut uf = UnionFind::new(candidates.iter().map(|(id, _)| *id));
+        let mut pair_similarities: std::collections::HashMap<(i64, i64), f64> =
+            std::collections::HashMap::new();
+
+        for i in 0..candidates.len() {
+            for j in (i + 1)..candidates.len() {
+                let (id_a, hash_a) = candidates[i];
+                let (id_b, hash_b) = candidates[j];
+                let distance = hamming_distance(hash_a, hash_b);
+                if distance <= threshold {
+                    uf.union(id_a, id_b);
+                    let sim = perceptual_similarity(hash_a, hash_b);
+                    let key = if id_a <= id_b {
+                        (id_a, id_b)
+                    } else {
+                        (id_b, id_a)
+                    };
+                    pair_similarities.insert(key, sim);
+                }
+            }
+        }
+
+        let mut components: std::collections::HashMap<i64, Vec<i64>> =
+            std::collections::HashMap::new();
+        for (id, _) in &candidates {
+            let root = uf.find(*id);
+            components.entry(root).or_default().push(*id);
+        }
+
+        let mut groups = Vec::new();
+        for members in components.values() {
+            if members.len() < 2 {
+                continue;
+            }
+            let mut members = members.clone();
+            members.sort_unstable();
+
+            let mut similarities = Vec::with_capacity(members.len());
+            for &media_id in &members {
+                let mut max_sim: f64 = 0.0;
+                for &other_id in &members {
+                    if media_id == other_id {
+                        continue;
+                    }
+                    let key = if media_id <= other_id {
+                        (media_id, other_id)
+                    } else {
+                        (other_id, media_id)
+                    };
+                    if let Some(&sim) = pair_similarities.get(&key) {
+                        max_sim = max_sim.max(sim);
+                    }
+                }
+                similarities.push(if max_sim > 0.0 { max_sim } else { 1.0 });
+            }
+
+            let group_id = self.create_duplicate_group("perceptual", &members, &similarities)?;
+            groups.push(
+                self.get_duplicate_group_by_id(group_id)?
+                    .ok_or_else(|| catchlight_core::Error::Other(format!("group {group_id} not found")))?,
+            );
+        }
+
+        Ok(groups)
+    }
+
+    fn exact_duplicate_member_ids(&self) -> catchlight_core::Result<std::collections::HashSet<i64>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT DISTINCT dm.media_id
+                 FROM duplicate_members dm
+                 JOIN duplicate_groups dg ON dg.id = dm.group_id
+                 WHERE dg.match_type = 'exact'",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map([], |row| row.get(0))
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let mut ids = std::collections::HashSet::new();
+        for row in rows {
+            ids.insert(row.map_err(|e| catchlight_core::Error::Database(e.to_string()))?);
+        }
+        Ok(ids)
+    }
+
+    fn load_dhash_candidates(
+        &self,
+        exclude_ids: &std::collections::HashSet<i64>,
+    ) -> catchlight_core::Result<Vec<(i64, u64)>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, dhash FROM media_files
+                 WHERE dhash IS NOT NULL AND is_deleted = 0",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, u64>(1)?)))
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let mut candidates = Vec::new();
+        for row in rows {
+            let (id, hash) = row.map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+            if !exclude_ids.contains(&id) {
+                candidates.push((id, hash));
+            }
+        }
+        Ok(candidates)
+    }
+
+    fn get_duplicate_group_by_id(&self, group_id: i64) -> catchlight_core::Result<Option<DuplicateGroup>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT dg.id, dg.match_type, dg.created_at,
+                        dm.media_id, dm.similarity,
+                        m.path, m.filename, m.size_bytes, m.width, m.height,
+                        m.created_at, m.modified_at
+                 FROM duplicate_groups dg
+                 JOIN duplicate_members dm ON dm.group_id = dg.id
+                 JOIN media_files m ON m.id = dm.media_id AND m.is_deleted = 0
+                 WHERE dg.id = ?1
+                 ORDER BY dm.media_id",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(params![group_id], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    DuplicateMember {
+                        media_id: row.get(3)?,
+                        similarity: row.get(4)?,
+                        path: row.get(5)?,
+                        filename: row.get(6)?,
+                        size_bytes: row.get(7)?,
+                        width: row.get(8)?,
+                        height: row.get(9)?,
+                        created_at: row.get(10)?,
+                        modified_at: row.get(11)?,
+                    },
+                ))
+            })
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let mut group: Option<DuplicateGroup> = None;
+        for row in rows {
+            let (id, match_type, created_at, member) =
+                row.map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+            match &mut group {
+                Some(g) => g.members.push(member),
+                None => {
+                    group = Some(DuplicateGroup {
+                        id,
+                        match_type,
+                        created_at,
+                        members: vec![member],
+                    });
+                }
+            }
+        }
+
+        Ok(group)
+    }
+
+    pub fn list_duplicate_groups(&self) -> catchlight_core::Result<Vec<DuplicateGroupDetail>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT dg.id, dg.match_type, dg.created_at,
+                        dm.media_id, dm.similarity,
+                        m.path, m.filename, m.size_bytes, m.width, m.height,
+                        m.created_at, m.modified_at
+                 FROM duplicate_groups dg
+                 JOIN duplicate_members dm ON dm.group_id = dg.id
+                 JOIN media_files m ON m.id = dm.media_id AND m.is_deleted = 0
+                 ORDER BY dg.created_at DESC, dg.id, dm.media_id",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    DuplicateMember {
+                        media_id: row.get(3)?,
+                        similarity: row.get(4)?,
+                        path: row.get(5)?,
+                        filename: row.get(6)?,
+                        size_bytes: row.get(7)?,
+                        width: row.get(8)?,
+                        height: row.get(9)?,
+                        created_at: row.get(10)?,
+                        modified_at: row.get(11)?,
+                    },
+                ))
+            })
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let mut groups: Vec<DuplicateGroupDetail> = Vec::new();
+        for row in rows {
+            let (id, match_type, created_at, member) =
+                row.map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+            if let Some(group) = groups.last_mut() {
+                if group.id == id {
+                    group.members.push(member);
+                    continue;
+                }
+            }
+            groups.push(DuplicateGroupDetail {
+                id,
+                match_type,
+                created_at,
+                members: vec![member],
+            });
+        }
+
+        Ok(groups)
+    }
+
+    pub fn delete_duplicate_group(&self, group_id: i64) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        conn.execute("DELETE FROM duplicate_groups WHERE id = ?1", params![group_id])
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn remove_from_duplicate_group(
+        &self,
+        group_id: i64,
+        media_id: i64,
+    ) -> catchlight_core::Result<()> {
+        {
+            let conn = self.conn();
+            conn.execute(
+                "DELETE FROM duplicate_members WHERE group_id = ?1 AND media_id = ?2",
+                params![group_id, media_id],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        }
+
+        let remaining: i64 = {
+            let conn = self.conn();
+            conn.query_row(
+                "SELECT COUNT(*) FROM duplicate_members WHERE group_id = ?1",
+                params![group_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?
+        };
+
+        if remaining <= 1 {
+            self.delete_duplicate_group(group_id)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn get_duplicate_groups_count(&self) -> catchlight_core::Result<i64> {
+        let conn = self.conn();
+        conn.query_row("SELECT COUNT(*) FROM duplicate_groups", [], |row| row.get(0))
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn resolve_duplicate_group(
+        &self,
+        group_id: i64,
+        keep_media_id: i64,
+        delete_files: bool,
+    ) -> catchlight_core::Result<()> {
+        let group = self
+            .get_duplicate_group_by_id(group_id)?
+            .ok_or_else(|| catchlight_core::Error::Other(format!("group {group_id} not found")))?;
+
+        if !group.members.iter().any(|m| m.media_id == keep_media_id) {
+            return Err(catchlight_core::Error::Other(format!(
+                "media {keep_media_id} is not in group {group_id}"
+            )));
+        }
+
+        for member in &group.members {
+            if member.media_id != keep_media_id && delete_files {
+                self.set_deleted(member.media_id, true)?;
+            }
+        }
+
+        self.delete_duplicate_group(group_id)
+    }
+
+    pub fn toggle_favorite(&self, media_id: i64) -> catchlight_core::Result<bool> {
+        let conn = self.conn();
+        let (current_favorite, is_deleted): (i64, i64) = conn
+            .query_row(
+                "SELECT is_favorite, is_deleted FROM media_files WHERE id = ?1",
+                params![media_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        if is_deleted != 0 {
+            return Err(catchlight_core::Error::Other(format!(
+                "cannot favorite deleted media {media_id}"
+            )));
+        }
+
+        let new_value = if current_favorite == 0 { 1 } else { 0 };
+        conn.execute(
+            "UPDATE media_files SET is_favorite = ?1 WHERE id = ?2",
+            params![new_value, media_id],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        Ok(new_value == 1)
+    }
+
+    pub fn set_deleted(&self, media_id: i64, deleted: bool) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        if deleted {
+            conn.execute(
+                "UPDATE media_files SET is_deleted = 1, deleted_at = datetime('now') WHERE id = ?1",
+                params![media_id],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        } else {
+            conn.execute(
+                "UPDATE media_files SET is_deleted = 0, deleted_at = NULL WHERE id = ?1",
+                params![media_id],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        }
+        Ok(())
+    }
+
+    pub fn list_deleted_media(&self) -> catchlight_core::Result<Vec<MediaFile>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, path, filename, media_type, size_bytes, width, height,
+                        created_at, modified_at, blake3_hash, dhash, latitude, longitude
+                 FROM media_files
+                 WHERE is_deleted = 1
+                 ORDER BY deleted_at DESC",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map([], Self::map_media_row)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn permanently_delete_media(&self, media_id: i64) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        let deleted: i64 = conn
+            .query_row(
+                "SELECT is_deleted FROM media_files WHERE id = ?1",
+                params![media_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        if deleted == 0 {
+            return Err(catchlight_core::Error::Other(format!(
+                "media {media_id} is not in trash; soft-delete before permanent delete"
+            )));
+        }
+
+        conn.execute("DELETE FROM media_files WHERE id = ?1", params![media_id])
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn cleanup_deleted_older_than(&self, days: i64) -> catchlight_core::Result<usize> {
+        if days <= 0 {
+            return Err(catchlight_core::Error::Other(
+                "cleanup days must be positive".to_string(),
+            ));
+        }
+        let conn = self.conn();
+        let deleted = conn
+            .execute(
+                "DELETE FROM media_files
+                 WHERE is_deleted = 1
+                   AND deleted_at IS NOT NULL
+                   AND deleted_at < datetime('now', ?1)",
+                params![format!("-{days} days")],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(deleted)
+    }
+
+    pub fn get_location_groups(&self) -> catchlight_core::Result<Vec<LocationGroup>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT country, city, COUNT(*) AS cnt, MIN(id) AS sample_id
+                 FROM media_files
+                 WHERE country IS NOT NULL AND is_deleted = 0
+                 GROUP BY country, city
+                 ORDER BY country, city",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(LocationGroup {
+                    country: row.get(0)?,
+                    city: row.get(1)?,
+                    count: row.get(2)?,
+                    sample_media_id: row.get(3)?,
+                })
+            })
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn get_media_by_location(
+        &self,
+        country: &str,
+        city: Option<&str>,
+        limit: i64,
+        offset: i64,
+    ) -> catchlight_core::Result<Vec<MediaFile>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, path, filename, media_type, size_bytes, width, height,
+                        created_at, modified_at, blake3_hash, dhash, latitude, longitude
+                 FROM media_files
+                 WHERE country = ?1 AND is_deleted = 0
+                   AND ((?2 IS NULL AND city IS NULL) OR city = ?2)
+                 ORDER BY COALESCE(created_at, modified_at) DESC
+                 LIMIT ?3 OFFSET ?4",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(params![country, city, limit, offset], Self::map_media_row)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn update_media_location(
+        &self,
+        media_id: i64,
+        city: &str,
+        country: &str,
+    ) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        conn.execute(
+            "UPDATE media_files SET city = ?1, country = ?2 WHERE id = ?3",
+            params![city, country, media_id],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn create_album(
+        &self,
+        name: &str,
+        description: Option<&str>,
+    ) -> catchlight_core::Result<Album> {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            return Err(catchlight_core::Error::Other(
+                "album name cannot be empty".to_string(),
+            ));
+        }
+
+        let conn = self.conn();
+        conn.execute(
+            "INSERT INTO albums (name, description) VALUES (?1, ?2)",
+            params![trimmed, description],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let id = conn.last_insert_rowid();
+        self.get_album(id)?
+            .ok_or_else(|| catchlight_core::Error::Other(format!("album {id} not found after insert")))
+    }
+
+    pub fn update_album(
+        &self,
+        id: i64,
+        name: &str,
+        description: Option<&str>,
+    ) -> catchlight_core::Result<()> {
+        let trimmed = name.trim();
+        if trimmed.is_empty() {
+            return Err(catchlight_core::Error::Other(
+                "album name cannot be empty".to_string(),
+            ));
+        }
+
+        let conn = self.conn();
+        conn.execute(
+            "UPDATE albums SET name = ?1, description = ?2, updated_at = datetime('now') WHERE id = ?3",
+            params![trimmed, description, id],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn delete_album(&self, id: i64) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        conn.execute("DELETE FROM albums WHERE id = ?1", params![id])
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn list_albums(&self) -> catchlight_core::Result<Vec<Album>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT a.id, a.name, a.description, a.cover_media_id,
+                        COALESCE(COUNT(ai.media_id), 0) AS media_count,
+                        a.created_at, a.updated_at
+                 FROM albums a
+                 LEFT JOIN album_items ai ON ai.album_id = a.id
+                 GROUP BY a.id
+                 ORDER BY a.updated_at DESC",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map([], map_album_row)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn get_album(&self, id: i64) -> catchlight_core::Result<Option<Album>> {
+        let conn = self.conn();
+        conn.query_row(
+            "SELECT a.id, a.name, a.description, a.cover_media_id,
+                    COALESCE(COUNT(ai.media_id), 0) AS media_count,
+                    a.created_at, a.updated_at
+             FROM albums a
+             LEFT JOIN album_items ai ON ai.album_id = a.id
+             WHERE a.id = ?1
+             GROUP BY a.id",
+            params![id],
+            map_album_row,
+        )
+        .optional()
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn add_to_album(&self, album_id: i64, media_ids: &[i64]) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        for media_id in media_ids {
+            conn.execute(
+                "INSERT OR IGNORE INTO album_items (album_id, media_id) VALUES (?1, ?2)",
+                params![album_id, media_id],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        }
+        conn.execute(
+            "UPDATE albums SET updated_at = datetime('now') WHERE id = ?1",
+            params![album_id],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn remove_from_album(&self, album_id: i64, media_id: i64) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        conn.execute(
+            "DELETE FROM album_items WHERE album_id = ?1 AND media_id = ?2",
+            params![album_id, media_id],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        conn.execute(
+            "UPDATE albums SET updated_at = datetime('now') WHERE id = ?1",
+            params![album_id],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn get_album_media(
+        &self,
+        album_id: i64,
+        limit: i64,
+        offset: i64,
+    ) -> catchlight_core::Result<Vec<MediaFile>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT m.id, m.path, m.filename, m.media_type, m.size_bytes, m.width, m.height,
+                        m.created_at, m.modified_at, m.blake3_hash, m.dhash, m.latitude, m.longitude
+                 FROM album_items ai
+                 JOIN media_files m ON m.id = ai.media_id
+                 WHERE ai.album_id = ?1 AND m.is_deleted = 0
+                 ORDER BY ai.sort_order, ai.added_at DESC
+                 LIMIT ?2 OFFSET ?3",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(params![album_id, limit, offset], Self::map_media_row)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn set_album_cover(&self, album_id: i64, media_id: i64) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        conn.execute(
+            "UPDATE albums SET cover_media_id = ?1, updated_at = datetime('now') WHERE id = ?2",
+            params![media_id, album_id],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn get_favorites(&self, limit: i64, offset: i64) -> catchlight_core::Result<Vec<MediaFile>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, path, filename, media_type, size_bytes, width, height,
+                        created_at, modified_at, blake3_hash, dhash, latitude, longitude
+                 FROM media_files
+                 WHERE is_favorite = 1 AND is_deleted = 0
+                 ORDER BY created_at DESC
+                 LIMIT ?1 OFFSET ?2",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(params![limit, offset], Self::map_media_row)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn get_favorites_count(&self) -> catchlight_core::Result<i64> {
+        let conn = self.conn();
+        conn.query_row(
+            "SELECT COUNT(*) FROM media_files WHERE is_favorite = 1 AND is_deleted = 0",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn search_media(
+        &self,
+        query: &str,
+        limit: i64,
+        offset: i64,
+    ) -> catchlight_core::Result<Vec<MediaFile>> {
+        let fts_query = sanitize_fts_query(query);
+        if fts_query.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT m.id, m.path, m.filename, m.media_type, m.size_bytes, m.width, m.height,
+                        m.created_at, m.modified_at, m.blake3_hash, m.dhash, m.latitude, m.longitude
+                 FROM media_fts f
+                 JOIN media_files m ON m.id = f.rowid
+                 WHERE media_fts MATCH ?1 AND m.is_deleted = 0
+                 ORDER BY rank
+                 LIMIT ?2 OFFSET ?3",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(params![fts_query, limit, offset], Self::map_media_row)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn search_media_count(&self, query: &str) -> catchlight_core::Result<i64> {
+        let fts_query = sanitize_fts_query(query);
+        if fts_query.is_empty() {
+            return Ok(0);
+        }
+
+        let conn = self.conn();
+        conn.query_row(
+            "SELECT COUNT(*)
+             FROM media_fts f
+             JOIN media_files m ON m.id = f.rowid
+             WHERE media_fts MATCH ?1 AND m.is_deleted = 0",
+            params![fts_query],
+            |row| row.get(0),
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn get_location_stats(&self) -> catchlight_core::Result<LocationStats> {
+        let conn = self.conn();
+
+        let total_with_gps: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM media_files
+                 WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND is_deleted = 0",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let countries: i64 = conn
+            .query_row(
+                "SELECT COUNT(DISTINCT country) FROM media_files
+                 WHERE country IS NOT NULL AND is_deleted = 0",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let cities: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM (
+                     SELECT DISTINCT country, city FROM media_files
+                     WHERE country IS NOT NULL AND is_deleted = 0
+                 )",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        Ok(LocationStats {
+            total_with_gps,
+            countries,
+            cities,
+        })
+    }
+}
+
+struct UnionFind {
+    parent: std::collections::HashMap<i64, i64>,
+}
+
+impl UnionFind {
+    fn new(ids: impl IntoIterator<Item = i64>) -> Self {
+        let parent = ids.into_iter().map(|id| (id, id)).collect();
+        Self { parent }
+    }
+
+    fn find(&mut self, id: i64) -> i64 {
+        let parent = self.parent.get(&id).copied().unwrap_or(id);
+        if parent != id {
+            let root = self.find(parent);
+            self.parent.insert(id, root);
+            root
+        } else {
+            id
+        }
+    }
+
+    fn union(&mut self, a: i64, b: i64) {
+        let root_a = self.find(a);
+        let root_b = self.find(b);
+        if root_a != root_b {
+            self.parent.insert(root_b, root_a);
+        }
     }
 }

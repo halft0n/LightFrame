@@ -1,7 +1,10 @@
 pub mod migrations;
 pub mod repo;
 
-pub use repo::{MediaNeighbors, TimelineGroup, WatchedFolder};
+pub use repo::{
+    Album, DuplicateGroup, DuplicateGroupDetail, DuplicateMember, LocationGroup, LocationStats,
+    MediaNeighbors, TimelineGroup, WatchedFolder,
+};
 
 use catchlight_core::config;
 use rusqlite::Connection;

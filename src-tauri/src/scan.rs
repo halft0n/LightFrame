@@ -263,6 +263,16 @@ async fn process_file(
         let _ = db.set_micro_thumb(media_id, &blob);
     }
 
+    if let (Some(lat), Some(lon)) = (media.latitude, media.longitude) {
+        if let Some(loc) = catchlight_geo::reverse_geocode(lat, lon) {
+            let country = loc.country.as_deref().unwrap_or("");
+            let city = loc.city.as_deref().unwrap_or("");
+            if !country.is_empty() {
+                let _ = db.update_media_location(media_id, city, country);
+            }
+        }
+    }
+
     Ok(())
 }
 

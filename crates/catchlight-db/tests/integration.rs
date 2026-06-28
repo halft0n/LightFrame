@@ -343,3 +343,229 @@ fn set_and_get_micro_thumb() {
     assert!(retrieved.is_some());
     assert_eq!(retrieved.unwrap(), blob);
 }
+
+fn sample_media_with_hashes(path: &str, blake3: Option<&str>, dhash: Option<u64>) -> MediaFile {
+    let mut media = sample_media(path);
+    media.blake3_hash = blake3.map(str::to_string);
+    media.dhash = dhash;
+    media
+}
+
+#[test]
+fn test_find_exact_duplicates() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let id1 = db
+        .upsert_media(
+            fid,
+            &sample_media_with_hashes("/photos/a.jpg", Some("hash_same"), Some(1)),
+        )
+        .unwrap();
+    let id2 = db
+        .upsert_media(
+            fid,
+            &sample_media_with_hashes("/photos/b.jpg", Some("hash_same"), Some(2)),
+        )
+        .unwrap();
+    db.upsert_media(
+        fid,
+        &sample_media_with_hashes("/photos/c.jpg", Some("hash_unique"), Some(3)),
+    )
+    .unwrap();
+
+    let groups = db.find_exact_duplicates().unwrap();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].match_type, "exact");
+    assert_eq!(groups[0].members.len(), 2);
+
+    let member_ids: Vec<i64> = groups[0].members.iter().map(|m| m.media_id).collect();
+    assert!(member_ids.contains(&id1));
+    assert!(member_ids.contains(&id2));
+    assert!(groups[0].members.iter().all(|m| (m.similarity - 1.0).abs() < f64::EPSILON));
+}
+
+#[test]
+fn test_find_perceptual_duplicates() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    // Three hashes forming a chain: A~B, B~C (connected component)
+    let hash_a = 0u64;
+    let hash_b = 1u64; // distance 1 from A
+    let hash_c = 3u64; // distance 1 from B, distance 2 from A
+    let hash_d = 0xFFFF_FFFFu64; // 32 bits different from hash_a
+
+    db.upsert_media(
+        fid,
+        &sample_media_with_hashes("/photos/a.jpg", Some("unique_a"), Some(hash_a)),
+    )
+    .unwrap();
+    db.upsert_media(
+        fid,
+        &sample_media_with_hashes("/photos/b.jpg", Some("unique_b"), Some(hash_b)),
+    )
+    .unwrap();
+    db.upsert_media(
+        fid,
+        &sample_media_with_hashes("/photos/c.jpg", Some("unique_c"), Some(hash_c)),
+    )
+    .unwrap();
+    db.upsert_media(
+        fid,
+        &sample_media_with_hashes("/photos/d.jpg", Some("unique_d"), Some(hash_d)),
+    )
+    .unwrap();
+
+    let groups = db.find_perceptual_duplicates(10).unwrap();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].match_type, "perceptual");
+    assert_eq!(groups[0].members.len(), 3);
+}
+
+#[test]
+fn test_find_perceptual_skips_exact_group_members() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let id1 = db
+        .upsert_media(
+            fid,
+            &sample_media_with_hashes("/photos/a.jpg", Some("same_hash"), Some(0)),
+        )
+        .unwrap();
+    let id2 = db
+        .upsert_media(
+            fid,
+            &sample_media_with_hashes("/photos/b.jpg", Some("same_hash"), Some(1)),
+        )
+        .unwrap();
+    db.find_exact_duplicates().unwrap();
+
+    let id3 = db
+        .upsert_media(
+            fid,
+            &sample_media_with_hashes("/photos/c.jpg", Some("other"), Some(2)),
+        )
+        .unwrap();
+
+    let groups = db.find_perceptual_duplicates(10).unwrap();
+    let perceptual_member_ids: Vec<i64> = groups
+        .iter()
+        .flat_map(|g| g.members.iter().map(|m| m.media_id))
+        .collect();
+    assert!(!perceptual_member_ids.contains(&id1));
+    assert!(!perceptual_member_ids.contains(&id2));
+    assert!(!perceptual_member_ids.contains(&id3));
+}
+
+#[test]
+fn test_create_and_list_duplicate_groups() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let id1 = db.upsert_media(fid, &sample_media("/photos/a.jpg")).unwrap();
+    let id2 = db.upsert_media(fid, &sample_media("/photos/b.jpg")).unwrap();
+
+    let group_id = db
+        .create_duplicate_group("exact", &[id1, id2], &[1.0, 1.0])
+        .unwrap();
+    assert!(group_id > 0);
+
+    let groups = db.list_duplicate_groups().unwrap();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].id, group_id);
+    assert_eq!(groups[0].members.len(), 2);
+    assert_eq!(groups[0].members[0].filename, "a.jpg");
+
+    assert_eq!(db.get_duplicate_groups_count().unwrap(), 1);
+
+    db.remove_from_duplicate_group(group_id, id1).unwrap();
+    assert_eq!(db.get_duplicate_groups_count().unwrap(), 0);
+}
+
+#[test]
+fn test_resolve_duplicate() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let id1 = db.upsert_media(fid, &sample_media("/photos/keep.jpg")).unwrap();
+    let id2 = db.upsert_media(fid, &sample_media("/photos/remove.jpg")).unwrap();
+    let group_id = db
+        .create_duplicate_group("exact", &[id1, id2], &[1.0, 1.0])
+        .unwrap();
+
+    db.resolve_duplicate_group(group_id, id1, true).unwrap();
+
+    assert_eq!(db.get_duplicate_groups_count().unwrap(), 0);
+    assert!(db.get_media_by_id(id1).unwrap().is_some());
+
+    let deleted = db.list_deleted_media().unwrap();
+    assert_eq!(deleted.len(), 1);
+    assert_eq!(deleted[0].id, id2);
+}
+
+#[test]
+fn test_dismiss_duplicate_group() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let id1 = db.upsert_media(fid, &sample_media("/photos/a.jpg")).unwrap();
+    let id2 = db.upsert_media(fid, &sample_media("/photos/b.jpg")).unwrap();
+    let group_id = db
+        .create_duplicate_group("exact", &[id1, id2], &[1.0, 1.0])
+        .unwrap();
+
+    db.delete_duplicate_group(group_id).unwrap();
+    assert_eq!(db.get_duplicate_groups_count().unwrap(), 0);
+    assert_eq!(db.list_duplicate_groups().unwrap().len(), 0);
+}
+
+#[test]
+fn test_toggle_favorite() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db.upsert_media(fid, &sample_media("/photos/a.jpg")).unwrap();
+
+    let favorited = db.toggle_favorite(media_id).unwrap();
+    assert!(favorited);
+
+    let unfavorited = db.toggle_favorite(media_id).unwrap();
+    assert!(!unfavorited);
+}
+
+#[test]
+fn test_soft_delete_and_cleanup() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db.upsert_media(fid, &sample_media("/photos/a.jpg")).unwrap();
+
+    db.set_deleted(media_id, true).unwrap();
+    let deleted = db.list_deleted_media().unwrap();
+    assert_eq!(deleted.len(), 1);
+    assert_eq!(deleted[0].id, media_id);
+
+    // Set deleted_at to 40 days ago for cleanup test
+    {
+        let conn = db.conn();
+        conn.execute(
+            "UPDATE media_files SET deleted_at = datetime('now', '-40 days') WHERE id = ?1",
+            rusqlite::params![media_id],
+        )
+        .unwrap();
+    }
+
+    let cleaned = db.cleanup_deleted_older_than(30).unwrap();
+    assert_eq!(cleaned, 1);
+    assert!(db.get_media_by_id(media_id).unwrap().is_none());
+
+    let media_id2 = db.upsert_media(fid, &sample_media("/photos/b.jpg")).unwrap();
+    db.set_deleted(media_id2, true).unwrap();
+    db.set_deleted(media_id2, false).unwrap();
+    assert!(db.list_deleted_media().unwrap().is_empty());
+
+    let media_id3 = db.upsert_media(fid, &sample_media("/photos/c.jpg")).unwrap();
+    db.set_deleted(media_id3, true).unwrap();
+    db.permanently_delete_media(media_id3).unwrap();
+    assert!(db.get_media_by_id(media_id3).unwrap().is_none());
+}

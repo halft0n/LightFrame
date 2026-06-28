@@ -8,6 +8,8 @@ const NAV_SECTIONS = [
       { key: "sidebar.allPhotos", icon: "🖼", view: "all" as const },
       { key: "sidebar.timeline", icon: "📅", view: "timeline" as const },
       { key: "sidebar.locations", icon: "📍", view: "locations" as const },
+      { key: "sidebar.favorites", icon: "❤️", view: "favorites" as const },
+      { key: "sidebar.albums", icon: "📁", view: "albums" as const },
       { key: "sidebar.people", icon: "👤", view: "people" as const },
     ],
   },
@@ -16,6 +18,7 @@ const NAV_SECTIONS = [
     items: [
       { key: "sidebar.duplicates", icon: "🔍", view: "duplicates" as const },
       { key: "sidebar.screenshots", icon: "📱", view: "screenshots" as const },
+      { key: "sidebar.deleted", icon: "🗑", view: "deleted" as const },
     ],
   },
 ] as const;
@@ -62,7 +65,10 @@ export function Sidebar() {
                   <button
                     type="button"
                     onClick={() => handleNav(item.view)}
-                    className={navButtonClass(currentView === item.view)}
+                    className={navButtonClass(
+                      currentView === item.view ||
+                        (item.view === "albums" && currentView === "album-detail"),
+                    )}
                   >
                     <span className="text-base">{item.icon}</span>
                     <span>{t(item.key)}</span>

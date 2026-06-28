@@ -24,6 +24,18 @@ pub fn run(conn: &Connection) -> catchlight_core::Result<()> {
         v2(conn)?;
     }
 
+    if current < 3 {
+        v3(conn)?;
+    }
+
+    if current < 4 {
+        v4(conn)?;
+    }
+
+    if current < 5 {
+        v5(conn)?;
+    }
+
     Ok(())
 }
 
@@ -121,6 +133,102 @@ fn v2(conn: &Connection) -> catchlight_core::Result<()> {
     conn.execute(
         "INSERT OR IGNORE INTO schema_version (version) VALUES (2)",
         [],
+    )
+    .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+fn v3(conn: &Connection) -> catchlight_core::Result<()> {
+    let columns: Vec<String> = conn
+        .prepare("PRAGMA table_info(media_files)")
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if !columns.iter().any(|c| c == "is_favorite") {
+        conn.execute(
+            "ALTER TABLE media_files ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+    }
+
+    if !columns.iter().any(|c| c == "is_deleted") {
+        conn.execute(
+            "ALTER TABLE media_files ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+    }
+
+    if !columns.iter().any(|c| c == "deleted_at") {
+        conn.execute(
+            "ALTER TABLE media_files ADD COLUMN deleted_at TEXT",
+            [],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+    }
+
+    conn.execute(
+        "INSERT OR IGNORE INTO schema_version (version) VALUES (3)",
+        [],
+    )
+    .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+fn v4(conn: &Connection) -> catchlight_core::Result<()> {
+    conn.execute_batch(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS media_fts USING fts5(
+            filename,
+            city,
+            country,
+            media_type,
+            content='media_files',
+            content_rowid='id'
+        );
+
+        CREATE TRIGGER IF NOT EXISTS media_fts_insert AFTER INSERT ON media_files BEGIN
+            INSERT INTO media_fts(rowid, filename, city, country, media_type)
+            VALUES (new.id, new.filename, new.city, new.country, new.media_type);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS media_fts_delete AFTER DELETE ON media_files BEGIN
+            INSERT INTO media_fts(media_fts, rowid, filename, city, country, media_type)
+            VALUES ('delete', old.id, old.filename, old.city, old.country, old.media_type);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS media_fts_update AFTER UPDATE ON media_files BEGIN
+            INSERT INTO media_fts(media_fts, rowid, filename, city, country, media_type)
+            VALUES ('delete', old.id, old.filename, old.city, old.country, old.media_type);
+            INSERT INTO media_fts(rowid, filename, city, country, media_type)
+            VALUES (new.id, new.filename, new.city, new.country, new.media_type);
+        END;
+
+        INSERT INTO media_fts(rowid, filename, city, country, media_type)
+        SELECT id, filename, city, country, media_type FROM media_files;
+
+        INSERT OR IGNORE INTO schema_version (version) VALUES (4);",
+    )
+    .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+fn v5(conn: &Connection) -> catchlight_core::Result<()> {
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_media_not_deleted ON media_files(is_deleted)
+            WHERE is_deleted = 0;
+        CREATE INDEX IF NOT EXISTS idx_media_type_active ON media_files(media_type)
+            WHERE is_deleted = 0;
+        CREATE INDEX IF NOT EXISTS idx_media_deleted_at ON media_files(deleted_at)
+            WHERE is_deleted = 1;
+
+        INSERT OR IGNORE INTO schema_version (version) VALUES (5);",
     )
     .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 

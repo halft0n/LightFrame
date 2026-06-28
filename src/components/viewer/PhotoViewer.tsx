@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   getMediaById,
   getMediaList,
   getMediaNeighbors,
+  getOriginalUrl,
   getThumbnailUrl,
   type MediaItem,
 } from "@/lib/tauri";
@@ -151,7 +151,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
 
   const imageSrc = media
     ? useOriginal
-      ? convertFileSrc(media.path)
+      ? getOriginalUrl(media.path)
       : getThumbnailUrl(media.id, "large")
     : "";
 
