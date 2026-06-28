@@ -104,7 +104,7 @@ export function PhotoGrid({
   const rowHeight = columnWidth + GAP;
 
   const columnCount = Math.max(
-    1,
+    containerWidth > 0 && containerWidth < 768 ? 2 : 1,
     Math.floor((containerWidth + GAP) / (columnWidth + GAP)),
   );
   const rowCount = Math.ceil(mediaItems.length / columnCount);
@@ -241,6 +241,8 @@ export function PhotoGrid({
       )}
       <div ref={parentRef} className="flex-1 overflow-y-auto px-1 py-1">
         <div
+          role="grid"
+          aria-label={t("gallery.gridLabel")}
           style={{
             height: `${rowVirtualizer.getTotalSize()}px`,
             width: "100%",

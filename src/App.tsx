@@ -27,6 +27,7 @@ export default function App() {
   const { totalCount, searchQuery, searchHistory } = useAppStore();
   const [inputValue, setInputValue] = useState(searchQuery);
   const [searchFocused, setSearchFocused] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastAutoRescanRef = useRef(0);
   const searchContainerRef = useRef<HTMLDivElement>(null);
@@ -182,8 +183,36 @@ export default function App() {
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
       <Sidebar />
+
+      {sidebarOpen && (
+        <>
+          <button
+            type="button"
+            className="sidebar-overlay-backdrop fixed inset-0 z-40 bg-black/40 md:hidden"
+            aria-label={t("sidebar.closeSidebar")}
+            onClick={() => setSidebarOpen(false)}
+          />
+          <Sidebar
+            isMobile
+            mobileOpen={sidebarOpen}
+            onMobileClose={() => setSidebarOpen(false)}
+          />
+        </>
+      )}
+
       <main className="flex flex-1 flex-col overflow-hidden">
         <header className="header-glass sticky top-0 z-10 flex h-[44px] shrink-0 items-center gap-3 border-b border-neutral-200/70 px-4 dark:border-neutral-800/70">
+          <button
+            type="button"
+            className="rounded-lg p-1.5 text-neutral-600 transition hover:bg-neutral-200/60 md:hidden dark:text-neutral-300 dark:hover:bg-neutral-800"
+            aria-label={t("sidebar.openMenu")}
+            aria-expanded={sidebarOpen}
+            onClick={() => setSidebarOpen((open) => !open)}
+          >
+            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
+            </svg>
+          </button>
           <div ref={searchContainerRef} className="relative flex flex-1 max-w-2xl">
             <svg
               className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
@@ -214,6 +243,7 @@ export default function App() {
                     type="button"
                     onClick={() => clearSearchHistory()}
                     className="text-xs text-neutral-400 transition hover:text-neutral-600 dark:hover:text-neutral-300"
+                    aria-label={t("search.clearHistory")}
                   >
                     {t("search.clearHistory")}
                   </button>

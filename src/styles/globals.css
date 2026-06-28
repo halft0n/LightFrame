@@ -97,6 +97,49 @@ input:focus:not(:focus-visible) {
   outline: none;
 }
 
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 200ms ease-out both;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 300ms ease-out both;
+  will-change: transform;
+}
+
+.animate-scale-in {
+  animation: scaleIn 250ms ease-out both;
+  will-change: opacity, transform;
+}
+
 @keyframes page-enter {
   from {
     opacity: 0;
@@ -118,17 +161,8 @@ input:focus:not(:focus-visible) {
   will-change: opacity, transform;
 }
 
-@keyframes info-panel-slide-in {
-  from {
-    transform: translateX(100%);
-  }
-  to {
-    transform: translateX(0);
-  }
-}
-
 .info-panel-slide-in {
-  animation: info-panel-slide-in 0.3s ease-out both;
+  animation: slideInRight 300ms ease-out both;
   will-change: transform;
 }
 
@@ -338,4 +372,133 @@ input:focus:not(:focus-visible) {
   height: 12px;
   width: 120px;
   border-radius: 6px;
+}
+
+@keyframes photo-card-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.photo-card-enter {
+  animation: photo-card-fade-in 0.35s ease-out both;
+  animation-delay: calc(var(--stagger-index, 0) * 45ms);
+  will-change: opacity, transform;
+}
+
+.photo-card-image-loaded {
+  animation: fadeIn 200ms ease-out both;
+}
+
+.photo-card-skeleton {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.sidebar-nav-item {
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.15s ease;
+}
+
+.sidebar-section-content {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease-out;
+}
+
+.sidebar-section-content--expanded {
+  grid-template-rows: 1fr;
+}
+
+.sidebar-section-inner {
+  overflow: hidden;
+}
+
+@keyframes modal-fade-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+.photo-viewer-enter {
+  animation: scaleIn 250ms ease-out both;
+  will-change: opacity, transform;
+}
+
+.photo-viewer-exit {
+  animation: modal-fade-out 200ms ease-in both;
+  will-change: opacity, transform;
+}
+
+.sidebar-overlay-backdrop {
+  animation: fadeIn 200ms ease-out both;
+}
+
+@keyframes sidebar-slide-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes sidebar-slide-out {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+.sidebar-mobile {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 50;
+  height: 100%;
+  animation: sidebar-slide-in 0.25s ease-out both;
+  will-change: transform;
+}
+
+.sidebar-mobile--closing {
+  animation: sidebar-slide-out 0.2s ease-in both;
+}
+
+@media (min-width: 768px) {
+  .sidebar-desktop {
+    display: flex;
+  }
+}
+
+@media (max-width: 767px) {
+  .sidebar-desktop-hidden {
+    display: none;
+  }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }

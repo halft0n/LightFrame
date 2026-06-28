@@ -10,6 +10,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - (nothing yet)
 
+## [0.0.8] - 2026-06-28
+
+### Added
+- CSS loading and transition animations (fadeIn, slideInRight, scaleIn)
+- Responsive layout with mobile sidebar hamburger menu
+- ARIA accessibility attributes across all major components
+- Focus-visible keyboard navigation styles
+- Viewer adjacent image preloading (±2 neighbors)
+- `useImagePreloader` hook for background image prefetching
+- `useMediaQuery` hook for responsive breakpoints
+
+### Improved
+- Photo grid adapts to minimum 2 columns on narrow screens
+- Sidebar uses `aria-current="page"` for active navigation
+- PhotoViewer uses `role="dialog"` and `aria-modal` semantics
+- PhotoCard uses `role="gridcell"` with `aria-selected` state
+
+## [0.0.7] - 2026-06-28
+
+### Added
+- EXIF info panel in photo viewer (I key toggle)
+- Drag-and-drop photos to album sidebar
+- LRU thumbnail memory cache (2000 micro / 500 small+large)
+- Keyboard shortcuts (Delete, F, I, E in viewer; Delete, F, Ctrl+A, Esc in grid)
+
+### Fixed
+- CI artifact collection paths for GitHub releases
+- Deadlock in `create_album` database operation
+- Scroll listener option mismatch in PhotoGrid
+- Virtualizer stale row heights on thumbnail size change
+
+## [0.0.6] - 2026-06-28
+
+### Added
+- PHash perceptual deduplication (DCT-based 64-bit hash)
+- "On This Day" memories feature
+- Album editing (rename, set cover, remove items)
+- CI dual-platform testing (Ubuntu + Windows)
+
 ## [0.0.5] - 2026-06-28
 
 ### Added

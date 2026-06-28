@@ -19,6 +19,7 @@ import { useTranslation } from "@/i18n/useTranslation";
 import { VideoPlayer } from "./VideoPlayer";
 import { ImageEditor } from "@/components/editor/ImageEditor";
 import { InfoPanel } from "./InfoPanel";
+import { useImagePreloader } from "@/hooks/useImagePreloader";
 
 interface PhotoViewerProps {
   mediaId: number;
@@ -27,6 +28,7 @@ interface PhotoViewerProps {
 const MIN_ZOOM = 1;
 const MAX_ZOOM = 5;
 const FILMSTRIP_SIZE = 20;
+const VIEWER_EXIT_MS = 200;
 
 function formatMediaDate(item: MediaItem, locale: string): string {
   const raw = item.created_at ?? item.modified_at;
@@ -60,8 +62,22 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   const [editParamsJson, setEditParamsJson] = useState<string | null>(null);
   const [previewKey, setPreviewKey] = useState(0);
   const [rotation, setRotation] = useState(0);
+  const [closing, setClosing] = useState(false);
+  const [currentImageLoaded, setCurrentImageLoaded] = useState(false);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const filmstripRef = useRef<HTMLDivElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  const requestClose = useCallback(() => {
+    if (closing) return;
+    setClosing(true);
+  }, [closing]);
+
+  useEffect(() => {
+    if (!closing) return;
+    const timer = window.setTimeout(() => closeViewer(), VIEWER_EXIT_MS);
+    return () => window.clearTimeout(timer);
+  }, [closing]);
 
   const resetView = useCallback(() => {
     setZoom(1);
@@ -69,6 +85,17 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
     setUseOriginal(false);
     setRotation(0);
   }, []);
+
+  useEffect(() => {
+    setCurrentImageLoaded(false);
+  }, [mediaId, previewKey, useOriginal]);
+
+  useImagePreloader({
+    mediaId,
+    filmstrip,
+    currentImageLoaded,
+    enabled: media?.media_type !== "Video",
+  });
 
   useEffect(() => {
     resetView();
@@ -101,6 +128,10 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   }, [mediaId, resetView]);
 
   useEffect(() => {
+    dialogRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
     const el = filmstripRef.current;
     if (!el) return;
     const active = el.querySelector(`[data-id="${mediaId}"]`);
@@ -122,7 +153,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
       if (editorOpen) return;
 
       if (e.key === "Escape") {
-        closeViewer();
+        requestClose();
         return;
       }
 
@@ -169,7 +200,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [navigate, neighbors, media?.media_type, mediaId, editorOpen, handleToggleFavorite]);
+  }, [navigate, neighbors, media?.media_type, mediaId, editorOpen, handleToggleFavorite, requestClose]);
 
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
@@ -211,6 +242,10 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
 
   const handleLargeLoaded = useCallback(() => {
     setUseOriginal(true);
+  }, []);
+
+  const handleMainImageLoad = useCallback(() => {
+    setCurrentImageLoaded(true);
   }, []);
 
   const handleShare = useCallback(async () => {
@@ -258,11 +293,20 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
     : "";
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-neutral-950 text-white">
+    <div
+      ref={dialogRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("viewer.title")}
+      tabIndex={-1}
+      className={`flex min-h-0 flex-1 flex-col overflow-hidden bg-neutral-950 text-white outline-none ${
+        closing ? "photo-viewer-exit" : "photo-viewer-enter"
+      }`}
+    >
       <div className="flex shrink-0 items-center gap-3 border-b border-white/10 px-4 py-2">
         <button
           type="button"
-          onClick={closeViewer}
+          onClick={requestClose}
           className="rounded-lg px-2 py-1.5 text-lg leading-none text-neutral-300 transition hover:bg-white/10"
           title={t("viewer.back")}
           aria-label={t("viewer.back")}
@@ -309,6 +353,8 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
               showInfo ? "bg-white/10 text-white" : "text-neutral-300"
             }`}
             title={t("viewer.info")}
+            aria-label={t("viewer.info")}
+            aria-pressed={showInfo}
           >
             {t("viewer.info")}
           </button>
@@ -338,6 +384,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
               type="button"
               onClick={() => setEditorOpen(true)}
               className="rounded-lg px-3 py-1.5 text-sm text-neutral-300 transition hover:bg-white/10"
+              aria-label={t("viewer.edit")}
             >
               {t("viewer.edit")}
             </button>
@@ -387,6 +434,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
                       src={imageSrc}
                       alt={media.filename}
                       draggable={false}
+                      onLoad={handleMainImageLoad}
                       style={{
                         transform: imageTransform || undefined,
                         maxHeight: "100%",
@@ -411,20 +459,25 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
         <div
           ref={filmstripRef}
           className="flex shrink-0 gap-2 overflow-x-auto border-t border-white/10 px-4 py-3"
+          role="tablist"
+          aria-label={t("viewer.title")}
         >
           {filmstrip.map((item) => (
             <button
               key={item.id}
               type="button"
+              role="tab"
+              aria-selected={item.id === mediaId}
               data-id={item.id}
               onClick={() => openViewer(item.id)}
               className={`h-16 w-16 shrink-0 overflow-hidden rounded-md transition ${
                 item.id === mediaId ? "ring-2 ring-blue-500" : "opacity-70 hover:opacity-100"
               }`}
+              aria-label={item.filename}
             >
               <img
                 src={getThumbnailUrl(item.id, "small")}
-                alt={item.filename}
+                alt=""
                 className="h-full w-full object-cover"
               />
             </button>

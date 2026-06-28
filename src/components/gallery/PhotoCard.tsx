@@ -9,6 +9,8 @@ interface PhotoCardProps {
   selectedMediaIds?: number[];
   onSelect: (id: number, event: React.MouseEvent) => void;
   onOpen?: (id: number) => void;
+  /** Index within the grid for staggered fade-in animation */
+  animationIndex?: number;
 }
 
 function formatDuration(seconds: number): string {
@@ -23,6 +25,7 @@ export const PhotoCard = memo(function PhotoCard({
   selectedMediaIds = [],
   onSelect,
   onOpen,
+  animationIndex = 0,
 }: PhotoCardProps) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
@@ -39,16 +42,20 @@ export const PhotoCard = memo(function PhotoCard({
   return (
     <button
       type="button"
+      role="gridcell"
+      aria-selected={selected}
+      aria-label={item.filename}
       draggable
       onDragStart={handleDragStart}
       onClick={(e) => onSelect(item.id, e)}
       onDoubleClick={() => onOpen?.(item.id)}
-      className={`photo-card relative aspect-square w-full overflow-hidden text-left ${
+      style={{ "--stagger-index": animationIndex } as React.CSSProperties}
+      className={`photo-card photo-card-enter relative aspect-square w-full overflow-hidden text-left ${
         selected ? "ring-2 ring-blue-500" : ""
       }`}
     >
       {!loaded && !error && (
-        <div className="absolute inset-0 shimmer" aria-hidden="true" />
+        <div className="photo-card-skeleton shimmer" aria-hidden="true" />
       )}
 
       {error ? (
@@ -78,7 +85,7 @@ export const PhotoCard = memo(function PhotoCard({
           decoding="async"
           onLoad={() => setLoaded(true)}
           onError={() => setError(true)}
-          className={`h-full w-full object-cover ${loaded ? "opacity-100" : "opacity-0"}`}
+          className={`h-full w-full object-cover ${loaded ? "photo-card-image-loaded opacity-100" : "opacity-0"}`}
         />
       )}
 

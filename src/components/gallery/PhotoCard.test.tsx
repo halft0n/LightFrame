@@ -56,7 +56,7 @@ describe("PhotoCard", () => {
     const onSelect = vi.fn();
     render(<PhotoCard item={photoItem} selected={false} selectedMediaIds={[]} onSelect={onSelect} />);
 
-    fireEvent.click(screen.getByRole("button"));
+    fireEvent.click(screen.getByRole("gridcell"));
     expect(onSelect).toHaveBeenCalledWith(1, expect.any(Object));
   });
 });
