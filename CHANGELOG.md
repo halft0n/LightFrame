@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - (nothing yet)
 
+## [0.0.10] - 2026-06-28
+
+### Fixed
+- CI build error: tracing `char` type in MFT module
+- Filmstrip now context-aware (shows neighbors from current view)
+- Mutex poison handling: all DB locks propagate errors instead of panicking
+- `selectedSet` memoized in PhotoGrid to avoid unnecessary re-renders
+- Hardcoded em dash `"—"` replaced with i18n key `common.notAvailable`
+- Error messages enriched with context (media_id, path, folder)
+- Batch operations capped at 1000 items to prevent performance issues
+- `getFavoriteState` now logs errors instead of silently returning false
+
 ## [0.0.9] - 2026-06-28
 
 ### Added

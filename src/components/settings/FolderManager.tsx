@@ -36,8 +36,8 @@ function ScanIndicator({ status }: { status: ScanStatus }) {
   return null;
 }
 
-function formatLastScan(value?: string | null): string {
-  if (!value) return "—";
+function formatLastScan(value: string | null | undefined, notAvailable: string): string {
+  if (!value) return notAvailable;
   try {
     return new Date(value).toLocaleString();
   } catch {
@@ -203,7 +203,7 @@ export function FolderManager() {
                         {t("folder.mediaCount")}: {folder.media_count}
                       </span>
                       <span className="text-xs text-neutral-400">
-                        {t("folder.lastScan")}: {formatLastScan(folder.last_scan)}
+                        {t("folder.lastScan")}: {formatLastScan(folder.last_scan, t("common.notAvailable"))}
                       </span>
                       <ScanIndicator status={folder.scan_status} />
                     </div>

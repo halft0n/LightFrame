@@ -12,9 +12,9 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / 1073741824).toFixed(1)} GB`;
 }
 
-function formatMediaDate(item: MediaItem, locale: string): string {
+function formatMediaDate(item: MediaItem, locale: string, notAvailable: string): string {
   const raw = item.created_at ?? item.modified_at;
-  if (!raw) return "—";
+  if (!raw) return notAvailable;
   const date = new Date(raw);
   return new Intl.DateTimeFormat(locale === "zh-CN" ? "zh-CN" : "en-US", {
     year: "numeric",
@@ -69,7 +69,7 @@ export function InfoPanel({ media }: InfoPanelProps) {
         <InfoRow label={t("viewer.size")} value={formatFileSize(media.size_bytes)} />
         <InfoRow label={t("viewer.type")} value={media.media_type} />
         {cameraInfo && <InfoRow label={t("viewer.camera")} value={cameraInfo} />}
-        <InfoRow label={t("viewer.date")} value={formatMediaDate(media, locale)} />
+        <InfoRow label={t("viewer.date")} value={formatMediaDate(media, locale, t("common.notAvailable"))} />
         {hasGps && (
           <InfoRow
             label={t("viewer.gps")}

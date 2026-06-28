@@ -12,6 +12,23 @@ use catchlight_thumbnail::thumb_path;
 use serde::Serialize;
 use tauri::{AppHandle, State};
 
+const MAX_BATCH_SIZE: usize = 1000;
+
+fn check_batch_size(media_ids: &[i64]) -> Result<(), String> {
+    if media_ids.len() > MAX_BATCH_SIZE {
+        return Err(format!(
+            "batch size {} exceeds maximum {}",
+            media_ids.len(),
+            MAX_BATCH_SIZE
+        ));
+    }
+    Ok(())
+}
+
+fn db_err(cmd: &str, context: &str, e: impl std::fmt::Display) -> String {
+    format!("{cmd}({context}): {e}")
+}
+
 #[derive(Serialize)]
 pub struct DedupScanResult {
     pub exact_groups: usize,
@@ -133,6 +150,7 @@ pub fn batch_export(
     media_ids: Vec<i64>,
     output_dir: String,
 ) -> Result<usize, String> {
+    check_batch_size(&media_ids)?;
     let output = std::path::Path::new(&output_dir);
     if !output.is_dir() {
         return Err(format!("not a directory: {output_dir}"));
@@ -238,7 +256,10 @@ mod export_tests {
 
 #[tauri::command]
 pub fn get_media_by_id(state: State<'_, AppState>, id: i64) -> Result<Option<MediaFile>, String> {
-    state.db.get_media_by_id(id).map_err(|e| e.to_string())
+    state
+        .db
+        .get_media_by_id(id)
+        .map_err(|e| db_err("get_media_by_id", &id.to_string(), e))
 }
 
 #[tauri::command]
@@ -251,8 +272,8 @@ pub fn scan_folder(
     state
         .db
         .get_watched_folder(folder_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("folder {folder_id} not found"))?;
+        .map_err(|e| db_err("scan_folder", &folder_id.to_string(), e))?
+        .ok_or_else(|| format!("scan_folder({folder_id}): folder not found"))?;
 
     scan::spawn_scan(app, &state, folder_id);
     Ok(())
@@ -289,7 +310,10 @@ pub fn get_timeline_groups(
 
 #[tauri::command]
 pub fn get_media_neighbors(state: State<'_, AppState>, id: i64) -> Result<MediaNeighbors, String> {
-    state.db.get_media_neighbors(id).map_err(|e| e.to_string())
+    state
+        .db
+        .get_media_neighbors(id)
+        .map_err(|e| db_err("get_media_neighbors", &id.to_string(), e))
 }
 
 #[tauri::command]
@@ -616,7 +640,10 @@ pub fn get_favorites_count(state: State<'_, AppState>) -> Result<i64, String> {
 
 #[tauri::command]
 pub fn is_favorite(state: State<'_, AppState>, media_id: i64) -> Result<bool, String> {
-    state.db.is_favorite(media_id).map_err(|e| e.to_string())
+    state
+        .db
+        .is_favorite(media_id)
+        .map_err(|e| db_err("is_favorite", &media_id.to_string(), e))
 }
 
 #[tauri::command]
@@ -624,7 +651,7 @@ pub fn delete_media(state: State<'_, AppState>, media_id: i64) -> Result<(), Str
     state
         .db
         .set_deleted(media_id, true)
-        .map_err(|e| e.to_string())
+        .map_err(|e| db_err("delete_media", &media_id.to_string(), e))
 }
 
 #[tauri::command]
@@ -645,20 +672,20 @@ pub fn permanently_delete(state: State<'_, AppState>, media_id: i64) -> Result<(
     let Some((path, hash, deleted)) = state
         .db
         .get_media_deletion_info(media_id)
-        .map_err(|e| e.to_string())?
+        .map_err(|e| db_err("permanently_delete", &media_id.to_string(), e))?
     else {
-        return Err(format!("media {media_id} not found"));
+        return Err(format!("permanently_delete({media_id}): media not found"));
     };
     if deleted == 0 {
         return Err(format!(
-            "media {media_id} is not in trash; soft-delete before permanent delete"
+            "permanently_delete({media_id}): media is not in trash; soft-delete before permanent delete"
         ));
     }
 
     state
         .db
         .permanently_delete_media(media_id)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| db_err("permanently_delete", &media_id.to_string(), e))?;
     state.thumb_cache.invalidate_media(media_id);
     remove_media_from_disk(&path, hash.as_deref());
     Ok(())
@@ -669,10 +696,11 @@ pub fn batch_delete_media(
     state: State<'_, AppState>,
     media_ids: Vec<i64>,
 ) -> Result<usize, String> {
+    check_batch_size(&media_ids)?;
     state
         .db
         .batch_set_deleted(&media_ids, true)
-        .map_err(|e| e.to_string())
+        .map_err(|e| db_err("batch_delete_media", &format!("{} ids", media_ids.len()), e))
 }
 
 #[tauri::command]
@@ -681,10 +709,11 @@ pub fn batch_add_to_album(
     album_id: i64,
     media_ids: Vec<i64>,
 ) -> Result<(), String> {
+    check_batch_size(&media_ids)?;
     state
         .db
         .add_to_album(album_id, &media_ids)
-        .map_err(|e| e.to_string())
+        .map_err(|e| db_err("batch_add_to_album", &format!("album {album_id}"), e))
 }
 
 #[tauri::command]
@@ -693,10 +722,17 @@ pub fn batch_toggle_favorite(
     media_ids: Vec<i64>,
     favorite: bool,
 ) -> Result<usize, String> {
+    check_batch_size(&media_ids)?;
     state
         .db
         .batch_set_favorite(&media_ids, favorite)
-        .map_err(|e| e.to_string())
+        .map_err(|e| {
+            db_err(
+                "batch_toggle_favorite",
+                &format!("{} ids", media_ids.len()),
+                e,
+            )
+        })
 }
 
 #[tauri::command]
@@ -704,10 +740,14 @@ pub fn batch_restore_media(
     state: State<'_, AppState>,
     media_ids: Vec<i64>,
 ) -> Result<usize, String> {
-    state
-        .db
-        .batch_set_deleted(&media_ids, false)
-        .map_err(|e| e.to_string())
+    check_batch_size(&media_ids)?;
+    state.db.batch_set_deleted(&media_ids, false).map_err(|e| {
+        db_err(
+            "batch_restore_media",
+            &format!("{} ids", media_ids.len()),
+            e,
+        )
+    })
 }
 
 #[tauri::command]
@@ -715,6 +755,7 @@ pub fn batch_permanent_delete(
     state: State<'_, AppState>,
     media_ids: Vec<i64>,
 ) -> Result<usize, String> {
+    check_batch_size(&media_ids)?;
     let mut to_remove = Vec::new();
     for media_id in &media_ids {
         if let Some((path, hash, deleted)) = state
@@ -727,10 +768,13 @@ pub fn batch_permanent_delete(
         }
     }
 
-    let affected = state
-        .db
-        .batch_permanent_delete(&media_ids)
-        .map_err(|e| e.to_string())?;
+    let affected = state.db.batch_permanent_delete(&media_ids).map_err(|e| {
+        db_err(
+            "batch_permanent_delete",
+            &format!("{} ids", media_ids.len()),
+            e,
+        )
+    })?;
 
     for media_id in &media_ids {
         state.thumb_cache.invalidate_media(*media_id);
@@ -775,6 +819,11 @@ pub struct SearchResult {
     pub relevance: f32,
 }
 
+/// Ranked text search placeholder for future CLIP vector search.
+///
+/// The command name `semantic_search` is kept for frontend compatibility. Until CLIP text
+/// encoder and embedding index are available, this uses SQLite FTS5 keyword matching and
+/// assigns a descending pseudo-relevance score by result order.
 #[tauri::command]
 pub fn semantic_search(
     state: State<'_, AppState>,
@@ -787,12 +836,10 @@ pub fn semantic_search(
         return Ok(Vec::new());
     }
 
-    // For now, fall back to FTS5 text search.
-    // In future: encode query text with CLIP text encoder, search embedding index.
     let media = state
         .db
         .search_media(trimmed, limit, 0)
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| db_err("semantic_search", trimmed, e))?;
 
     Ok(media
         .into_iter()

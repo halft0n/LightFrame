@@ -28,7 +28,7 @@ pub mod mft {
             // For now, return empty vec as placeholder
             // Real implementation needs windows-sys or winapi crate
             tracing::info!(
-                volume = self.volume,
+                volume = %self.volume,
                 extensions = extensions.len(),
                 "MFT scan requested"
             );

@@ -50,7 +50,6 @@ function setupInvoke(options: { isFavorite?: boolean; neighbors?: { prev_id: num
     if (cmd === "get_media_neighbors") {
       return Promise.resolve(options.neighbors ?? { prev_id: 10, next_id: 20 });
     }
-    if (cmd === "get_media_list") return Promise.resolve([mockPhoto, { ...mockPhoto, id: 3 }]);
     if (cmd === "has_edits") return Promise.resolve(false);
     if (cmd === "get_edit") return Promise.resolve(null);
     if (cmd === "is_favorite") return Promise.resolve(options.isFavorite ?? false);
@@ -71,7 +70,6 @@ describe("PhotoViewer", () => {
     (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
       if (cmd === "get_media_by_id") return new Promise(() => {});
       if (cmd === "get_media_neighbors") return new Promise(() => {});
-      if (cmd === "get_media_list") return new Promise(() => {});
       if (cmd === "has_edits") return Promise.resolve(false);
       if (cmd === "is_favorite") return Promise.resolve(false);
       return Promise.resolve(null);
@@ -104,7 +102,6 @@ describe("PhotoViewer", () => {
     (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string, _args?: Record<string, unknown>) => {
       if (cmd === "get_media_by_id") return Promise.resolve(mockPhoto);
       if (cmd === "get_media_neighbors") return Promise.resolve({ prev_id: null, next_id: null });
-      if (cmd === "get_media_list") return Promise.resolve([mockPhoto]);
       if (cmd === "has_edits") return Promise.resolve(false);
       if (cmd === "is_favorite") return Promise.resolve(true);
       if (cmd === "toggle_favorite") return Promise.resolve(false);
@@ -203,7 +200,6 @@ describe("PhotoViewer", () => {
     (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
       if (cmd === "get_media_by_id") return Promise.resolve(mockVideo);
       if (cmd === "get_media_neighbors") return Promise.resolve({ prev_id: null, next_id: null });
-      if (cmd === "get_media_list") return Promise.resolve([mockVideo]);
       if (cmd === "has_edits") return Promise.resolve(false);
       if (cmd === "is_favorite") return Promise.resolve(false);
       return Promise.resolve(null);
@@ -303,7 +299,6 @@ describe("PhotoViewer", () => {
     (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string, _args?: Record<string, unknown>) => {
       if (cmd === "get_media_by_id") return Promise.resolve(mockPhoto);
       if (cmd === "get_media_neighbors") return Promise.resolve({ prev_id: null, next_id: null });
-      if (cmd === "get_media_list") return Promise.resolve([mockPhoto]);
       if (cmd === "has_edits") return Promise.resolve(false);
       if (cmd === "is_favorite") return Promise.resolve(false);
       if (cmd === "delete_media") return Promise.resolve(undefined);

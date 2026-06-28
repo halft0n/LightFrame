@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PhotoCard } from "./PhotoCard";
 import { SelectionToolbar } from "./SelectionToolbar";
@@ -171,7 +171,7 @@ export function PhotoGrid({
     return () => el.removeEventListener("scroll", handleScroll, SCROLL_LISTENER_OPTIONS);
   }, [handleScroll]);
 
-  const selectedSet = new Set(selectedMediaIds);
+  const selectedSet = useMemo(() => new Set(selectedMediaIds), [selectedMediaIds]);
 
   const handleSelect = useCallback(
     (id: number, event: React.MouseEvent) => {

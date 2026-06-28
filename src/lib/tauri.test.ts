@@ -79,8 +79,11 @@ describe("getFavoriteState", () => {
   });
 
   it("returns false when invoke rejects", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     mockInvoke.mockRejectedValue(new Error("backend unavailable"));
-    await expect(getFavoriteState(4)).rejects.toThrow("backend unavailable");
+    await expect(getFavoriteState(4)).resolves.toBe(false);
+    expect(consoleSpy).toHaveBeenCalled();
+    consoleSpy.mockRestore();
   });
 });
 

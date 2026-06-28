@@ -214,7 +214,7 @@ fn build_smart_album_filter(rule: &SmartAlbumRule) -> (String, Vec<Box<dyn rusql
 }
 
 fn smart_album_media_count(db: &Database, rule: &SmartAlbumRule) -> catchlight_core::Result<i64> {
-    let conn = db.conn();
+    let conn = db.conn()?;
     batch_smart_album_media_counts(&conn, std::slice::from_ref(rule))?
         .into_iter()
         .next()
@@ -330,7 +330,7 @@ fn perceptual_pair_match(
 impl Database {
     pub fn add_watched_folder(&self, path: &str) -> catchlight_core::Result<WatchedFolder> {
         let id = {
-            let conn = self.conn();
+            let conn = self.conn()?;
             conn.execute(
                 "INSERT OR IGNORE INTO watched_folders (path) VALUES (?1)",
                 params![path],
@@ -351,7 +351,7 @@ impl Database {
     }
 
     pub fn upsert_media(&self, folder_id: i64, media: &MediaFile) -> catchlight_core::Result<i64> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let media_type_str = format!("{:?}", media.media_type);
 
         conn.execute(
@@ -400,7 +400,7 @@ impl Database {
     }
 
     pub fn set_micro_thumb(&self, media_id: i64, blob: &[u8]) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute(
             "UPDATE media_files SET micro_thumb = ?1 WHERE id = ?2",
             params![blob, media_id],
@@ -410,7 +410,7 @@ impl Database {
     }
 
     pub fn get_micro_thumb(&self, media_id: i64) -> catchlight_core::Result<Option<Vec<u8>>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let result: Option<Option<Vec<u8>>> = conn
             .query_row(
                 "SELECT micro_thumb FROM media_files WHERE id = ?1",
@@ -429,7 +429,7 @@ impl Database {
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
         // Legacy OFFSET pagination — prefer `get_media_page` for large datasets.
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
@@ -486,7 +486,7 @@ impl Database {
         limit: i64,
         cursor: Option<(String, i64)>,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let (sql, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match cursor {
             None => (
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
@@ -525,7 +525,7 @@ impl Database {
     }
 
     pub fn get_media_count(&self) -> catchlight_core::Result<i64> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.query_row(
             "SELECT COUNT(*) FROM media_files WHERE is_deleted = 0",
             [],
@@ -540,7 +540,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
@@ -564,7 +564,7 @@ impl Database {
     }
 
     pub fn get_media_count_by_folder(&self, folder_id: i64) -> catchlight_core::Result<i64> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.query_row(
             "SELECT COUNT(*) FROM media_files WHERE folder_id = ?1 AND is_deleted = 0",
             params![folder_id],
@@ -579,7 +579,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
@@ -600,7 +600,7 @@ impl Database {
     }
 
     pub fn get_media_count_by_type(&self, media_type: &str) -> catchlight_core::Result<i64> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.query_row(
             "SELECT COUNT(*) FROM media_files WHERE media_type = ?1 AND is_deleted = 0",
             params![media_type],
@@ -614,7 +614,7 @@ impl Database {
         media_id: i64,
         screenshot_type: &str,
     ) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute(
             "UPDATE media_files SET screenshot_type = ?1 WHERE id = ?2",
             params![screenshot_type, media_id],
@@ -629,7 +629,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let (sql, params): (&str, Vec<Box<dyn rusqlite::ToSql>>) = match screenshot_type {
             Some(st) => (
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
@@ -672,7 +672,7 @@ impl Database {
         &self,
         screenshot_type: Option<&str>,
     ) -> catchlight_core::Result<i64> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         match screenshot_type {
             Some(st) => conn.query_row(
                 "SELECT COUNT(*) FROM media_files
@@ -691,7 +691,7 @@ impl Database {
     }
 
     pub fn list_watched_folders(&self) -> catchlight_core::Result<Vec<WatchedFolder>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT w.id, w.path, COALESCE(COUNT(m.id), 0) as media_count, w.last_scan_at as last_scan, w.scan_status
@@ -711,7 +711,7 @@ impl Database {
     }
 
     pub fn get_watched_folder(&self, id: i64) -> catchlight_core::Result<Option<WatchedFolder>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.query_row(
             "SELECT w.id, w.path, COALESCE(COUNT(m.id), 0) as media_count, w.last_scan_at as last_scan, w.scan_status
              FROM watched_folders w
@@ -726,7 +726,7 @@ impl Database {
     }
 
     pub fn remove_watched_folder(&self, id: i64) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute("DELETE FROM media_files WHERE folder_id = ?1", params![id])
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
         conn.execute("DELETE FROM watched_folders WHERE id = ?1", params![id])
@@ -739,7 +739,7 @@ impl Database {
         folder_id: i64,
         status: &str,
     ) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute(
             "UPDATE watched_folders SET scan_status = ?1 WHERE id = ?2",
             params![status, folder_id],
@@ -749,7 +749,7 @@ impl Database {
     }
 
     pub fn update_last_scan_at(&self, folder_id: i64) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute(
             "UPDATE watched_folders SET last_scan_at = datetime('now') WHERE id = ?1",
             params![folder_id],
@@ -794,7 +794,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<TimelineGroup>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
@@ -836,7 +836,7 @@ impl Database {
     }
 
     pub fn get_media_neighbors(&self, id: i64) -> catchlight_core::Result<MediaNeighbors> {
-        let conn = self.conn();
+        let conn = self.conn()?;
 
         let prev_id: Option<i64> = conn
             .query_row(
@@ -872,7 +872,7 @@ impl Database {
     }
 
     pub fn get_media_by_id(&self, id: i64) -> catchlight_core::Result<Option<MediaFile>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.query_row(
             "SELECT id, path, filename, media_type, size_bytes, width, height,
                     created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
@@ -885,7 +885,7 @@ impl Database {
     }
 
     pub fn get_media_by_path(&self, path: &str) -> catchlight_core::Result<Option<MediaFile>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.query_row(
             "SELECT id, path, filename, media_type, size_bytes, width, height,
                     created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
@@ -901,7 +901,7 @@ impl Database {
         &self,
         media_id: i64,
     ) -> catchlight_core::Result<Option<(String, Option<String>, i64)>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.query_row(
             "SELECT path, blake3_hash, is_deleted FROM media_files WHERE id = ?1",
             params![media_id],
@@ -921,7 +921,7 @@ impl Database {
             .and_then(|n| n.to_str())
             .unwrap_or(new_path);
 
-        let conn = self.conn();
+        let conn = self.conn()?;
         #[cfg(windows)]
         let affected = conn
             .execute(
@@ -942,7 +942,7 @@ impl Database {
     }
 
     pub fn soft_delete_by_path(&self, path: &str) -> catchlight_core::Result<bool> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         #[cfg(windows)]
         let affected = conn
             .execute(
@@ -963,7 +963,7 @@ impl Database {
     }
 
     pub fn clear_duplicate_groups(&self) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute("DELETE FROM duplicate_groups", [])
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
         Ok(())
@@ -986,7 +986,7 @@ impl Database {
             ));
         }
 
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute(
             "INSERT INTO duplicate_groups (match_type) VALUES (?1)",
             params![match_type],
@@ -1007,7 +1007,7 @@ impl Database {
 
     pub fn find_exact_duplicates(&self) -> catchlight_core::Result<Vec<DuplicateGroup>> {
         let hash_groups: Vec<Vec<i64>> = {
-            let conn = self.conn();
+            let conn = self.conn()?;
             let mut stmt = conn
                 .prepare(
                     "SELECT blake3_hash, GROUP_CONCAT(id) AS ids
@@ -1128,7 +1128,7 @@ impl Database {
     fn exact_duplicate_member_ids(
         &self,
     ) -> catchlight_core::Result<std::collections::HashSet<i64>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT DISTINCT dm.media_id
@@ -1153,7 +1153,7 @@ impl Database {
         &self,
         exclude_ids: &std::collections::HashSet<i64>,
     ) -> catchlight_core::Result<Vec<PerceptualCandidate>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, dhash, phash FROM media_files
@@ -1186,7 +1186,7 @@ impl Database {
         &self,
         group_id: i64,
     ) -> catchlight_core::Result<Option<DuplicateGroup>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT dg.id, dg.match_type, dg.created_at,
@@ -1243,7 +1243,7 @@ impl Database {
     }
 
     pub fn list_duplicate_groups(&self) -> catchlight_core::Result<Vec<DuplicateGroupDetail>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT dg.id, dg.match_type, dg.created_at,
@@ -1300,7 +1300,7 @@ impl Database {
     }
 
     pub fn delete_duplicate_group(&self, group_id: i64) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute(
             "DELETE FROM duplicate_groups WHERE id = ?1",
             params![group_id],
@@ -1315,7 +1315,7 @@ impl Database {
         media_id: i64,
     ) -> catchlight_core::Result<()> {
         {
-            let conn = self.conn();
+            let conn = self.conn()?;
             conn.execute(
                 "DELETE FROM duplicate_members WHERE group_id = ?1 AND media_id = ?2",
                 params![group_id, media_id],
@@ -1324,7 +1324,7 @@ impl Database {
         }
 
         let remaining: i64 = {
-            let conn = self.conn();
+            let conn = self.conn()?;
             conn.query_row(
                 "SELECT COUNT(*) FROM duplicate_members WHERE group_id = ?1",
                 params![group_id],
@@ -1341,7 +1341,7 @@ impl Database {
     }
 
     pub fn get_duplicate_groups_count(&self) -> catchlight_core::Result<i64> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.query_row("SELECT COUNT(*) FROM duplicate_groups", [], |row| {
             row.get(0)
         })
@@ -1374,7 +1374,7 @@ impl Database {
     }
 
     pub fn toggle_favorite(&self, media_id: i64) -> catchlight_core::Result<bool> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let (current_favorite, is_deleted): (i64, i64) = conn
             .query_row(
                 "SELECT is_favorite, is_deleted FROM media_files WHERE id = ?1",
@@ -1400,7 +1400,7 @@ impl Database {
     }
 
     pub fn set_deleted(&self, media_id: i64, deleted: bool) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         if deleted {
             conn.execute(
                 "UPDATE media_files SET is_deleted = 1, deleted_at = datetime('now') WHERE id = ?1",
@@ -1418,7 +1418,7 @@ impl Database {
     }
 
     pub fn list_deleted_media(&self) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
@@ -1449,7 +1449,7 @@ impl Database {
             )));
         }
 
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute("DELETE FROM media_files WHERE id = ?1", params![media_id])
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 
@@ -1464,7 +1464,7 @@ impl Database {
         if media_ids.is_empty() {
             return Ok(0);
         }
-        let conn = self.conn();
+        let conn = self.conn()?;
         let placeholders: Vec<String> = media_ids
             .iter()
             .enumerate()
@@ -1499,7 +1499,7 @@ impl Database {
         if media_ids.is_empty() {
             return Ok(0);
         }
-        let conn = self.conn();
+        let conn = self.conn()?;
         let placeholders: Vec<String> = media_ids
             .iter()
             .enumerate()
@@ -1526,7 +1526,7 @@ impl Database {
             return Ok(0);
         }
 
-        let conn = self.conn();
+        let conn = self.conn()?;
         let placeholders: Vec<String> = media_ids
             .iter()
             .enumerate()
@@ -1553,7 +1553,7 @@ impl Database {
                 "cleanup days must be positive".to_string(),
             ));
         }
-        let conn = self.conn();
+        let conn = self.conn()?;
         let deleted = conn
             .execute(
                 "DELETE FROM media_files
@@ -1567,7 +1567,7 @@ impl Database {
     }
 
     pub fn get_location_groups(&self) -> catchlight_core::Result<Vec<LocationGroup>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT country, city, COUNT(*) AS cnt, MIN(id) AS sample_id
@@ -1600,7 +1600,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
@@ -1627,7 +1627,7 @@ impl Database {
         city: &str,
         country: &str,
     ) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute(
             "UPDATE media_files SET city = ?1, country = ?2 WHERE id = ?3",
             params![city, country, media_id],
@@ -1649,7 +1649,7 @@ impl Database {
         }
 
         let id = {
-            let conn = self.conn();
+            let conn = self.conn()?;
             conn.execute(
                 "INSERT INTO albums (name, description) VALUES (?1, ?2)",
                 params![trimmed, description],
@@ -1675,7 +1675,7 @@ impl Database {
             ));
         }
 
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute(
             "UPDATE albums SET name = ?1, description = ?2, updated_at = datetime('now') WHERE id = ?3",
             params![trimmed, description, id],
@@ -1685,14 +1685,14 @@ impl Database {
     }
 
     pub fn delete_album(&self, id: i64) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute("DELETE FROM albums WHERE id = ?1", params![id])
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
         Ok(())
     }
 
     pub fn list_albums(&self) -> catchlight_core::Result<Vec<Album>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT a.id, a.name, a.description, a.cover_media_id,
@@ -1714,7 +1714,7 @@ impl Database {
     }
 
     pub fn get_album(&self, id: i64) -> catchlight_core::Result<Option<Album>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.query_row(
             "SELECT a.id, a.name, a.description, a.cover_media_id,
                     COALESCE(COUNT(ai.media_id), 0) AS media_count,
@@ -1731,7 +1731,7 @@ impl Database {
     }
 
     pub fn add_to_album(&self, album_id: i64, media_ids: &[i64]) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         for media_id in media_ids {
             conn.execute(
                 "INSERT OR IGNORE INTO album_items (album_id, media_id) VALUES (?1, ?2)",
@@ -1748,7 +1748,7 @@ impl Database {
     }
 
     pub fn remove_from_album(&self, album_id: i64, media_id: i64) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute(
             "DELETE FROM album_items WHERE album_id = ?1 AND media_id = ?2",
             params![album_id, media_id],
@@ -1768,7 +1768,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT m.id, m.path, m.filename, m.media_type, m.size_bytes, m.width, m.height,
@@ -1790,7 +1790,7 @@ impl Database {
     }
 
     pub fn set_album_cover(&self, album_id: i64, media_id: i64) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute(
             "UPDATE albums SET cover_media_id = ?1, updated_at = datetime('now') WHERE id = ?2",
             params![media_id, album_id],
@@ -1815,7 +1815,7 @@ impl Database {
         let rule_json = serde_json::to_string(rule)
             .map_err(|e| catchlight_core::Error::Other(format!("failed to serialize rule: {e}")))?;
 
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute(
             "INSERT INTO smart_albums (name, icon, rule_json) VALUES (?1, ?2, ?3)",
             params![trimmed, icon, rule_json],
@@ -1845,7 +1845,7 @@ impl Database {
     }
 
     pub fn list_smart_albums(&self) -> catchlight_core::Result<Vec<SmartAlbum>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, name, icon, rule_json, 0 AS media_count, created_at
@@ -1883,7 +1883,7 @@ impl Database {
     }
 
     pub fn delete_smart_album(&self, id: i64) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute("DELETE FROM smart_albums WHERE id = ?1", params![id])
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
         Ok(())
@@ -1895,7 +1895,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let rule_json: String = conn
             .query_row(
                 "SELECT rule_json FROM smart_albums WHERE id = ?1",
@@ -1936,7 +1936,7 @@ impl Database {
     }
 
     pub fn get_on_this_day_media(&self, limit: i64) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM media_files
@@ -1978,7 +1978,7 @@ impl Database {
     }
 
     pub fn generate_memories(&self) -> catchlight_core::Result<Vec<Memory>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute("DELETE FROM memories", [])
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 
@@ -2088,7 +2088,7 @@ impl Database {
     }
 
     pub fn list_memories(&self) -> catchlight_core::Result<Vec<Memory>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT m.id, m.title, m.subtitle, m.cover_media_id,
@@ -2115,7 +2115,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT mf.id, mf.path, mf.filename, mf.media_type, mf.size_bytes, mf.width, mf.height,
@@ -2141,7 +2141,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
@@ -2162,7 +2162,7 @@ impl Database {
     }
 
     pub fn get_favorites_count(&self) -> catchlight_core::Result<i64> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.query_row(
             "SELECT COUNT(*) FROM media_files WHERE is_favorite = 1 AND is_deleted = 0",
             [],
@@ -2172,7 +2172,7 @@ impl Database {
     }
 
     pub fn is_favorite(&self, media_id: i64) -> catchlight_core::Result<bool> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let result: i64 = conn
             .query_row(
                 "SELECT is_favorite FROM media_files WHERE id = ?1 AND is_deleted = 0",
@@ -2196,7 +2196,7 @@ impl Database {
             return Ok(Vec::new());
         }
 
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT m.id, m.path, m.filename, m.media_type, m.size_bytes, m.width, m.height,
@@ -2223,7 +2223,7 @@ impl Database {
             return Ok(0);
         }
 
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.query_row(
             "SELECT COUNT(*)
              FROM media_fts f
@@ -2236,7 +2236,7 @@ impl Database {
     }
 
     pub fn get_location_stats(&self) -> catchlight_core::Result<LocationStats> {
-        let conn = self.conn();
+        let conn = self.conn()?;
 
         let total_with_gps: i64 = conn
             .query_row(
@@ -2296,7 +2296,7 @@ impl Database {
     }
 
     pub fn list_persons(&self) -> catchlight_core::Result<Vec<Person>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, name, face_count, cover_face_id, created_at
@@ -2341,7 +2341,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT DISTINCT mf.id, mf.path, mf.filename, mf.media_type, mf.size_bytes,
@@ -2364,7 +2364,7 @@ impl Database {
     }
 
     pub fn rename_person(&self, person_id: i64, name: &str) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let updated = conn
             .execute(
                 "UPDATE persons SET name = ?1 WHERE id = ?2",
@@ -2382,7 +2382,7 @@ impl Database {
     }
 
     pub fn get_all_face_embeddings(&self) -> catchlight_core::Result<Vec<(i64, Vec<f32>)>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, face_embedding FROM face_detections
@@ -2405,7 +2405,7 @@ impl Database {
     }
 
     pub fn get_person_face_count(&self, person_id: i64) -> catchlight_core::Result<i64> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.query_row(
             "SELECT COUNT(*) FROM face_detections WHERE person_id = ?1",
             params![person_id],
@@ -2415,7 +2415,7 @@ impl Database {
     }
 
     pub fn clear_person_clusters(&self) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute("UPDATE face_detections SET person_id = NULL", [])
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
         conn.execute("DELETE FROM persons", [])
@@ -2424,7 +2424,7 @@ impl Database {
     }
 
     pub fn merge_persons(&self, target_id: i64, source_ids: &[i64]) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         for source_id in source_ids {
             if *source_id == target_id {
                 continue;
@@ -2450,7 +2450,7 @@ impl Database {
     }
 
     pub fn get_persons_count(&self) -> catchlight_core::Result<i64> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.query_row("SELECT COUNT(*) FROM persons", [], |row| row.get(0))
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))
     }
@@ -2461,7 +2461,7 @@ impl Database {
         embedding: &[f32],
     ) -> catchlight_core::Result<()> {
         let blob = f32_slice_to_blob(embedding);
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute(
             "INSERT INTO media_embeddings (media_id, clip_embedding, embedding_model)
              VALUES (?1, ?2, 'clip-vit-b32')
@@ -2476,7 +2476,7 @@ impl Database {
     }
 
     pub fn get_clip_embedding(&self, media_id: i64) -> catchlight_core::Result<Option<Vec<f32>>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let blob: Option<Vec<u8>> = conn
             .query_row(
                 "SELECT clip_embedding FROM media_embeddings WHERE media_id = ?1",
@@ -2490,7 +2490,7 @@ impl Database {
     }
 
     pub fn get_all_clip_embeddings(&self) -> catchlight_core::Result<Vec<(i64, Vec<f32>)>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT media_id, clip_embedding FROM media_embeddings
@@ -2539,7 +2539,7 @@ impl Database {
         media_id: i64,
         faces: &[FaceDetectionInput],
     ) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute(
             "DELETE FROM face_detections WHERE media_id = ?1",
             params![media_id],
@@ -2572,7 +2572,7 @@ impl Database {
         &self,
         media_id: i64,
     ) -> catchlight_core::Result<Vec<FaceDetectionRecord>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, media_id, bbox_x, bbox_y, bbox_w, bbox_h, confidence, person_id
@@ -2600,7 +2600,7 @@ impl Database {
     }
 
     pub fn create_person(&self, name: Option<&str>) -> catchlight_core::Result<i64> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.execute("INSERT INTO persons (name) VALUES (?1)", params![name])
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
         Ok(conn.last_insert_rowid())
@@ -2611,7 +2611,7 @@ impl Database {
         face_id: i64,
         person_id: i64,
     ) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let updated = conn
             .execute(
                 "UPDATE face_detections SET person_id = ?1 WHERE id = ?2",
@@ -2637,7 +2637,7 @@ impl Database {
     }
 
     pub fn save_edit_params(&self, media_id: i64, params: &str) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let updated = conn
             .execute(
                 "UPDATE media_files SET edit_params = ?1 WHERE id = ?2 AND is_deleted = 0",
@@ -2655,7 +2655,7 @@ impl Database {
     }
 
     pub fn get_edit_params(&self, media_id: i64) -> catchlight_core::Result<Option<String>> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         conn.query_row(
             "SELECT edit_params FROM media_files WHERE id = ?1",
             params![media_id],
@@ -2666,7 +2666,7 @@ impl Database {
     }
 
     pub fn clear_edit_params(&self, media_id: i64) -> catchlight_core::Result<()> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let updated = conn
             .execute(
                 "UPDATE media_files SET edit_params = NULL WHERE id = ?1",
@@ -2684,7 +2684,7 @@ impl Database {
     }
 
     pub fn has_edits(&self, media_id: i64) -> catchlight_core::Result<bool> {
-        let conn = self.conn();
+        let conn = self.conn()?;
         let value: Option<String> = conn
             .query_row(
                 "SELECT edit_params FROM media_files WHERE id = ?1",

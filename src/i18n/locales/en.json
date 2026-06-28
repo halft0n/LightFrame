@@ -1,5 +1,6 @@
 {
   "app.title": "CatchLight",
+  "common.notAvailable": "—",
   "sidebar.navigation": "Main navigation",
   "sidebar.openMenu": "Open menu",
   "sidebar.closeMenu": "Close menu",

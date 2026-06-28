@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getMediaById,
-  getMediaList,
   getMediaNeighbors,
   getOriginalUrl,
   getThumbnailUrl,
@@ -14,7 +13,7 @@ import {
 } from "@/lib/tauri";
 import { buildClipPath, buildCssFilter, buildImageTransform, parseEditParams } from "@/lib/editParams";
 import { isTypingTarget } from "@/lib/keyboard";
-import { closeViewer, loadMedia, openViewer } from "@/store/appStore";
+import { closeViewer, loadMedia, openViewer, useAppStore } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 import { VideoPlayer } from "./VideoPlayer";
 import { ImageEditor } from "@/components/editor/ImageEditor";
@@ -31,9 +30,9 @@ const MAX_ZOOM = 5;
 const FILMSTRIP_SIZE = 20;
 const VIEWER_EXIT_MS = 200;
 
-function formatMediaDate(item: MediaItem, locale: string): string {
+function formatMediaDate(item: MediaItem, locale: string, notAvailable: string): string {
   const raw = item.created_at ?? item.modified_at;
-  if (!raw) return "—";
+  if (!raw) return notAvailable;
   const date = new Date(raw);
   return new Intl.DateTimeFormat(locale === "zh-CN" ? "zh-CN" : "en-US", {
     year: "numeric",
@@ -44,8 +43,58 @@ function formatMediaDate(item: MediaItem, locale: string): string {
   }).format(date);
 }
 
+function filmstripFromContext(
+  mediaId: number,
+  contextItems: MediaItem[],
+  radius: number,
+): MediaItem[] | null {
+  const idx = contextItems.findIndex((m) => m.id === mediaId);
+  if (idx === -1) return null;
+  const start = Math.max(0, idx - radius);
+  const end = Math.min(contextItems.length, idx + radius + 1);
+  return contextItems.slice(start, end);
+}
+
+async function loadFilmstripAroundMedia(mediaId: number, radius: number): Promise<MediaItem[]> {
+  const prevIds: number[] = [];
+  const visited = new Set<number>([mediaId]);
+  let cursor = mediaId;
+  for (let i = 0; i < radius; i++) {
+    const nb = await getMediaNeighbors(cursor);
+    if (nb.prev_id == null || visited.has(nb.prev_id)) break;
+    prevIds.unshift(nb.prev_id);
+    visited.add(nb.prev_id);
+    cursor = nb.prev_id;
+  }
+
+  const nextIds: number[] = [];
+  cursor = mediaId;
+  for (let i = 0; i < radius; i++) {
+    const nb = await getMediaNeighbors(cursor);
+    if (nb.next_id == null || visited.has(nb.next_id)) break;
+    nextIds.push(nb.next_id);
+    visited.add(nb.next_id);
+    cursor = nb.next_id;
+  }
+
+  const ids = [...prevIds, mediaId, ...nextIds];
+  const items = await Promise.all(ids.map((id) => getMediaById(id)));
+  return items.filter((item): item is MediaItem => item != null);
+}
+
+async function loadContextFilmstrip(
+  mediaId: number,
+  contextItems: MediaItem[],
+  radius: number,
+): Promise<MediaItem[]> {
+  const fromContext = filmstripFromContext(mediaId, contextItems, radius);
+  if (fromContext && fromContext.length > 0) return fromContext;
+  return loadFilmstripAroundMedia(mediaId, radius);
+}
+
 export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   const { t, locale } = useTranslation();
+  const { mediaItems: contextItems } = useAppStore();
   const [media, setMedia] = useState<MediaItem | null>(null);
   const [neighbors, setNeighbors] = useState<{ prev_id: number | null; next_id: number | null }>({
     prev_id: null,
@@ -105,17 +154,17 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
     let cancelled = false;
 
     void (async () => {
-      const [item, nb, list, hasEdit, favoriteState] = await Promise.all([
+      const [item, nb, strip, hasEdit, favoriteState] = await Promise.all([
         getMediaById(mediaId),
         getMediaNeighbors(mediaId),
-        getMediaList(0, FILMSTRIP_SIZE * 3),
+        loadContextFilmstrip(mediaId, contextItems, FILMSTRIP_SIZE),
         hasEdits(mediaId),
         getFavoriteState(mediaId),
       ]);
       if (cancelled) return;
       setMedia(item);
       setNeighbors(nb);
-      setFilmstrip(list);
+      setFilmstrip(strip);
       setEdited(hasEdit);
       setIsFavorite(favoriteState);
       if (hasEdit) {
@@ -128,7 +177,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
     return () => {
       cancelled = true;
     };
-  }, [mediaId, resetView]);
+  }, [mediaId, resetView, contextItems]);
 
   useEffect(() => {
     dialogRef.current?.focus();
@@ -346,7 +395,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
         )}
 
         <p className="min-w-0 flex-1 truncate text-center text-sm font-medium text-neutral-100">
-          {media ? formatMediaDate(media, locale) : "—"}
+          {media ? formatMediaDate(media, locale, t("common.notAvailable")) : t("common.notAvailable")}
         </p>
 
         <div className="flex shrink-0 items-center gap-1">
@@ -522,7 +571,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
       )}
 
       <div className="shrink-0 border-t border-white/10 px-4 py-1.5 text-center text-xs text-neutral-400">
-        <span className="truncate">{media?.filename ?? "—"}</span>
+        <span className="truncate">{media?.filename ?? t("common.notAvailable")}</span>
       </div>
 
       {editorOpen && media && (

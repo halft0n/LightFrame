@@ -48,11 +48,14 @@ impl Database {
         Self::open(&path)
     }
 
-    pub fn conn(&self) -> std::sync::MutexGuard<'_, Connection> {
-        self.conn.lock().expect("database mutex poisoned")
+    pub fn conn(&self) -> catchlight_core::Result<std::sync::MutexGuard<'_, Connection>> {
+        self.conn
+            .lock()
+            .map_err(|e| catchlight_core::Error::Other(format!("db mutex: {e}")))
     }
 
     fn run_migrations(&self) -> catchlight_core::Result<()> {
-        migrations::run(&self.conn())
+        let conn = self.conn()?;
+        migrations::run(&conn)
     }
 }

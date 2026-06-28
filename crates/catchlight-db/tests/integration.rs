@@ -622,7 +622,7 @@ fn test_soft_delete_and_cleanup() {
 
     // Set deleted_at to 40 days ago for cleanup test
     {
-        let conn = db.conn();
+        let conn = db.conn().unwrap();
         conn.execute(
             "UPDATE media_files SET deleted_at = datetime('now', '-40 days') WHERE id = ?1",
             rusqlite::params![media_id],

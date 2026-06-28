@@ -392,8 +392,9 @@ export async function toggleFavorite(mediaId: number): Promise<boolean> {
 
 export async function getFavoriteState(mediaId: number): Promise<boolean> {
   try {
-    return invoke<boolean>("is_favorite", { mediaId });
-  } catch {
+    return await invoke<boolean>("is_favorite", { mediaId });
+  } catch (error) {
+    console.error("getFavoriteState failed:", error);
     return false;
   }
 }
