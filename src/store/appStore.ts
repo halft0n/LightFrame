@@ -212,19 +212,27 @@ function mediaCursorFromItems(items: MediaItem[]): MediaCursor {
 }
 
 export async function loadMedia() {
-  const [items, totalCount] = await Promise.all([
-    getMediaPage(MEDIA_PAGE_SIZE),
-    getMediaCount(),
-  ]);
-  setMedia(items, totalCount);
+  try {
+    const [items, totalCount] = await Promise.all([
+      getMediaPage(MEDIA_PAGE_SIZE),
+      getMediaCount(),
+    ]);
+    setMedia(items, totalCount);
+  } catch (error) {
+    console.error("Failed to load media:", error);
+  }
 }
 
 export async function loadMoreMedia() {
   const { mediaItems, totalCount, mediaCursor } = state;
   if (mediaItems.length >= totalCount) return;
 
-  const items = await getMediaPage(MEDIA_PAGE_SIZE, mediaCursor ?? undefined);
-  appendMedia(items);
+  try {
+    const items = await getMediaPage(MEDIA_PAGE_SIZE, mediaCursor ?? undefined);
+    appendMedia(items);
+  } catch (error) {
+    console.error("Failed to load more media:", error);
+  }
 }
 
 export function setScanning(isScanning: boolean, progress: ScanProgress | null = null) {

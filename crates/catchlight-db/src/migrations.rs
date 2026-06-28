@@ -52,6 +52,10 @@ pub fn run(conn: &Connection) -> catchlight_core::Result<()> {
         v9(conn)?;
     }
 
+    if current < 10 {
+        v10(conn)?;
+    }
+
     Ok(())
 }
 
@@ -375,6 +379,39 @@ fn v9(conn: &Connection) -> catchlight_core::Result<()> {
         CREATE INDEX IF NOT EXISTS idx_memory_items_memory_id ON memory_items(memory_id);
 
         INSERT OR IGNORE INTO schema_version (version) VALUES (9);",
+    )
+    .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+fn v10(conn: &Connection) -> catchlight_core::Result<()> {
+    let columns: Vec<String> = conn
+        .prepare("PRAGMA table_info(media_files)")
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if !columns.iter().any(|c| c == "screenshot_type") {
+        conn.execute(
+            "ALTER TABLE media_files ADD COLUMN screenshot_type TEXT",
+            [],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+    }
+
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_media_screenshot_type ON media_files(screenshot_type)
+            WHERE is_deleted = 0 AND media_type = 'Screenshot'",
+        [],
+    )
+    .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+    conn.execute(
+        "INSERT OR IGNORE INTO schema_version (version) VALUES (10)",
+        [],
     )
     .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 

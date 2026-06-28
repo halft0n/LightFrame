@@ -233,8 +233,17 @@ export default function App() {
               onChange={(e) => setInputValue(e.target.value)}
               onFocus={() => setSearchFocused(true)}
               placeholder={t("search.placeholder")}
-              className="search-input w-full rounded-lg py-2 pl-9 pr-3 text-sm text-neutral-900 placeholder:text-neutral-400 dark:text-neutral-200 dark:placeholder:text-neutral-500"
+              className="search-input w-full rounded-lg py-2 pl-9 pr-24 text-sm text-neutral-900 placeholder:text-neutral-400 dark:text-neutral-200 dark:placeholder:text-neutral-500 sm:pr-3"
             />
+            <span
+              className={`pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded-full px-2 py-0.5 text-[10px] font-medium sm:hidden ${
+                searchMode === "semantic"
+                  ? "bg-violet-500/15 text-violet-700 dark:text-violet-300"
+                  : "bg-neutral-500/10 text-neutral-600 dark:text-neutral-400"
+              }`}
+            >
+              {searchMode === "semantic" ? t("search.modeSemanticShort") : t("search.modeTextShort")}
+            </span>
             {searchFocused && searchHistory.length > 0 && (
               <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
                 <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2 dark:border-neutral-700">
@@ -266,6 +275,29 @@ export default function App() {
               </div>
             )}
             </div>
+            <button
+              type="button"
+              onClick={() => setSearchMode(searchMode === "text" ? "semantic" : "text")}
+              className={`shrink-0 rounded-lg border p-2 transition ${
+                searchMode === "semantic"
+                  ? "border-violet-300 bg-violet-500/10 text-violet-700 dark:border-violet-700 dark:text-violet-300"
+                  : "border-neutral-200/80 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
+              }`}
+              aria-label={
+                searchMode === "semantic" ? t("search.modeSemantic") : t("search.modeText")
+              }
+              title={searchMode === "semantic" ? t("search.modeSemantic") : t("search.modeText")}
+            >
+              {searchMode === "semantic" ? (
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+                  <path d="M12 3l1.9 5.8H20l-4.9 3.6 1.9 5.8L12 14.6 7 18.2l1.9-5.8L4 8.8h6.1L12 3z" strokeLinejoin="round" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+                  <path d="M4 7h16M7 12h10M10 17h4" strokeLinecap="round" />
+                </svg>
+              )}
+            </button>
             <div className="hidden shrink-0 sm:flex rounded-lg border border-neutral-200/80 dark:border-neutral-700 p-0.5">
               <button
                 type="button"

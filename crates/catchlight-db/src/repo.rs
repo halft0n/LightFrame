@@ -609,6 +609,87 @@ impl Database {
         .map_err(|e| catchlight_core::Error::Database(e.to_string()))
     }
 
+    pub fn set_screenshot_type(
+        &self,
+        media_id: i64,
+        screenshot_type: &str,
+    ) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        conn.execute(
+            "UPDATE media_files SET screenshot_type = ?1 WHERE id = ?2",
+            params![screenshot_type, media_id],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn get_screenshots(
+        &self,
+        screenshot_type: Option<&str>,
+        limit: i64,
+        offset: i64,
+    ) -> catchlight_core::Result<Vec<MediaFile>> {
+        let conn = self.conn();
+        let (sql, params): (&str, Vec<Box<dyn rusqlite::ToSql>>) = match screenshot_type {
+            Some(st) => (
+                "SELECT id, path, filename, media_type, size_bytes, width, height,
+                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                 FROM media_files
+                 WHERE media_type = 'Screenshot' AND is_deleted = 0 AND screenshot_type = ?1
+                 ORDER BY COALESCE(created_at, modified_at) DESC
+                 LIMIT ?2 OFFSET ?3",
+                vec![
+                    Box::new(st.to_string()) as Box<dyn rusqlite::ToSql>,
+                    Box::new(limit),
+                    Box::new(offset),
+                ],
+            ),
+            None => (
+                "SELECT id, path, filename, media_type, size_bytes, width, height,
+                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                 FROM media_files
+                 WHERE media_type = 'Screenshot' AND is_deleted = 0
+                 ORDER BY COALESCE(created_at, modified_at) DESC
+                 LIMIT ?1 OFFSET ?2",
+                vec![Box::new(limit), Box::new(offset)],
+            ),
+        };
+
+        let mut stmt = conn
+            .prepare(sql)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let rows = stmt
+            .query_map(param_refs.as_slice(), Self::map_media_row)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn get_screenshot_count(
+        &self,
+        screenshot_type: Option<&str>,
+    ) -> catchlight_core::Result<i64> {
+        let conn = self.conn();
+        match screenshot_type {
+            Some(st) => conn.query_row(
+                "SELECT COUNT(*) FROM media_files
+                 WHERE media_type = 'Screenshot' AND is_deleted = 0 AND screenshot_type = ?1",
+                params![st],
+                |row| row.get(0),
+            ),
+            None => conn.query_row(
+                "SELECT COUNT(*) FROM media_files
+                 WHERE media_type = 'Screenshot' AND is_deleted = 0",
+                [],
+                |row| row.get(0),
+            ),
+        }
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
     pub fn list_watched_folders(&self) -> catchlight_core::Result<Vec<WatchedFolder>> {
         let conn = self.conn();
         let mut stmt = conn
@@ -841,6 +922,15 @@ impl Database {
             .unwrap_or(new_path);
 
         let conn = self.conn();
+        #[cfg(windows)]
+        let affected = conn
+            .execute(
+                "UPDATE media_files SET path = ?1, filename = ?2
+                 WHERE lower(path) = lower(?3) AND is_deleted = 0",
+                params![new_path, filename, old_path],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        #[cfg(not(windows))]
         let affected = conn
             .execute(
                 "UPDATE media_files SET path = ?1, filename = ?2
@@ -853,6 +943,15 @@ impl Database {
 
     pub fn soft_delete_by_path(&self, path: &str) -> catchlight_core::Result<bool> {
         let conn = self.conn();
+        #[cfg(windows)]
+        let affected = conn
+            .execute(
+                "UPDATE media_files SET is_deleted = 1, deleted_at = datetime('now')
+                 WHERE lower(path) = lower(?1) AND is_deleted = 0",
+                params![path],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        #[cfg(not(windows))]
         let affected = conn
             .execute(
                 "UPDATE media_files SET is_deleted = 1, deleted_at = datetime('now')

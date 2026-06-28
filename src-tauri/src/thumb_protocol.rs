@@ -323,4 +323,38 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(*resp.body(), blob);
     }
+
+    #[test]
+    fn ok_response_includes_cors_header_for_webview2() {
+        let resp = ok_response(vec![0xFF, 0xD8], "image/jpeg");
+        assert_eq!(
+            resp.headers()
+                .get("Access-Control-Allow-Origin")
+                .and_then(|v| v.to_str().ok()),
+            Some("*")
+        );
+        assert_eq!(
+            resp.headers()
+                .get(http::header::CACHE_CONTROL)
+                .and_then(|v| v.to_str().ok()),
+            Some("max-age=31536000, immutable")
+        );
+    }
+
+    #[test]
+    fn error_response_includes_cors_header_for_webview2() {
+        let resp = error_response(StatusCode::NOT_FOUND, "not found");
+        assert_eq!(
+            resp.headers()
+                .get("Access-Control-Allow-Origin")
+                .and_then(|v| v.to_str().ok()),
+            Some("*")
+        );
+    }
+
+    #[test]
+    fn strip_scheme_path_handles_windows_style_localhost_prefix() {
+        assert_eq!(strip_scheme_path("/localhost/42/small"), "42/small");
+        assert_eq!(strip_scheme_path("//localhost//42//small"), "42//small");
+    }
 }

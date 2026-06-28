@@ -4,8 +4,10 @@ import {
   searchMedia,
   searchMediaCount,
   semanticSearch,
+  getAiStatus,
   type MediaItem,
   type SearchResult,
+  type AiStatus,
 } from "@/lib/tauri";
 import { openViewer, setSearchMode, useAppStore, type SearchMode } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
@@ -71,6 +73,7 @@ export function SearchResultsView() {
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
 
   const columnCount = Math.max(
     1,
@@ -109,6 +112,26 @@ export function SearchResultsView() {
       setLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (searchMode !== "semantic") {
+      setAiStatus(null);
+      return;
+    }
+
+    let cancelled = false;
+    void getAiStatus()
+      .then((status) => {
+        if (!cancelled) setAiStatus(status);
+      })
+      .catch(() => {
+        if (!cancelled) setAiStatus(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [searchMode]);
 
   useEffect(() => {
     void loadInitial(searchQuery, searchMode);
@@ -172,9 +195,20 @@ export function SearchResultsView() {
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3">
         <div>
-          <h2 className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
-            {t("search.results")}
-          </h2>
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
+              {t("search.results")}
+            </h2>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                searchMode === "semantic"
+                  ? "bg-violet-500/15 text-violet-700 dark:text-violet-300"
+                  : "bg-neutral-500/10 text-neutral-600 dark:text-neutral-400"
+              }`}
+            >
+              {searchMode === "semantic" ? t("search.modeSemantic") : t("search.modeText")}
+            </span>
+          </div>
           <p className="mt-0.5 text-sm text-neutral-500">
             {searchQuery.trim() && (
               <>
@@ -189,6 +223,12 @@ export function SearchResultsView() {
         </div>
         <SearchModeToggle mode={searchMode} onChange={handleModeChange} />
       </div>
+
+      {searchMode === "semantic" && aiStatus && !aiStatus.clip_available && (
+        <div className="border-b border-amber-200/80 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+          {t("search.semanticFallback")}
+        </div>
+      )}
 
       {media.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 text-neutral-500">

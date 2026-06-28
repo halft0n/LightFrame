@@ -109,6 +109,15 @@ async fn process_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_
         .map(|t| chrono::DateTime::<chrono::Utc>::from(t).naive_utc())
         .unwrap_or_default();
 
+    let path_str = path.to_string_lossy();
+    if let Ok(Some(existing)) = db.get_media_by_path(&path_str)
+        && existing.size_bytes == fs_meta.len()
+        && existing.modified_at == modified_at
+    {
+        tracing::debug!("skipping unchanged file: {path_str}");
+        return Ok(());
+    }
+
     let filename = path
         .file_name()
         .and_then(|n| n.to_str())
@@ -268,6 +277,12 @@ async fn process_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_
     let media_id = db.upsert_media(folder_id, &media)?;
     if let Some(blob) = micro_blob {
         let _ = db.set_micro_thumb(media_id, &blob);
+    }
+
+    if matches!(media_type, MediaType::Screenshot)
+        && let Ok(screenshot_type) = catchlight_ai::classify_screenshot(&path)
+    {
+        let _ = db.set_screenshot_type(media_id, screenshot_type.label());
     }
 
     if let (Some(lat), Some(lon)) = (media.latitude, media.longitude)

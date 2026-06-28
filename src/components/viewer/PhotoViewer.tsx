@@ -162,11 +162,17 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
 
       if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
-        void (async () => {
-          await deleteMedia(mediaId);
-          closeViewer();
-          await loadMedia();
-        })();
+        if (window.confirm(t("viewer.confirmDelete"))) {
+          void (async () => {
+            try {
+              await deleteMedia(mediaId);
+              closeViewer();
+              await loadMedia();
+            } catch (error) {
+              console.error("Delete failed:", error);
+            }
+          })();
+        }
         return;
       }
 
@@ -203,7 +209,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [navigate, neighbors, media?.media_type, mediaId, editorOpen, handleToggleFavorite, requestClose]);
+  }, [navigate, neighbors, media?.media_type, mediaId, editorOpen, handleToggleFavorite, requestClose, t]);
 
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {

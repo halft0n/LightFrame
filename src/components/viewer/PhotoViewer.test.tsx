@@ -297,6 +297,7 @@ describe("PhotoViewer", () => {
   });
 
   it("soft-deletes media with Delete key", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
     const closeViewerSpy = vi.spyOn(appStore, "closeViewer");
     const loadMediaSpy = vi.spyOn(appStore, "loadMedia").mockResolvedValue(undefined);
     (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string, _args?: Record<string, unknown>) => {

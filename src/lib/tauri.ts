@@ -143,6 +143,21 @@ export interface AiStatus {
   status_message: string;
 }
 
+export interface ModelStatus {
+  models_dir: string;
+  clip_available: boolean;
+  face_available: boolean;
+}
+
+export type ScreenshotCategory =
+  | "all"
+  | "generic"
+  | "code"
+  | "chat"
+  | "document"
+  | "game"
+  | "webpage";
+
 export interface Person {
   id: number;
   name: string | null;
@@ -492,6 +507,32 @@ export async function getMemoryMedia(
 
 export async function getAiStatus(): Promise<AiStatus> {
   return invoke<AiStatus>("get_ai_status");
+}
+
+export async function getModelStatus(): Promise<ModelStatus> {
+  return invoke<ModelStatus>("get_model_status");
+}
+
+export async function openModelsDir(): Promise<void> {
+  return invoke("open_models_dir");
+}
+
+export async function getScreenshots(
+  category: ScreenshotCategory,
+  offset: number,
+  limit: number,
+): Promise<MediaItem[]> {
+  const screenshotType = category === "all" ? null : category;
+  return invoke<MediaItem[]>("get_screenshots", {
+    screenshotType,
+    limit,
+    offset,
+  });
+}
+
+export async function getScreenshotCount(category: ScreenshotCategory): Promise<number> {
+  const screenshotType = category === "all" ? null : category;
+  return invoke<number>("get_screenshot_count", { screenshotType });
 }
 
 export async function computeClipEmbedding(mediaId: number): Promise<void> {

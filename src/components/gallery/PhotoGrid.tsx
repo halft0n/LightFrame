@@ -208,12 +208,21 @@ export function PhotoGrid({
 
       if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
-        void (async () => {
-          await batchDeleteMedia(selectedMediaIds);
-          clearMediaSelection();
-          lastSelectedRef.current = null;
-          await loadMedia();
-        })();
+        if (selectedMediaIds.length > 0) {
+          const msg = t("gallery.confirmBatchDelete", { count: selectedMediaIds.length });
+          if (window.confirm(msg)) {
+            void (async () => {
+              try {
+                await batchDeleteMedia(selectedMediaIds);
+                clearMediaSelection();
+                lastSelectedRef.current = null;
+                await loadMedia();
+              } catch (error) {
+                console.error("Batch delete failed:", error);
+              }
+            })();
+          }
+        }
         return;
       }
 
@@ -226,7 +235,7 @@ export function PhotoGrid({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedMediaIds, mediaItems]);
+  }, [selectedMediaIds, mediaItems, t]);
 
   if (mediaItems.length === 0) {
     return <EmptyState variant="photos" title={t("gallery.noPhotos")} />;

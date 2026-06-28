@@ -109,7 +109,7 @@ describe("PhotoGrid", () => {
 
     await waitFor(() => {
       expect(consoleSpy).toHaveBeenCalledWith(
-        "Failed to load more photos:",
+        "Failed to load more media:",
         expect.any(Error),
       );
     });

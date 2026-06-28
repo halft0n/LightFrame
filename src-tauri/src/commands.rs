@@ -154,7 +154,11 @@ pub fn batch_export(
             continue;
         }
 
-        let dest = unique_export_path(output, &media.filename);
+        let sanitized_name = sanitize_filename(&media.filename);
+        let dest = unique_export_path(output, &sanitized_name);
+        if !dest.starts_with(output) {
+            return Err("invalid export path".to_string());
+        }
         std::fs::copy(source, &dest)
             .map_err(|e| format!("failed to copy {} to {}: {e}", media.path, dest.display()))?;
         exported += 1;
@@ -163,17 +167,27 @@ pub fn batch_export(
     Ok(exported)
 }
 
+fn sanitize_filename(name: &str) -> String {
+    let base = std::path::Path::new(name)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unnamed");
+
+    base.replace(['/', '\\'], "_")
+}
+
 fn unique_export_path(dir: &std::path::Path, filename: &str) -> std::path::PathBuf {
-    let mut dest = dir.join(filename);
+    let filename = sanitize_filename(filename);
+    let mut dest = dir.join(&filename);
     if !dest.exists() {
         return dest;
     }
 
-    let path = std::path::Path::new(filename);
+    let path = std::path::Path::new(&filename);
     let stem = path
         .file_stem()
         .and_then(|s| s.to_str())
-        .unwrap_or(filename);
+        .unwrap_or(&filename);
     let ext = path.extension().and_then(|s| s.to_str());
 
     for i in 1..1000 {
@@ -187,7 +201,39 @@ fn unique_export_path(dir: &std::path::Path, filename: &str) -> std::path::PathB
         }
     }
 
-    dir.join(filename)
+    dir.join(&filename)
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_filename_strips_path_traversal() {
+        assert_eq!(sanitize_filename("../../outside.jpg"), "outside.jpg");
+        assert_eq!(sanitize_filename("normal.jpg"), "normal.jpg");
+        assert_eq!(sanitize_filename("sub/file.jpg"), "file.jpg");
+        // Backslashes are replaced so the name cannot escape the output directory.
+        assert_eq!(sanitize_filename("..\\..\\evil.png"), ".._.._evil.png");
+    }
+
+    #[test]
+    fn unique_export_path_stays_within_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = unique_export_path(dir.path(), "../../outside.jpg");
+        assert!(dest.starts_with(dir.path()));
+        assert_eq!(
+            dest.file_name().and_then(|n| n.to_str()),
+            Some("outside.jpg")
+        );
+    }
+
+    #[test]
+    fn unique_export_path_sanitizes_separators_in_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let dest = unique_export_path(dir.path(), "foo/bar.jpg");
+        assert_eq!(dest, dir.path().join("bar.jpg"));
+    }
 }
 
 #[tauri::command]
@@ -371,6 +417,82 @@ pub fn get_media_count_by_type(
         .db
         .get_media_count_by_type(&media_type)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_screenshots(
+    state: State<'_, AppState>,
+    screenshot_type: Option<String>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<MediaFile>, String> {
+    let limit = limit.clamp(1, 500);
+    let offset = offset.max(0);
+    state
+        .db
+        .get_screenshots(screenshot_type.as_deref(), limit, offset)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_screenshot_count(
+    state: State<'_, AppState>,
+    screenshot_type: Option<String>,
+) -> Result<i64, String> {
+    state
+        .db
+        .get_screenshot_count(screenshot_type.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+#[derive(Serialize)]
+pub struct ModelStatus {
+    pub models_dir: String,
+    pub clip_available: bool,
+    pub face_available: bool,
+}
+
+#[tauri::command]
+pub async fn get_model_status() -> Result<ModelStatus, String> {
+    Ok(ModelStatus {
+        models_dir: catchlight_ai::models::models_dir()
+            .to_string_lossy()
+            .to_string(),
+        clip_available: catchlight_ai::models::clip_model_available(),
+        face_available: catchlight_ai::models::face_model_available(),
+    })
+}
+
+#[tauri::command]
+pub fn open_models_dir() -> Result<(), String> {
+    catchlight_ai::models::ensure_models_dir().map_err(|e| e.to_string())?;
+    let path = catchlight_ai::models::models_dir();
+    open_in_file_manager(&path)
+}
+
+fn open_in_file_manager(path: &std::path::Path) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| format!("failed to open file manager: {e}"))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| format!("failed to open file manager: {e}"))?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(path)
+            .spawn()
+            .map_err(|e| format!("failed to open file manager: {e}"))?;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1027,6 +1149,10 @@ pub fn merge_persons(state: State<'_, AppState>, person_ids: Vec<i64>) -> Result
 
 #[tauri::command]
 pub fn save_edit(state: State<'_, AppState>, media_id: i64, params: String) -> Result<(), String> {
+    const MAX_EDIT_PARAMS_SIZE: usize = 64 * 1024; // 64KB
+    if params.len() > MAX_EDIT_PARAMS_SIZE {
+        return Err("edit parameters too large".to_string());
+    }
     crate::image_edit::parse_edit_params(&params)?;
     state
         .db

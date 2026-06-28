@@ -4,6 +4,8 @@ use http::{StatusCode, header};
 use std::path::{Path, PathBuf};
 use tauri::http::Response;
 
+const MAX_SERVE_SIZE: u64 = 500 * 1024 * 1024; // 500MB
+
 pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
     tracing::debug!("original protocol request: {request_path}");
 
@@ -11,6 +13,11 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
 
     let decoded = percent_decode(raw);
     let file_path = normalize_file_path(&decoded);
+
+    if path_contains_parent_dir(&file_path) {
+        tracing::warn!(path = %file_path.display(), "original protocol: path traversal rejected");
+        return error_response(StatusCode::FORBIDDEN, "path not allowed");
+    }
 
     let watched_folders = match state.db.list_watched_folders() {
         Ok(folders) => folders,
@@ -24,13 +31,34 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
         return error_response(StatusCode::FORBIDDEN, "path not allowed");
     }
 
-    if !file_path.exists() {
-        return error_response(StatusCode::NOT_FOUND, "file not found");
+    let canonical = match std::fs::canonicalize(&file_path) {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::warn!("original protocol: canonicalize failed: {e}");
+            return error_response(StatusCode::NOT_FOUND, "file not found");
+        }
+    };
+
+    if !path_is_in_watched_folders(&canonical, &watched_folders) {
+        tracing::warn!(
+            "original protocol: canonical path {} escapes watched folders",
+            canonical.display()
+        );
+        return error_response(StatusCode::FORBIDDEN, "path not allowed");
     }
 
-    match std::fs::read(&file_path) {
+    let metadata = match std::fs::metadata(&canonical) {
+        Ok(m) => m,
+        Err(_) => return error_response(StatusCode::NOT_FOUND, "file not found"),
+    };
+
+    if metadata.len() > MAX_SERVE_SIZE {
+        return error_response(StatusCode::from_u16(413).unwrap(), "file too large");
+    }
+
+    match std::fs::read(&canonical) {
         Ok(bytes) => {
-            let mime = guess_mime(&file_path);
+            let mime = guess_mime(&canonical);
             Response::builder()
                 .status(StatusCode::OK)
                 .header(header::CONTENT_TYPE, mime)
@@ -40,7 +68,7 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
                 .unwrap()
         }
         Err(e) => {
-            tracing::warn!(path = %file_path.display(), "original protocol read error: {e}");
+            tracing::warn!(path = %canonical.display(), "original protocol read error: {e}");
             error_response(StatusCode::INTERNAL_SERVER_ERROR, "read failed")
         }
     }
@@ -53,20 +81,70 @@ pub fn path_is_in_watched_folders(path: &Path, folders: &[WatchedFolder]) -> boo
 }
 
 fn path_is_under_folder(path: &Path, folder: &str) -> bool {
-    let root = Path::new(folder);
-    if path == root {
+    let root = normalize_file_path(folder);
+    if paths_equal(path, &root) {
         return true;
     }
 
     let mut root_components = root.components();
     for component in path.components() {
         match root_components.next() {
-            Some(expected) if expected == component => continue,
+            Some(expected) if components_equal(expected, component) => continue,
             Some(_) => return false,
             None => return true,
         }
     }
     false
+}
+
+fn path_contains_parent_dir(path: &Path) -> bool {
+    if path
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return true;
+    }
+    path.to_string_lossy()
+        .split(['/', '\\'])
+        .any(|part| part == "..")
+}
+
+fn paths_equal(a: &Path, b: &Path) -> bool {
+    if a == b {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        a.as_os_str().eq_ignore_ascii_case(b.as_os_str())
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
+fn components_equal(a: std::path::Component<'_>, b: std::path::Component<'_>) -> bool {
+    if a == b {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        use std::path::Component;
+        match (a, b) {
+            (Component::Prefix(a), Component::Prefix(b)) => {
+                a.as_os_str().eq_ignore_ascii_case(b.as_os_str())
+            }
+            (Component::Normal(a), Component::Normal(b)) => {
+                a.as_os_str().eq_ignore_ascii_case(b.as_os_str())
+            }
+            _ => false,
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (a, b);
+        false
+    }
 }
 
 fn strip_scheme_path(request_path: &str) -> &str {
@@ -79,19 +157,39 @@ fn strip_scheme_path(request_path: &str) -> &str {
     path.trim_start_matches('/')
 }
 
-fn normalize_file_path(decoded: &str) -> PathBuf {
-    #[cfg(windows)]
-    {
-        let normalized = decoded.replace('/', "\\");
-        let trimmed = normalized.trim_start_matches('\\');
-        if trimmed.len() >= 2 && trimmed.as_bytes()[1] == b':' {
-            PathBuf::from(trimmed)
-        } else {
-            PathBuf::from(normalized)
-        }
+fn looks_like_windows_path(s: &str) -> bool {
+    let s = s.trim_start_matches('/');
+    if s.len() >= 2 && s.as_bytes()[0].is_ascii_alphabetic() && s.as_bytes()[1] == b':' {
+        return true;
     }
-    #[cfg(not(windows))]
-    {
+    s.starts_with("//") || s.starts_with("\\\\")
+}
+
+fn normalize_windows_path_str(decoded: &str) -> String {
+    let mut s = decoded.replace('/', "\\");
+
+    while s.starts_with('\\') {
+        if s.starts_with("\\\\") {
+            let after = &s[2..];
+            if after.len() >= 2
+                && after.as_bytes()[0].is_ascii_alphabetic()
+                && after.as_bytes()[1] == b':'
+            {
+                s = after.to_string();
+                continue;
+            }
+            break;
+        }
+        s = s[1..].to_string();
+    }
+
+    s
+}
+
+fn normalize_file_path(decoded: &str) -> PathBuf {
+    if looks_like_windows_path(decoded) || decoded.contains('\\') {
+        PathBuf::from(normalize_windows_path_str(decoded))
+    } else {
         PathBuf::from(decoded)
     }
 }
@@ -259,6 +357,75 @@ mod tests {
     }
 
     #[test]
+    fn normalize_windows_path_strips_uri_leading_slashes() {
+        assert_eq!(
+            normalize_windows_path_str("/C:/Users/王子胖/Pictures/photo.jpg"),
+            "C:\\Users\\王子胖\\Pictures\\photo.jpg"
+        );
+        assert_eq!(
+            normalize_windows_path_str("//C:/Users/photo.jpg"),
+            "C:\\Users\\photo.jpg"
+        );
+        assert_eq!(
+            normalize_windows_path_str("C:/Users/photo.jpg"),
+            "C:\\Users\\photo.jpg"
+        );
+    }
+
+    #[test]
+    fn normalize_windows_path_preserves_unc() {
+        assert_eq!(
+            normalize_windows_path_str("//server/share/photo.jpg"),
+            "\\\\server\\share\\photo.jpg"
+        );
+        assert_eq!(
+            normalize_windows_path_str("\\\\server\\share\\photo.jpg"),
+            "\\\\server\\share\\photo.jpg"
+        );
+    }
+
+    #[test]
+    fn normalize_file_path_handles_drive_letter() {
+        let path = normalize_file_path("/C:/Users/test/photo.jpg");
+        assert_eq!(path.to_string_lossy(), "C:\\Users\\test\\photo.jpg");
+    }
+
+    #[test]
+    fn path_contains_parent_dir_detects_traversal() {
+        assert!(path_contains_parent_dir(Path::new("/photos/../secret.jpg")));
+        assert!(path_contains_parent_dir(Path::new(
+            "C:\\photos\\..\\secret.jpg"
+        )));
+        assert!(!path_contains_parent_dir(Path::new("/photos/vacation.jpg")));
+    }
+
+    #[test]
+    fn handle_path_traversal_returns_forbidden() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(dir.path());
+        let traversal = dir.path().join("..").join("etc").join("passwd");
+        let resp = handle(&state, &request_path_for_file(&traversal));
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn percent_decode_chinese_utf8() {
+        let encoded = "%E7%85%A7%E7%89%87.jpg";
+        assert_eq!(percent_decode(encoded), "照片.jpg");
+    }
+
+    #[test]
+    fn ok_and_error_responses_include_cors_header() {
+        let err = error_response(StatusCode::NOT_FOUND, "missing");
+        assert_eq!(
+            err.headers()
+                .get("Access-Control-Allow-Origin")
+                .and_then(|v| v.to_str().ok()),
+            Some("*")
+        );
+    }
+
+    #[test]
     fn handle_missing_file_returns_404() {
         let dir = tempfile::tempdir().unwrap();
         let state = test_state_with_watched_dir(dir.path());
@@ -387,7 +554,7 @@ mod tests {
 
     #[test]
     #[cfg(unix)]
-    fn handle_symlink_inside_watched_folder_serves_target_content() {
+    fn handle_symlink_escape_outside_watched_folder_returns_forbidden() {
         let watched = tempfile::tempdir().unwrap();
         let state = test_state_with_watched_dir(watched.path());
 
@@ -399,7 +566,37 @@ mod tests {
         std::os::unix::fs::symlink(&secret, &link).unwrap();
 
         let resp = handle(&state, &request_path_for_file(&link));
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn handle_symlink_within_watched_folder_serves_target_content() {
+        let watched = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(watched.path());
+
+        let target = watched.path().join("real.jpg");
+        std::fs::write(&target, b"inside").unwrap();
+
+        let link = watched.path().join("link.jpg");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        let resp = handle(&state, &request_path_for_file(&link));
         assert_eq!(resp.status(), StatusCode::OK);
-        assert_eq!(*resp.body(), b"outside".to_vec());
+        assert_eq!(*resp.body(), b"inside".to_vec());
+    }
+
+    #[test]
+    fn handle_file_too_large_returns_413() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(dir.path());
+        let file = dir.path().join("huge.bin");
+
+        let f = std::fs::File::create(&file).unwrap();
+        f.set_len(MAX_SERVE_SIZE + 1).unwrap();
+        drop(f);
+
+        let resp = handle(&state, &request_path_for_file(&file));
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
     }
 }

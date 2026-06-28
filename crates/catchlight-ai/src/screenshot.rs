@@ -1,10 +1,44 @@
 use catchlight_core::Result;
-use catchlight_core::media::MediaType;
 use exif::{In, Tag};
 use image::GenericImageView;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+pub enum ScreenshotType {
+    Generic,
+    Code,
+    Chat,
+    Document,
+    Game,
+    WebPage,
+}
+
+impl ScreenshotType {
+    pub fn label(&self) -> &'static str {
+        match self {
+            Self::Generic => "generic",
+            Self::Code => "code",
+            Self::Chat => "chat",
+            Self::Document => "document",
+            Self::Game => "game",
+            Self::WebPage => "webpage",
+        }
+    }
+
+    pub fn from_label(value: &str) -> Option<Self> {
+        match value {
+            "generic" => Some(Self::Generic),
+            "code" => Some(Self::Code),
+            "chat" => Some(Self::Chat),
+            "document" => Some(Self::Document),
+            "game" => Some(Self::Game),
+            "webpage" => Some(Self::WebPage),
+            _ => None,
+        }
+    }
+}
 
 /// Confidence that an image is a screenshot, in the range `0.0`–`1.0`.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -63,9 +97,92 @@ pub fn detect_screenshot(path: &Path, width: u32, height: u32) -> Result<Screens
     })
 }
 
-pub fn classify_screenshot(_path: &Path) -> Result<MediaType> {
-    // TODO: use CLIP ONNX or Python sidecar for sub-classification
-    Ok(MediaType::Screenshot)
+/// Rules-based screenshot sub-classification (no ML required).
+pub fn classify_screenshot(path: &Path) -> Result<ScreenshotType> {
+    if !path.exists() {
+        return Ok(ScreenshotType::Generic);
+    }
+
+    let img = image::open(path).map_err(|e| catchlight_core::Error::Ai(e.to_string()))?;
+    let (width, height) = img.dimensions();
+    if width == 0 || height == 0 {
+        return Ok(ScreenshotType::Generic);
+    }
+
+    let (long, short) = if width >= height {
+        (width, height)
+    } else {
+        (height, width)
+    };
+    let aspect_ratio = long as f64 / short as f64;
+
+    // Tall/narrow layouts (e.g. phone chat threads) are often chat screenshots.
+    if aspect_ratio >= 2.0 {
+        return Ok(ScreenshotType::Chat);
+    }
+
+    if is_likely_code_screenshot(&img) {
+        return Ok(ScreenshotType::Code);
+    }
+
+    Ok(ScreenshotType::Generic)
+}
+
+fn is_likely_code_screenshot(img: &image::DynamicImage) -> bool {
+    let (width, height) = img.dimensions();
+    if width == 0 || height == 0 {
+        return false;
+    }
+
+    let rgba = img.to_rgba8();
+    let step_x = (width / 48).max(1);
+    let step_y = (height / 48).max(1);
+
+    let mut sample_count = 0_u64;
+    let mut dark_count = 0_u64;
+    let mut syntax_color_count = 0_u64;
+
+    for y in (0..height).step_by(step_y as usize) {
+        for x in (0..width).step_by(step_x as usize) {
+            let pixel = rgba.get_pixel(x, y);
+            let r = pixel[0] as f32;
+            let g = pixel[1] as f32;
+            let b = pixel[2] as f32;
+            let brightness = (r + g + b) / 3.0;
+
+            sample_count += 1;
+            if brightness < 80.0 {
+                dark_count += 1;
+            }
+
+            if brightness < 180.0 && is_syntax_highlight_color(r, g, b) {
+                syntax_color_count += 1;
+            }
+        }
+    }
+
+    if sample_count == 0 {
+        return false;
+    }
+
+    let dark_ratio = dark_count as f64 / sample_count as f64;
+    let syntax_ratio = syntax_color_count as f64 / sample_count as f64;
+
+    dark_ratio >= 0.45 && syntax_ratio >= 0.04
+}
+
+fn is_syntax_highlight_color(r: f32, g: f32, b: f32) -> bool {
+    let max = r.max(g).max(b);
+    let min = r.min(g).min(b);
+    if max < 40.0 || max - min < 25.0 {
+        return false;
+    }
+
+    // Common IDE syntax colors on dark backgrounds.
+    (b > r + 20.0 && b > g + 10.0)
+        || (g > r + 20.0 && g > b + 10.0)
+        || (r > g + 25.0 && r > b + 25.0)
+        || (r > 180.0 && g > 120.0 && b < 100.0)
 }
 
 #[derive(Debug, Default)]
@@ -336,9 +453,49 @@ mod tests {
     }
 
     #[test]
-    fn classify_returns_screenshot_type() {
-        let result = classify_screenshot(Path::new("any.png")).unwrap();
-        assert_eq!(result, MediaType::Screenshot);
+    fn classify_missing_file_returns_generic() {
+        let result = classify_screenshot(Path::new("/nonexistent/screenshot.png")).unwrap();
+        assert_eq!(result, ScreenshotType::Generic);
+    }
+
+    #[test]
+    fn classify_tall_narrow_image_as_chat() {
+        let mut img = RgbaImage::new(400, 1200);
+        for (x, y, pixel) in img.enumerate_pixels_mut() {
+            let v = ((x + y) % 200) as u8;
+            *pixel = Rgba([v, v, v, 255]);
+        }
+        let path = temp_png("tall_chat.png", &img);
+        let result = classify_screenshot(&path).unwrap();
+        assert_eq!(result, ScreenshotType::Chat);
+    }
+
+    #[test]
+    fn classify_dark_syntax_image_as_code() {
+        let mut img = RgbaImage::new(1920, 1080);
+        for (x, y, pixel) in img.enumerate_pixels_mut() {
+            *pixel = Rgba([22, 22, 28, 255]);
+            if x % 37 == 0 {
+                *pixel = Rgba([86, 156, 214, 255]);
+            } else if y % 29 == 0 {
+                *pixel = Rgba([78, 201, 176, 255]);
+            } else if (x + y) % 53 == 0 {
+                *pixel = Rgba([206, 145, 120, 255]);
+            }
+        }
+        let path = temp_png("code_like.png", &img);
+        let result = classify_screenshot(&path).unwrap();
+        assert_eq!(result, ScreenshotType::Code);
+    }
+
+    #[test]
+    fn screenshot_type_label_roundtrip() {
+        assert_eq!(ScreenshotType::Code.label(), "code");
+        assert_eq!(
+            ScreenshotType::from_label("webpage"),
+            Some(ScreenshotType::WebPage)
+        );
+        assert_eq!(ScreenshotType::from_label("unknown"), None);
     }
 
     #[test]

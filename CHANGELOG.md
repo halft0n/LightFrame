@@ -16,11 +16,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CLIP ONNX image encoding (optional `clip` feature)
 - Cosine similarity search for similar photos
 - `SimilarPhotosPanel` slide-in UI in photo viewer
-- Face detection framework (optional `face` feature)
-- Face database CRUD (store/get detections, create/assign persons)
-- Python sidecar: `check_capabilities`, `compute_clip_embedding`, `detect_faces` methods
-- AI dispatcher with Rust ONNX → Python fallback routing
-- AI status reporting (clip/face/python availability)
+- Face detection/clustering pipeline (optional `face` feature)
+- Person management: rename, merge, cluster faces
+- AI model management UI (`AiSettings.tsx`) with status dashboard
+- Screenshot sub-classification (code/chat/document/game/web)
+- `ScreenshotView` with category chip filter
+- Semantic search mode toggle in search bar
+- `SearchResultsView` with AI/Text mode indicator
+- Criterion performance benchmarks for DB and dedup crates
+- Bilingual user guide (`docs/USER_GUIDE.md`)
+- Code signing documentation (`docs/SIGNING.md`)
+- MFT/USN fast indexing framework (Windows, conditional compilation)
+- CI tag-vs-config version verification step
+
+### Security
+- Fix symlink escape: canonicalize paths before serving in `original://` protocol
+- Fix path traversal in batch export: sanitize filenames
+- Add 500MB size limit for original file serving (prevent OOM)
+- Add 64KB limit for edit parameter payloads
+
+### Fixed
+- Windows thumbnail loading: CORS headers, robust URI parsing, path normalization
+- NSIS installer: add SimpChinese/English languages, proper config
+- Version sync: unified to 0.0.9 across Cargo/Tauri/npm
+- Delete confirmation dialogs in PhotoViewer and PhotoGrid
+- Error handling in appStore loadMedia/loadMoreMedia
+- Scan optimization: skip unchanged files by (size, mtime) check
+- `create_smart_album` deadlock (mutex held across DB calls)
+- AI status module name check
 
 ### Tests (64 new frontend + 25 new Rust)
 - App routing and responsive layout tests
