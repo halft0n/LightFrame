@@ -1,6 +1,15 @@
 use crate::Database;
 use catchlight_core::media::{MediaFile, MediaType};
-use rusqlite::params;
+use rusqlite::{params, OptionalExtension};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WatchedFolder {
+    pub id: i64,
+    pub path: String,
+    pub added_at: String,
+    pub last_scan_at: Option<String>,
+}
 
 impl Database {
     pub fn add_watched_folder(&self, path: &str) -> catchlight_core::Result<i64> {
@@ -112,5 +121,110 @@ impl Database {
         let conn = self.conn();
         conn.query_row("SELECT COUNT(*) FROM media_files", [], |row| row.get(0))
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn list_watched_folders(&self) -> catchlight_core::Result<Vec<WatchedFolder>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, path, added_at, last_scan_at FROM watched_folders ORDER BY added_at",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(WatchedFolder {
+                    id: row.get(0)?,
+                    path: row.get(1)?,
+                    added_at: row.get(2)?,
+                    last_scan_at: row.get(3)?,
+                })
+            })
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn get_watched_folder(&self, id: i64) -> catchlight_core::Result<Option<WatchedFolder>> {
+        let conn = self.conn();
+        conn.query_row(
+            "SELECT id, path, added_at, last_scan_at FROM watched_folders WHERE id = ?1",
+            params![id],
+            |row| {
+                Ok(WatchedFolder {
+                    id: row.get(0)?,
+                    path: row.get(1)?,
+                    added_at: row.get(2)?,
+                    last_scan_at: row.get(3)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn remove_watched_folder(&self, id: i64) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        conn.execute(
+            "DELETE FROM media_files WHERE folder_id = ?1",
+            params![id],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        conn.execute("DELETE FROM watched_folders WHERE id = ?1", params![id])
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn update_last_scan_at(&self, folder_id: i64) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        conn.execute(
+            "UPDATE watched_folders SET last_scan_at = datetime('now') WHERE id = ?1",
+            params![folder_id],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn get_media_by_id(&self, id: i64) -> catchlight_core::Result<Option<MediaFile>> {
+        let conn = self.conn();
+        conn.query_row(
+            "SELECT id, path, filename, media_type, size_bytes, width, height,
+                    created_at, modified_at, blake3_hash, dhash, latitude, longitude
+             FROM media_files WHERE id = ?1",
+            params![id],
+            |row| {
+                let media_type_str: String = row.get(3)?;
+                let media_type = match media_type_str.as_str() {
+                    "Photo" => MediaType::Photo,
+                    "Video" => MediaType::Video,
+                    "Screenshot" => MediaType::Screenshot,
+                    "Raw" => MediaType::Raw,
+                    "LivePhoto" => MediaType::LivePhoto,
+                    _ => MediaType::Unknown,
+                };
+
+                Ok(MediaFile {
+                    id: row.get(0)?,
+                    path: row.get(1)?,
+                    filename: row.get(2)?,
+                    media_type,
+                    size_bytes: row.get(4)?,
+                    width: row.get(5)?,
+                    height: row.get(6)?,
+                    created_at: row.get::<_, Option<String>>(7)?
+                        .and_then(|s| s.parse().ok()),
+                    modified_at: row.get::<_, String>(8)?
+                        .parse()
+                        .unwrap_or_default(),
+                    blake3_hash: row.get(9)?,
+                    dhash: row.get(10)?,
+                    latitude: row.get(11)?,
+                    longitude: row.get(12)?,
+                })
+            },
+        )
+        .optional()
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))
     }
 }

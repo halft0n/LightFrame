@@ -1,6 +1,8 @@
 pub mod migrations;
 pub mod repo;
 
+pub use repo::WatchedFolder;
+
 use catchlight_core::config;
 use rusqlite::Connection;
 use std::path::Path;

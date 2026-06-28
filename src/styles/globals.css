@@ -32,3 +32,27 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgb(64 64 64 / 0.8);
 }
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgb(38 38 38) 0%,
+    rgb(64 64 64) 50%,
+    rgb(38 38 38) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+.photo-card-overlay {
+  pointer-events: none;
+}

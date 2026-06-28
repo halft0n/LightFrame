@@ -11,5 +11,15 @@
   "sidebar.settings": "Settings",
   "sidebar.albums": "Albums",
   "main.welcome": "Welcome to CatchLight",
-  "main.addFolder": "Add a folder to start browsing photos"
+  "main.addFolder": "Add a folder to start browsing photos",
+  "settings.folders": "Watched Folders",
+  "settings.addFolder": "Add Folder",
+  "settings.removeFolder": "Remove",
+  "settings.scanning": "Scanning…",
+  "gallery.loading": "Loading…",
+  "gallery.noPhotos": "No photos yet",
+  "gallery.count": "{count} items",
+  "folder.path": "Path",
+  "folder.mediaCount": "Media count",
+  "folder.lastScan": "Last scan"
 }

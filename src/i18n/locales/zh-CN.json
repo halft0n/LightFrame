@@ -11,5 +11,15 @@
   "sidebar.settings": "设置",
   "sidebar.albums": "相簿",
   "main.welcome": "欢迎使用 拾光",
-  "main.addFolder": "添加文件夹开始浏览照片"
+  "main.addFolder": "添加文件夹开始浏览照片",
+  "settings.folders": "监控文件夹",
+  "settings.addFolder": "添加文件夹",
+  "settings.removeFolder": "移除",
+  "settings.scanning": "扫描中…",
+  "gallery.loading": "加载中…",
+  "gallery.noPhotos": "暂无照片",
+  "gallery.count": "共 {count} 项",
+  "folder.path": "路径",
+  "folder.mediaCount": "媒体数量",
+  "folder.lastScan": "上次扫描"
 }
