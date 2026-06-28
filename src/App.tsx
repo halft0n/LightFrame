@@ -6,6 +6,7 @@ import {
   getMediaCount,
   getMediaList,
   listWatchedFolders,
+  onFolderChanged,
   onScanProgress,
   scanFolder,
 } from "@/lib/tauri";
@@ -72,7 +73,9 @@ export default function App() {
 
     void init();
 
-    let unlisten: (() => void) | undefined;
+    let unlistenProgress: (() => void) | undefined;
+    let unlistenFolder: (() => void) | undefined;
+
     void onScanProgress((progress) => {
       setScanning(progress.status === "scanning", progress);
       updateFolder(progress.folder_id, {
@@ -97,12 +100,22 @@ export default function App() {
         })();
       }
     }).then((fn) => {
-      unlisten = fn;
+      unlistenProgress = fn;
+    });
+
+    void onFolderChanged((folderId) => {
+      updateFolder(folderId, { scan_status: "scanning" });
+      void scanFolder(folderId).catch(() => {
+        updateFolder(folderId, { scan_status: "error" });
+      });
+    }).then((fn) => {
+      unlistenFolder = fn;
     });
 
     return () => {
       cancelled = true;
-      unlisten?.();
+      unlistenProgress?.();
+      unlistenFolder?.();
     };
   }, []);
 

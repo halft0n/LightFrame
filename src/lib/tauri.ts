@@ -216,6 +216,14 @@ export async function onScanProgress(
   });
 }
 
+export async function onFolderChanged(
+  callback: (folderId: number) => void,
+): Promise<() => void> {
+  return listen<{ folder_id: number }>("folder-changed", (event) => {
+    callback(event.payload.folder_id);
+  });
+}
+
 export async function runDedupScan(): Promise<DedupScanResult> {
   return invoke<DedupScanResult>("run_dedup_scan");
 }

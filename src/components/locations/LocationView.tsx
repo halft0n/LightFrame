@@ -11,6 +11,7 @@ import {
 } from "@/lib/tauri";
 import { openViewer } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
+import { LocationMapView } from "@/components/locations/LocationMapView";
 
 const MIN_COLUMN_WIDTH = 160;
 const GAP = 3;
@@ -36,6 +37,42 @@ function groupByCountry(groups: LocationGroup[]): Map<string, LocationGroup[]> {
 function locationLabel(country: string, city: string | null): string {
   if (city) return `${city}, ${country}`;
   return country;
+}
+
+type LocationViewMode = "grid" | "map";
+
+function GridViewIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      className={className}
+      aria-hidden="true"
+    >
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+    </svg>
+  );
+}
+
+function MapViewIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2-6-2-6 2Z" />
+      <path d="M9 4v14M15 6v14" />
+    </svg>
+  );
 }
 
 interface LocationGroupCardProps {
@@ -87,6 +124,7 @@ export function LocationView() {
   const [hasMore, setHasMore] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
   const [visibleCount, setVisibleCount] = useState(CARD_PAGE_SIZE);
+  const [viewMode, setViewMode] = useState<LocationViewMode>("grid");
 
   const columnCount = Math.max(
     1,
@@ -261,37 +299,69 @@ export function LocationView() {
           <span>{t("locations.photosWithGps", { count: stats.total_with_gps })}</span>
           <span>{t("locations.countries", { count: stats.countries })}</span>
           <span>{t("locations.cities", { count: stats.cities })}</span>
+          <div className="ml-auto flex items-center gap-1 rounded-lg border border-neutral-200/80 dark:border-neutral-700 p-0.5">
+            <button
+              type="button"
+              onClick={() => setViewMode("grid")}
+              title={t("locations.gridView")}
+              aria-label={t("locations.gridView")}
+              className={`rounded-md p-1.5 transition ${
+                viewMode === "grid"
+                  ? "bg-neutral-200 text-neutral-900 dark:bg-neutral-700 dark:text-neutral-100"
+                  : "text-neutral-500 hover:text-neutral-300 dark:text-neutral-400 dark:hover:text-neutral-200"
+              }`}
+            >
+              <GridViewIcon className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("map")}
+              title={t("locations.mapView")}
+              aria-label={t("locations.mapView")}
+              className={`rounded-md p-1.5 transition ${
+                viewMode === "map"
+                  ? "bg-neutral-200 text-neutral-900 dark:bg-neutral-700 dark:text-neutral-100"
+                  : "text-neutral-500 hover:text-neutral-300 dark:text-neutral-400 dark:hover:text-neutral-200"
+              }`}
+            >
+              <MapViewIcon className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       )}
 
-      <div ref={parentRef} className="flex-1 overflow-y-auto px-1 py-1">
-        {[...byCountry.entries()].map(([country, cityGroups]) => (
-          <section key={country} className="mb-6">
-            <h2 className="mb-3 text-base font-semibold text-neutral-100">{country}</h2>
-            <div className="grid gap-[3px] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {cityGroups.map((group) => (
-                <LocationGroupCard
-                  key={`${group.country}-${group.city ?? ""}`}
-                  group={group}
-                  countLabel={t("gallery.count", { count: group.count })}
-                  onSelect={handleSelectGroup}
-                />
-              ))}
+      {viewMode === "map" ? (
+        <LocationMapView groups={groups} />
+      ) : (
+        <div ref={parentRef} className="flex-1 overflow-y-auto px-1 py-1">
+          {[...byCountry.entries()].map(([country, cityGroups]) => (
+            <section key={country} className="mb-6">
+              <h2 className="mb-3 text-base font-semibold text-neutral-100">{country}</h2>
+              <div className="grid gap-[3px] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {cityGroups.map((group) => (
+                  <LocationGroupCard
+                    key={`${group.country}-${group.city ?? ""}`}
+                    group={group}
+                    countLabel={t("gallery.count", { count: group.count })}
+                    onSelect={handleSelectGroup}
+                  />
+                ))}
+              </div>
+            </section>
+          ))}
+          {hasMoreCards && (
+            <div className="flex justify-center pb-6">
+              <button
+                type="button"
+                onClick={() => setVisibleCount((prev) => prev + CARD_PAGE_SIZE)}
+                className="rounded-lg border border-neutral-200/80 dark:border-neutral-700 px-6 py-2 text-sm text-neutral-500 dark:text-neutral-400 transition hover:border-neutral-300 dark:hover:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-200"
+              >
+                {t("gallery.loadMore")} ({groups.length - visibleCount})
+              </button>
             </div>
-          </section>
-        ))}
-        {hasMoreCards && (
-          <div className="flex justify-center pb-6">
-            <button
-              type="button"
-              onClick={() => setVisibleCount((prev) => prev + CARD_PAGE_SIZE)}
-              className="rounded-lg border border-neutral-200/80 dark:border-neutral-700 px-6 py-2 text-sm text-neutral-500 dark:text-neutral-400 transition hover:border-neutral-300 dark:hover:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-200"
-            >
-              {t("gallery.loadMore")} ({groups.length - visibleCount})
-            </button>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

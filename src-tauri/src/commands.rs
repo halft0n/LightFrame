@@ -1,5 +1,6 @@
 use crate::scan;
 use crate::state::{AppState, ScanProgress};
+use crate::watcher;
 use catchlight_core::config::AppConfig;
 use catchlight_core::media::MediaFile;
 use catchlight_ai::AiStatus;
@@ -43,16 +44,22 @@ pub fn add_watched_folder(
         .add_watched_folder(&path)
         .map_err(|e| e.to_string())?;
 
-    scan::spawn_scan(app, &state, folder.id);
+    scan::spawn_scan(app.clone(), &state, folder.id);
+    let _ = watcher::start(&app, &state);
     Ok(folder)
 }
 
 #[tauri::command]
-pub fn remove_watched_folder(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+pub fn remove_watched_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: i64,
+) -> Result<(), String> {
     state
         .db
         .remove_watched_folder(id)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    watcher::start(&app, &state).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -102,6 +109,16 @@ pub fn scan_folder(app: AppHandle, state: State<'_, AppState>, folder_id: i64) -
 #[tauri::command]
 pub fn get_scan_status(state: State<'_, AppState>) -> ScanProgress {
     state.scan_status.snapshot()
+}
+
+#[tauri::command]
+pub fn start_watching(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    watcher::start(&app, &state).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn stop_watching(state: State<'_, AppState>) -> Result<(), String> {
+    watcher::stop(&state).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

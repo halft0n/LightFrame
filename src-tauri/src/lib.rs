@@ -4,6 +4,7 @@ mod original_protocol;
 mod scan;
 mod state;
 mod thumb_protocol;
+mod watcher;
 
 use state::AppState;
 use tauri::Manager;
@@ -22,6 +23,14 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
+        .setup(|app| {
+            let handle = app.handle().clone();
+            let state = app.state::<AppState>();
+            if let Err(e) = watcher::start(&handle, &state) {
+                tracing::warn!("failed to start folder watcher: {e}");
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::get_app_version,
             commands::get_config,
@@ -33,6 +42,8 @@ pub fn run() {
             commands::get_media_by_id,
             commands::scan_folder,
             commands::get_scan_status,
+            commands::start_watching,
+            commands::stop_watching,
             commands::get_timeline_groups,
             commands::get_media_neighbors,
             commands::run_dedup_scan,

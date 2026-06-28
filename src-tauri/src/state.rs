@@ -69,12 +69,15 @@ impl Default for ScanStatus {
     }
 }
 
+use crate::watcher::WatchManager;
+
 pub struct AppState {
     pub db: Arc<Database>,
     pub config: AppConfig,
     pub scan_status: ScanStatus,
     pub scan_concurrency: usize,
     pub scanning: Arc<AtomicBool>,
+    pub watch_manager: WatchManager,
 }
 
 impl AppState {
@@ -94,6 +97,7 @@ impl AppState {
             scan_status: ScanStatus::new(),
             scan_concurrency: concurrency,
             scanning: Arc::new(AtomicBool::new(false)),
+            watch_manager: WatchManager::new(),
         })
     }
 }

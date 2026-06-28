@@ -18,13 +18,15 @@ describe("Sidebar", () => {
     render(<Sidebar />);
     expect(screen.getByText("所有照片")).toBeInTheDocument();
     expect(screen.getByText("视频")).toBeInTheDocument();
+    expect(screen.getByText("时间线")).toBeInTheDocument();
     expect(screen.getByText("收藏")).toBeInTheDocument();
     expect(screen.getByText("地点")).toBeInTheDocument();
     expect(screen.getByText("人物")).toBeInTheDocument();
   });
 
-  it("renders tools section in Chinese", () => {
+  it("renders albums section in Chinese", () => {
     render(<Sidebar />);
+    expect(screen.getByText("回忆")).toBeInTheDocument();
     expect(screen.getByText("重复照片")).toBeInTheDocument();
     expect(screen.getByText("截图")).toBeInTheDocument();
   });
@@ -39,6 +41,8 @@ describe("Sidebar", () => {
     render(<Sidebar />);
     expect(screen.getByText("All Photos")).toBeInTheDocument();
     expect(screen.getByText("Videos")).toBeInTheDocument();
+    expect(screen.getByText("Timeline")).toBeInTheDocument();
+    expect(screen.getByText("Memories")).toBeInTheDocument();
     expect(screen.getByText("Duplicates")).toBeInTheDocument();
     expect(screen.getByText("Settings")).toBeInTheDocument();
   });

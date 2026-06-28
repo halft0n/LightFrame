@@ -6,6 +6,7 @@ import { NavIcon, type NavIconName } from "./NavIcons";
 const LIBRARY_ITEMS: SidebarItem[] = [
   { key: "sidebar.allPhotos", icon: "all", view: "all" },
   { key: "sidebar.videos", icon: "videos", view: "videos" },
+  { key: "sidebar.timeline", icon: "timeline", view: "timeline" },
   { key: "sidebar.favorites", icon: "favorites", view: "favorites" },
   { key: "sidebar.locations", icon: "locations", view: "locations" },
   { key: "sidebar.people", icon: "people", view: "people" },
@@ -14,6 +15,7 @@ const LIBRARY_ITEMS: SidebarItem[] = [
 const ALBUM_ITEMS: SidebarItem[] = [
   { key: "sidebar.albums", icon: "albums", view: "albums" },
   { key: "sidebar.smartAlbums", icon: "smart-albums", view: "smart-albums" },
+  { key: "sidebar.memories", icon: "memories", view: "memories" },
   { key: "sidebar.duplicates", icon: "duplicates", view: "duplicates" },
   { key: "sidebar.screenshots", icon: "screenshots", view: "screenshots" },
 ];
