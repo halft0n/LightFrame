@@ -11,6 +11,19 @@ pub struct WatchedFolder {
     pub last_scan_at: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TimelineGroup {
+    pub date: String,
+    pub count: i64,
+    pub media: Vec<MediaFile>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MediaNeighbors {
+    pub prev_id: Option<i64>,
+    pub next_id: Option<i64>,
+}
+
 impl Database {
     pub fn add_watched_folder(&self, path: &str) -> catchlight_core::Result<i64> {
         let conn = self.conn();
@@ -186,6 +199,111 @@ impl Database {
         Ok(())
     }
 
+    fn map_media_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MediaFile> {
+        let media_type_str: String = row.get(3)?;
+        let media_type = match media_type_str.as_str() {
+            "Photo" => MediaType::Photo,
+            "Video" => MediaType::Video,
+            "Screenshot" => MediaType::Screenshot,
+            "Raw" => MediaType::Raw,
+            "LivePhoto" => MediaType::LivePhoto,
+            _ => MediaType::Unknown,
+        };
+
+        Ok(MediaFile {
+            id: row.get(0)?,
+            path: row.get(1)?,
+            filename: row.get(2)?,
+            media_type,
+            size_bytes: row.get(4)?,
+            width: row.get(5)?,
+            height: row.get(6)?,
+            created_at: row
+                .get::<_, Option<String>>(7)?
+                .and_then(|s| s.parse().ok()),
+            modified_at: row.get::<_, String>(8)?.parse().unwrap_or_default(),
+            blake3_hash: row.get(9)?,
+            dhash: row.get(10)?,
+            latitude: row.get(11)?,
+            longitude: row.get(12)?,
+        })
+    }
+
+    pub fn get_timeline_groups(&self, limit: i64) -> catchlight_core::Result<Vec<TimelineGroup>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, path, filename, media_type, size_bytes, width, height,
+                        created_at, modified_at, blake3_hash, dhash, latitude, longitude,
+                        date(COALESCE(created_at, modified_at)) AS group_date
+                 FROM media_files
+                 ORDER BY COALESCE(created_at, modified_at) DESC
+                 LIMIT ?1",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(params![limit], |row| {
+                let group_date: String = row.get(13)?;
+                let media = Self::map_media_row(row)?;
+                Ok((group_date, media))
+            })
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let mut groups: Vec<TimelineGroup> = Vec::new();
+        for row in rows {
+            let (date, media) = row.map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+            if let Some(group) = groups.last_mut() {
+                if group.date == date {
+                    group.count += 1;
+                    group.media.push(media);
+                    continue;
+                }
+            }
+            groups.push(TimelineGroup {
+                count: 1,
+                date,
+                media: vec![media],
+            });
+        }
+
+        Ok(groups)
+    }
+
+    pub fn get_media_neighbors(&self, id: i64) -> catchlight_core::Result<MediaNeighbors> {
+        let conn = self.conn();
+
+        let prev_id: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM media_files
+                 WHERE COALESCE(created_at, modified_at) > (
+                     SELECT COALESCE(created_at, modified_at) FROM media_files WHERE id = ?1
+                 )
+                 ORDER BY COALESCE(created_at, modified_at) ASC
+                 LIMIT 1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let next_id: Option<i64> = conn
+            .query_row(
+                "SELECT id FROM media_files
+                 WHERE COALESCE(created_at, modified_at) < (
+                     SELECT COALESCE(created_at, modified_at) FROM media_files WHERE id = ?1
+                 )
+                 ORDER BY COALESCE(created_at, modified_at) DESC
+                 LIMIT 1",
+                params![id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        Ok(MediaNeighbors { prev_id, next_id })
+    }
+
     pub fn get_media_by_id(&self, id: i64) -> catchlight_core::Result<Option<MediaFile>> {
         let conn = self.conn();
         conn.query_row(
@@ -193,36 +311,7 @@ impl Database {
                     created_at, modified_at, blake3_hash, dhash, latitude, longitude
              FROM media_files WHERE id = ?1",
             params![id],
-            |row| {
-                let media_type_str: String = row.get(3)?;
-                let media_type = match media_type_str.as_str() {
-                    "Photo" => MediaType::Photo,
-                    "Video" => MediaType::Video,
-                    "Screenshot" => MediaType::Screenshot,
-                    "Raw" => MediaType::Raw,
-                    "LivePhoto" => MediaType::LivePhoto,
-                    _ => MediaType::Unknown,
-                };
-
-                Ok(MediaFile {
-                    id: row.get(0)?,
-                    path: row.get(1)?,
-                    filename: row.get(2)?,
-                    media_type,
-                    size_bytes: row.get(4)?,
-                    width: row.get(5)?,
-                    height: row.get(6)?,
-                    created_at: row.get::<_, Option<String>>(7)?
-                        .and_then(|s| s.parse().ok()),
-                    modified_at: row.get::<_, String>(8)?
-                        .parse()
-                        .unwrap_or_default(),
-                    blake3_hash: row.get(9)?,
-                    dhash: row.get(10)?,
-                    latitude: row.get(11)?,
-                    longitude: row.get(12)?,
-                })
-            },
+            Self::map_media_row,
         )
         .optional()
         .map_err(|e| catchlight_core::Error::Database(e.to_string()))

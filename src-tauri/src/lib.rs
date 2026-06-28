@@ -31,6 +31,8 @@ pub fn run() {
             commands::get_media_by_id,
             commands::scan_folder,
             commands::get_scan_status,
+            commands::get_timeline_groups,
+            commands::get_media_neighbors,
         ])
         .register_uri_scheme_protocol("thumb", |ctx, request| {
             let state = ctx.app_handle().state::<AppState>();

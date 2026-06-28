@@ -187,3 +187,13 @@ async fn process_file(
     db.upsert_media(folder_id, &media)?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scan_module_compiles() {
+        let _: fn(AppHandle, &AppState, i64) = spawn_scan;
+    }
+}

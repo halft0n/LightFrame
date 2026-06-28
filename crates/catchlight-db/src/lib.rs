@@ -1,7 +1,7 @@
 pub mod migrations;
 pub mod repo;
 
-pub use repo::WatchedFolder;
+pub use repo::{MediaNeighbors, TimelineGroup, WatchedFolder};
 
 use catchlight_core::config;
 use rusqlite::Connection;

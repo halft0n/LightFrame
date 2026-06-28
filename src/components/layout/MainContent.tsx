@@ -1,11 +1,14 @@
 import { useTranslation } from "@/i18n/useTranslation";
 import { PhotoGrid } from "@/components/gallery/PhotoGrid";
 import { FolderManager } from "@/components/settings/FolderManager";
+import { TimelineView } from "@/components/timeline/TimelineView";
+import { PhotoViewer } from "@/components/viewer/PhotoViewer";
+import { ViewerOverlay } from "@/components/viewer/ViewerOverlay";
 import { useAppStore } from "@/store/appStore";
 
 export function MainContent() {
   const { t } = useTranslation();
-  const { currentView, watchedFolders } = useAppStore();
+  const { currentView, watchedFolders, viewingMediaId } = useAppStore();
 
   if (watchedFolders.length === 0 && currentView !== "settings") {
     return (
@@ -24,7 +27,29 @@ export function MainContent() {
   }
 
   if (currentView === "all") {
-    return <PhotoGrid />;
+    return (
+      <>
+        <PhotoGrid />
+        {viewingMediaId != null && (
+          <ViewerOverlay>
+            <PhotoViewer mediaId={viewingMediaId} />
+          </ViewerOverlay>
+        )}
+      </>
+    );
+  }
+
+  if (currentView === "timeline") {
+    return (
+      <>
+        <TimelineView />
+        {viewingMediaId != null && (
+          <ViewerOverlay>
+            <PhotoViewer mediaId={viewingMediaId} />
+          </ViewerOverlay>
+        )}
+      </>
+    );
   }
 
   return (

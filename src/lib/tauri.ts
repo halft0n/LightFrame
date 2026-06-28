@@ -30,6 +30,8 @@ export interface MediaItem {
   created_at?: string | null;
   modified_at: string;
   duration_sec?: number | null;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface ScanProgress {
@@ -37,6 +39,17 @@ export interface ScanProgress {
   scanned: number;
   total: number;
   status: ScanStatus;
+}
+
+export interface TimelineGroup {
+  date: string;
+  count: number;
+  media: MediaItem[];
+}
+
+export interface MediaNeighbors {
+  prev_id: number | null;
+  next_id: number | null;
 }
 
 export function getThumbnailUrl(id: number, size: "small" | "large" | "micro" = "small"): string {
@@ -61,6 +74,18 @@ export async function getMediaList(offset: number, limit: number): Promise<Media
 
 export async function getMediaCount(): Promise<number> {
   return invoke<number>("get_media_count");
+}
+
+export async function getMediaById(id: number): Promise<MediaItem | null> {
+  return invoke<MediaItem | null>("get_media_by_id", { id });
+}
+
+export async function getTimelineGroups(): Promise<TimelineGroup[]> {
+  return invoke<TimelineGroup[]>("get_timeline_groups");
+}
+
+export async function getMediaNeighbors(id: number): Promise<MediaNeighbors> {
+  return invoke<MediaNeighbors>("get_media_neighbors", { id });
 }
 
 export async function scanFolder(folderId: number): Promise<void> {

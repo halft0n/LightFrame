@@ -18,6 +18,7 @@ export interface AppState {
   totalCount: number;
   isScanning: boolean;
   scanProgress: ScanProgress | null;
+  viewingMediaId: number | null;
 }
 
 const initialState: AppState = {
@@ -28,6 +29,7 @@ const initialState: AppState = {
   totalCount: 0,
   isScanning: false,
   scanProgress: null,
+  viewingMediaId: null,
 };
 
 let state: AppState = { ...initialState };
@@ -104,6 +106,14 @@ export function toggleMediaSelection(id: number) {
 
 export function clearMediaSelection() {
   setState({ selectedMediaIds: [] });
+}
+
+export function openViewer(id: number) {
+  setState({ viewingMediaId: id });
+}
+
+export function closeViewer() {
+  setState({ viewingMediaId: null });
 }
 
 export function useAppStore(): AppState {

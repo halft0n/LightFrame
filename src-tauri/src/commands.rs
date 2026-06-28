@@ -1,7 +1,7 @@
 use crate::scan;
 use crate::state::{AppState, ScanProgress};
 use catchlight_core::media::MediaFile;
-use catchlight_db::WatchedFolder;
+use catchlight_db::{MediaNeighbors, TimelineGroup, WatchedFolder};
 use tauri::{AppHandle, State};
 
 #[tauri::command]
@@ -87,4 +87,23 @@ pub fn scan_folder(app: AppHandle, state: State<'_, AppState>, folder_id: i64) -
 #[tauri::command]
 pub fn get_scan_status(state: State<'_, AppState>) -> ScanProgress {
     state.scan_status.snapshot()
+}
+
+#[tauri::command]
+pub fn get_timeline_groups(state: State<'_, AppState>) -> Result<Vec<TimelineGroup>, String> {
+    state
+        .db
+        .get_timeline_groups(5000)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_media_neighbors(
+    state: State<'_, AppState>,
+    id: i64,
+) -> Result<MediaNeighbors, String> {
+    state
+        .db
+        .get_media_neighbors(id)
+        .map_err(|e| e.to_string())
 }

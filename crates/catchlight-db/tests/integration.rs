@@ -121,3 +121,85 @@ fn multiple_folders_media() {
 
     assert_eq!(db.get_media_count().unwrap(), 2);
 }
+
+#[test]
+fn list_watched_folders_returns_all_added() {
+    let db = create_test_db();
+    db.add_watched_folder("/photos").unwrap();
+    db.add_watched_folder("/videos").unwrap();
+    db.add_watched_folder("/backup").unwrap();
+
+    let folders = db.list_watched_folders().unwrap();
+    assert_eq!(folders.len(), 3);
+
+    let paths: Vec<&str> = folders.iter().map(|f| f.path.as_str()).collect();
+    assert!(paths.contains(&"/photos"));
+    assert!(paths.contains(&"/videos"));
+    assert!(paths.contains(&"/backup"));
+}
+
+#[test]
+fn get_watched_folder_by_id() {
+    let db = create_test_db();
+    let id = db.add_watched_folder("/photos").unwrap();
+
+    let folder = db.get_watched_folder(id).unwrap().expect("folder should exist");
+    assert_eq!(folder.id, id);
+    assert_eq!(folder.path, "/photos");
+
+    let missing = db.get_watched_folder(9999).unwrap();
+    assert!(missing.is_none());
+}
+
+#[test]
+fn remove_watched_folder_deletes_folder_and_media() {
+    let db = create_test_db();
+    let folder_id = db.add_watched_folder("/photos").unwrap();
+
+    db.upsert_media(folder_id, &sample_media("/photos/a.jpg")).unwrap();
+    db.upsert_media(folder_id, &sample_media("/photos/b.jpg")).unwrap();
+    assert_eq!(db.get_media_count().unwrap(), 2);
+
+    db.remove_watched_folder(folder_id).unwrap();
+
+    assert!(db.get_watched_folder(folder_id).unwrap().is_none());
+    assert_eq!(db.get_media_count().unwrap(), 0);
+    assert!(db.list_watched_folders().unwrap().is_empty());
+}
+
+#[test]
+fn get_media_by_id() {
+    let db = create_test_db();
+    let folder_id = db.add_watched_folder("/photos").unwrap();
+    let media_id = db
+        .upsert_media(folder_id, &sample_media("/photos/sunset.jpg"))
+        .unwrap();
+
+    let media = db.get_media_by_id(media_id).unwrap().expect("media should exist");
+    assert_eq!(media.id, media_id);
+    assert_eq!(media.filename, "sunset.jpg");
+    assert_eq!(media.path, "/photos/sunset.jpg");
+
+    let missing = db.get_media_by_id(9999).unwrap();
+    assert!(missing.is_none());
+}
+
+#[test]
+fn update_last_scan_at() {
+    let db = create_test_db();
+    let folder_id = db.add_watched_folder("/photos").unwrap();
+
+    let before = db
+        .get_watched_folder(folder_id)
+        .unwrap()
+        .expect("folder should exist");
+    assert!(before.last_scan_at.is_none());
+
+    db.update_last_scan_at(folder_id).unwrap();
+
+    let after = db
+        .get_watched_folder(folder_id)
+        .unwrap()
+        .expect("folder should exist");
+    assert!(after.last_scan_at.is_some());
+}

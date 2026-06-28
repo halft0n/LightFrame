@@ -4,6 +4,7 @@ import { PhotoCard } from "./PhotoCard";
 import { getMediaList } from "@/lib/tauri";
 import {
   appendMedia,
+  openViewer,
   toggleMediaSelection,
   useAppStore,
 } from "@/store/appStore";
@@ -137,6 +138,7 @@ export function PhotoGrid() {
                         item={item}
                         selected={selectedSet.has(item.id)}
                         onSelect={toggleMediaSelection}
+                        onOpen={openViewer}
                       />
                     );
                   })}

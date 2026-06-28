@@ -6,6 +6,7 @@ interface PhotoCardProps {
   item: MediaItem;
   selected: boolean;
   onSelect: (id: number) => void;
+  onOpen?: (id: number) => void;
 }
 
 function formatDuration(seconds: number): string {
@@ -14,7 +15,7 @@ function formatDuration(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-export function PhotoCard({ item, selected, onSelect }: PhotoCardProps) {
+export function PhotoCard({ item, selected, onSelect, onOpen }: PhotoCardProps) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
 
@@ -24,6 +25,7 @@ export function PhotoCard({ item, selected, onSelect }: PhotoCardProps) {
     <button
       type="button"
       onClick={() => onSelect(item.id)}
+      onDoubleClick={() => onOpen?.(item.id)}
       className={`photo-card group relative aspect-square w-full overflow-hidden rounded-lg bg-neutral-800 text-left transition-shadow ${
         selected ? "ring-2 ring-blue-500 ring-offset-2 ring-offset-neutral-950" : ""
       }`}
