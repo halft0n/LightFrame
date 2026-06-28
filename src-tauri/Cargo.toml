@@ -30,6 +30,7 @@ catchlight-video.workspace = true
 catchlight-dedup.workspace = true
 catchlight-ai.workspace = true
 catchlight-geo.workspace = true
+image.workspace = true
 futures = "0.3"
 
 [features]

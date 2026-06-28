@@ -1,4 +1,5 @@
 mod commands;
+mod image_edit;
 mod scan;
 mod state;
 mod thumb_protocol;
@@ -74,6 +75,11 @@ pub fn run() {
             commands::list_persons,
             commands::get_person_media,
             commands::rename_person,
+            commands::save_edit,
+            commands::get_edit,
+            commands::revert_edit,
+            commands::export_edited,
+            commands::has_edits,
         ])
         .register_uri_scheme_protocol("thumb", |ctx, request| {
             let state = ctx.app_handle().state::<AppState>();

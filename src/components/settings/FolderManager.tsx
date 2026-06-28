@@ -3,26 +3,32 @@ import { open } from "@tauri-apps/plugin-dialog";
 import {
   addWatchedFolder,
   removeWatchedFolder,
+  scanFolder,
   type ScanStatus,
 } from "@/lib/tauri";
-import { addFolder, removeFolder, useAppStore, type Theme } from "@/store/appStore";
+import { addFolder, removeFolder, updateFolder, useAppStore, type Theme } from "@/store/appStore";
 import { changeTheme } from "@/hooks/useTheme";
 import { useTranslation } from "@/i18n/useTranslation";
+import { EmptyState } from "@/components/ui/EmptyState";
 
 function ScanIndicator({ status }: { status: ScanStatus }) {
   const { t } = useTranslation();
 
   if (status === "scanning") {
     return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-blue-400">
-        <span className="h-2 w-2 animate-pulse rounded-full bg-blue-400" />
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-600 dark:text-blue-400">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
         {t("settings.scanning")}
       </span>
     );
   }
 
   if (status === "error") {
-    return <span className="text-xs text-red-400">{t("settings.error")}</span>;
+    return (
+      <span className="inline-flex rounded-full bg-red-500/10 px-2 py-0.5 text-xs font-medium text-red-600 dark:text-red-400">
+        {t("settings.error")}
+      </span>
+    );
   }
 
   return null;
@@ -41,6 +47,7 @@ export function FolderManager() {
   const { t } = useTranslation();
   const { watchedFolders, theme } = useAppStore();
   const [adding, setAdding] = useState(false);
+  const [rescanningAll, setRescanningAll] = useState(false);
 
   const themeOptions: { value: Theme; labelKey: string }[] = [
     { value: "light", labelKey: "theme.light" },
@@ -71,21 +78,43 @@ export function FolderManager() {
     removeFolder(id);
   };
 
+  const handleRescanFolder = async (folderId: number) => {
+    updateFolder(folderId, { scan_status: "scanning" });
+    try {
+      await scanFolder(folderId);
+    } catch {
+      updateFolder(folderId, { scan_status: "error" });
+    }
+  };
+
+  const handleRescanAll = async () => {
+    const targets = watchedFolders.filter((f) => f.scan_status !== "scanning");
+    if (targets.length === 0) return;
+
+    setRescanningAll(true);
+    try {
+      await Promise.all(targets.map((f) => handleRescanFolder(f.id)));
+    } finally {
+      setRescanningAll(false);
+    }
+  };
+
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="border-b border-neutral-200 px-6 py-4 dark:border-neutral-800">
-        <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+    <div className="page-enter flex flex-1 flex-col overflow-hidden">
+      <section className="settings-section px-6 py-5">
+        <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
           {t("theme.title")}
         </h2>
-        <div className="mt-3 flex gap-2">
+        <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t("main.addFolder")}</p>
+        <div className="mt-4 flex flex-wrap gap-2">
           {themeOptions.map((opt) => (
             <button
               key={opt.value}
               type="button"
               onClick={() => changeTheme(opt.value)}
-              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
+              className={`theme-pill px-5 py-2 text-sm font-medium ${
                 theme === opt.value
-                  ? "bg-blue-600 text-white"
+                  ? "theme-pill-active text-white"
                   : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
               }`}
             >
@@ -93,54 +122,87 @@ export function FolderManager() {
             </button>
           ))}
         </div>
-      </div>
+      </section>
 
-      <div className="flex items-center justify-between border-b border-neutral-200 px-6 py-4 dark:border-neutral-800">
-        <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">{t("settings.folders")}</h2>
-        <button
-          type="button"
-          onClick={() => void handleAddFolder()}
-          disabled={adding}
-          className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-500 disabled:opacity-50"
-        >
-          {t("settings.addFolder")}
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto px-6 py-4">
-        {watchedFolders.length === 0 ? (
-          <p className="text-sm text-neutral-500">{t("main.addFolder")}</p>
-        ) : (
-          <ul className="space-y-3">
-            {watchedFolders.map((folder) => (
-              <li
-                key={folder.id}
-                className="rounded-lg border border-neutral-200 bg-neutral-50 p-4 dark:border-neutral-800 dark:bg-neutral-900/50"
+      <section className="settings-section px-6 py-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+              {t("settings.folders")}
+            </h2>
+            <p className="mt-1 text-sm text-neutral-500">
+              {watchedFolders.length > 0
+                ? t("gallery.count", { count: watchedFolders.reduce((n, f) => n + f.media_count, 0) })
+                : t("main.addFolder")}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            {watchedFolders.length > 0 && (
+              <button
+                type="button"
+                onClick={() => void handleRescanAll()}
+                disabled={rescanningAll || watchedFolders.some((f) => f.scan_status === "scanning")}
+                className="rounded-lg border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
               >
+                {rescanningAll ? t("settings.scanning") : t("settings.rescanAll")}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => void handleAddFolder()}
+              disabled={adding}
+              className="rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50"
+            >
+              {t("settings.addFolder")}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <div className="flex-1 overflow-y-auto px-6 py-5">
+        {watchedFolders.length === 0 ? (
+          <EmptyState variant="folder" title={t("main.addFolder")} />
+        ) : (
+          <ul className="grid gap-3 sm:grid-cols-1 lg:grid-cols-2">
+            {watchedFolders.map((folder) => (
+              <li key={folder.id} className="settings-card p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                      {folder.path.split(/[/\\]/).pop() ?? folder.path}
-                    </p>
-                    <p className="mt-1 truncate text-xs text-neutral-500">
-                      {t("folder.path")}: {folder.path}
-                    </p>
-                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-400">
-                      <span>
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+                          <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14a1 1 0 0 1-1.447.894L12 17.118l-6.553 3.776A1 1 0 0 1 4 20V6z" />
+                        </svg>
+                      </div>
+                      <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-100">
+                        {folder.path.split(/[/\\]/).pop() ?? folder.path}
+                      </p>
+                    </div>
+                    <p className="mt-2 truncate pl-11 text-xs text-neutral-500">{folder.path}</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2 pl-11">
+                      <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
                         {t("folder.mediaCount")}: {folder.media_count}
                       </span>
-                      <span>
+                      <span className="text-xs text-neutral-400">
                         {t("folder.lastScan")}: {formatLastScan(folder.last_scan)}
                       </span>
                       <ScanIndicator status={folder.scan_status} />
                     </div>
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex shrink-0 flex-col gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => void handleRescanFolder(folder.id)}
+                      disabled={folder.scan_status === "scanning"}
+                      className="rounded-lg px-3 py-1.5 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-200 disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-neutral-800"
+                    >
+                      {folder.scan_status === "scanning" ? t("settings.scanning") : t("settings.rescan")}
+                    </button>
                     <button
                       type="button"
                       onClick={() => void handleRemoveFolder(folder.id)}
-                      className="rounded-md px-3 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-950/50 hover:text-red-300"
+                      className="rounded-lg px-3 py-1.5 text-xs font-medium text-red-500 transition-colors hover:bg-red-50 dark:hover:bg-red-950/40"
                     >
                       {t("settings.removeFolder")}
                     </button>

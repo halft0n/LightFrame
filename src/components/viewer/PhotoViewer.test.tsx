@@ -35,6 +35,8 @@ describe("PhotoViewer", () => {
       if (cmd === "get_media_neighbors")
         return Promise.resolve({ prev_id: null, next_id: null });
       if (cmd === "get_media_list") return Promise.resolve([mockMedia]);
+      if (cmd === "has_edits") return Promise.resolve(false);
+      if (cmd === "get_edit") return Promise.resolve(null);
       return Promise.resolve(null);
     });
   });

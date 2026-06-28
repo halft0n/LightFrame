@@ -26,8 +26,10 @@ export function PhotoCard({ item, selected, onSelect, onOpen }: PhotoCardProps) 
       type="button"
       onClick={(e) => onSelect(item.id, e)}
       onDoubleClick={() => onOpen?.(item.id)}
-      className={`photo-card group relative aspect-square w-full overflow-hidden rounded-lg bg-neutral-800 text-left transition-shadow ${
-        selected ? "ring-2 ring-blue-500 ring-offset-2 ring-offset-neutral-950" : ""
+      className={`photo-card group relative aspect-square w-full overflow-hidden bg-neutral-200 text-left dark:bg-neutral-800 ${
+        selected
+          ? "ring-2 ring-blue-500 ring-offset-2 ring-offset-white dark:ring-offset-neutral-950"
+          : "ring-1 ring-black/5 dark:ring-white/5"
       }`}
     >
       {!loaded && !error && (
@@ -61,19 +63,17 @@ export function PhotoCard({ item, selected, onSelect, onOpen }: PhotoCardProps) 
           decoding="async"
           onLoad={() => setLoaded(true)}
           onError={() => setError(true)}
-          className={`h-full w-full object-cover transition-transform duration-200 group-hover:scale-105 ${
-            loaded ? "opacity-100" : "opacity-0"
-          }`}
+          className={`h-full w-full object-cover ${loaded ? "opacity-100" : "opacity-0"}`}
         />
       )}
 
       {isVideo && item.duration_sec != null && (
-        <span className="absolute bottom-2 right-2 rounded bg-black/70 px-1.5 py-0.5 text-xs font-medium text-white">
+        <span className="absolute bottom-2 right-2 rounded-md bg-black/75 px-1.5 py-0.5 text-xs font-medium text-white backdrop-blur-sm">
           {formatDuration(item.duration_sec)}
         </span>
       )}
 
-      <div className="photo-card-overlay absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-2 pb-2 pt-8 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+      <div className="photo-card-overlay absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent px-2.5 pb-2 pt-10 opacity-0 transition-opacity duration-300 ease-out group-hover:opacity-100">
         <p className="truncate text-xs text-white">{item.filename}</p>
       </div>
     </button>

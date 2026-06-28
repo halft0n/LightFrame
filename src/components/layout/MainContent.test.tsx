@@ -26,8 +26,8 @@ describe("MainContent", () => {
     expect(screen.getByText("Add a folder to start browsing photos")).toBeInTheDocument();
   });
 
-  it("renders camera emoji", () => {
+  it("renders welcome illustration", () => {
     render(<MainContent />);
-    expect(screen.getByText("📷")).toBeInTheDocument();
+    expect(document.querySelector(".empty-state-icon")).toBeInTheDocument();
   });
 });

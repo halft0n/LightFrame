@@ -352,9 +352,19 @@ CatchLight/
 
 ---
 
-### Phase 3：增强体验（6 周）
+### Phase 3：增强体验（6 周）— ✅ 已实现
 
-**目标**：AI 能力（含 Python 扩展层）、视频、人脸、回忆、批量操作、主题——对标 macOS 照片完整体验。
+**目标**：AI 能力（含 Python 扩展层）、视频、人脸、回忆、批量操作、主题、图像编辑——对标 macOS 照片完整体验。
+
+**实现摘要（2026-06）：**
+- 智能相簿：规则 DSL → 动态 SQL；`SmartAlbumListView` / `SmartAlbumView` CRUD
+- 回忆：`generate_memories` 按日期+地点聚类；`MemoriesView` / `MemoryDetailView` 卡片 UI
+- 批量操作：`SelectionToolbar` + `batch_delete` / `batch_add_to_album` / `batch_toggle_favorite` / 恢复与永久删除
+- 主题：深色/浅色/跟随系统（`useTheme` + Tailwind dark mode）
+- 视频：`VideoPlayer` 内嵌播放，网格时长角标
+- 人物：`PeopleView` / `PersonDetailView`（AI 扩展可选）
+- 图像编辑：非破坏性 JSON 参数 + `ImageEditor` 五区面板 + Rust 导出管线
+- UI 打磨：macOS 风格毛玻璃侧栏/顶栏、照片网格动效、空状态插画
 
 #### 第 14 周（W15）：Python AI 扩展框架 + 相似照片
 
@@ -492,17 +502,18 @@ CatchLight/
 
 **Phase 2 完成标志**：差异化功能（去重、截图、搜索）可用，形成与 iPhotron/Lap 的差异。 — **已达成**
 
-### Phase 3 里程碑：完整体验
+### Phase 3 里程碑：完整体验 — ✅ 已完成
 
-| 交付物 | 验收标准 |
-|--------|----------|
-| 相似照片 | CLIP 分组可用；无 GPU 可 CPU 运行（慢但可用） |
-| 人脸/人物 | 检测率可接受；同一人基本聚类 |
-| 智能相簿/回忆 | 规则创建相簿；回忆自动生成 ≥ 1 条（有 GPS+日期数据时） |
-| 批量操作 | 多选批量删除/移动/加相簿 |
-| 主题/视频 | 深/浅色切换；常见 MP4 可播放 |
+| 交付物 | 验收标准 | 状态 |
+|--------|----------|------|
+| 相似照片 | CLIP 分组可用；无 GPU 可 CPU 运行（慢但可用） | ⚠️ 基础框架 |
+| 人脸/人物 | 检测率可接受；同一人基本聚类 | ⚠️ AI 扩展可选 |
+| 智能相簿/回忆 | 规则创建相簿；回忆自动生成 ≥ 1 条（有 GPS+日期数据时） | ✅ |
+| 批量操作 | 多选批量删除/移动/加相簿 | ✅ |
+| 主题/视频 | 深/浅色切换；常见 MP4 可播放 | ✅ |
+| 图像编辑 | 非破坏性编辑 + 导出副本 | ✅ |
 
-**Phase 3 完成标志**：功能对标 macOS 照片核心能力（除编辑外）。
+**Phase 3 完成标志**：功能对标 macOS 照片核心能力（含基础编辑）。 — **已达成**
 
 ### Phase 4 里程碑：可发布 Beta
 

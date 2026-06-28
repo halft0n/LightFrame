@@ -44,6 +44,10 @@ pub fn run(conn: &Connection) -> catchlight_core::Result<()> {
         v7(conn)?;
     }
 
+    if current < 8 {
+        v8(conn)?;
+    }
+
     Ok(())
 }
 
@@ -322,6 +326,29 @@ fn v7(conn: &Connection) -> catchlight_core::Result<()> {
         CREATE INDEX IF NOT EXISTS idx_faces_person ON face_detections(person_id);
 
         INSERT OR IGNORE INTO schema_version (version) VALUES (7);",
+    )
+    .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+fn v8(conn: &Connection) -> catchlight_core::Result<()> {
+    let columns: Vec<String> = conn
+        .prepare("PRAGMA table_info(media_files)")
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if !columns.iter().any(|c| c == "edit_params") {
+        conn.execute("ALTER TABLE media_files ADD COLUMN edit_params TEXT", [])
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+    }
+
+    conn.execute(
+        "INSERT OR IGNORE INTO schema_version (version) VALUES (8)",
+        [],
     )
     .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 

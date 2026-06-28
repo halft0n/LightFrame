@@ -2,7 +2,7 @@
 
 > **版本：** 1.1  
 > **日期：** 2026-06-28  
-> **状态：** Phase 1–2 已实现（与代码同步）  
+> **状态：** Phase 1–3 已实现（与代码同步）  
 > **技术栈：** Tauri 2.x + Rust + React 19 + Python AI 扩展（可选）
 
 ---
@@ -15,6 +15,8 @@
 4. [数据架构](#4-数据架构)
 5. [跨平台适配层](#5-跨平台适配层)
 6. [安全与权限](#6-安全与权限)
+7. [图像编辑器架构](#7-图像编辑器架构)
+8. [智能相簿与回忆](#8-智能相簿与回忆)
 
 ---
 
@@ -1373,6 +1375,101 @@ pub fn create_indexer() -> Box<dyn FileIndexer> {
 **多用户：** 每 OS 用户独立 `~/.catchlight/`，不共享索引。
 
 **隐私：** AI 推理本地执行，不上传照片；GeoNames 数据离线嵌入。
+
+---
+
+## 7. 图像编辑器架构
+
+### 7.1 设计原则
+
+CatchLight 图像编辑器采用 **非破坏性编辑**：原始照片文件只读，编辑参数以 JSON 形式持久化于 SQLite `media_edits` 表；预览在前端通过 CSS filter/transform 实时渲染，导出时由 Rust 后端 `image_edit` 模块对原图做像素级处理并写入新文件。
+
+```mermaid
+flowchart LR
+    subgraph Frontend["React 前端"]
+        PE[PhotoViewer]
+        IE[ImageEditor]
+        EP[editParams.ts]
+    end
+
+    subgraph IPC["Tauri IPC"]
+        SE[save_edit / get_edit]
+        RE[revert_edit]
+        EE[export_edited]
+    end
+
+    subgraph Backend["Rust"]
+        IM[image_edit.rs]
+        IMG[image crate]
+    end
+
+    subgraph Storage["SQLite"]
+        ME[(media_edits.params_json)]
+    end
+
+    PE --> IE
+    IE --> EP
+    IE -->|实时预览 CSS| EP
+    IE --> SE
+    SE --> ME
+    EE --> IM
+    IM --> IMG
+```
+
+### 7.2 前后端职责
+
+| 层级 | 职责 |
+|------|------|
+| **ImageEditor.tsx** | 分区面板（裁剪/光线/颜色/细节/效果）、滑块 UI、对比模式、裁剪 overlay |
+| **editParams.ts** | TypeScript 类型、`parseEditParams`/`serializeEditParams`、`buildCssFilter`/`buildImageTransform`/`buildClipPath` 实时预览 |
+| **image_edit.rs** | JSON 反序列化、旋转/翻转/裁剪/色调映射、JPEG 导出 |
+| **catchlight-db** | `save_edit_params` / `get_edit_params` / `clear_edit_params` |
+
+### 7.3 IPC 命令
+
+| 命令 | 说明 |
+|------|------|
+| `save_edit(media_id, params)` | 保存 JSON 编辑参数 |
+| `get_edit(media_id)` | 读取已保存参数（无则 null） |
+| `revert_edit(media_id)` | 清除编辑记录 |
+| `export_edited(media_id, output_path, quality)` | 按参数导出 JPEG 副本 |
+
+### 7.4 预览 vs 导出
+
+- **预览**：前端 `buildCssFilter` + `buildImageTransform` + `clip-path`，零延迟交互
+- **导出**：Rust `apply_edits()` 完整像素管线（裁剪 → 几何变换 → 亮度/对比/饱和度/暗角/颗粒等），保证输出质量
+
+---
+
+## 8. 智能相簿与回忆
+
+### 8.1 智能相簿（Smart Albums）
+
+智能相簿基于 **规则 DSL → 动态 SQL** 实现，数据存储于 `smart_albums` 表（`name`、`icon`、`rule_json`）。前端 `SmartAlbumListView` / `SmartAlbumView` 提供 CRUD 与媒体浏览。
+
+```mermaid
+flowchart TB
+    UI[SmartAlbumListView] --> IPC[create/list/delete_smart_album]
+    IPC --> DB[(smart_albums)]
+    Rule[SmartAlbumRule JSON] --> Compile[build_smart_album_filter]
+    Compile --> SQL[SELECT ... WHERE is_deleted=0 AND ...]
+    SQL --> Media[get_smart_album_media]
+    Media --> Grid[PhotoGrid 复用]
+```
+
+**规则字段**：`media_type`、`taken_at` 范围、`country`/`city`、`camera`、`is_favorite` 等；`match: all|any` 控制 AND/OR 组合。
+
+### 8.2 回忆（Memories）
+
+回忆功能按 **日期 + 地点** 聚类自动生成：`generate_memories()` 在后台线程扫描 GPS + `taken_at` 数据，合并相近事件为 `Memory` 记录（标题、封面 `file_id`、照片数、日期范围）。
+
+| 组件 | 职责 |
+|------|------|
+| `MemoriesView` | 卡片网格展示回忆列表 |
+| `MemoryDetailView` | 回忆内照片浏览 |
+| `repo::generate_memories` | 聚类算法 + 持久化 |
+
+索引更新后可调用 `generate_memories` 增量刷新；无 GPS 数据时回忆数量可能为零（优雅降级）。
 
 ---
 

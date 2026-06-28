@@ -5,11 +5,15 @@ import {
   getMediaNeighbors,
   getOriginalUrl,
   getThumbnailUrl,
+  getEdit,
+  hasEdits,
   type MediaItem,
 } from "@/lib/tauri";
+import { buildClipPath, buildCssFilter, buildImageTransform, parseEditParams } from "@/lib/editParams";
 import { closeViewer, openViewer } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 import { VideoPlayer } from "./VideoPlayer";
+import { ImageEditor } from "@/components/editor/ImageEditor";
 
 interface PhotoViewerProps {
   mediaId: number;
@@ -52,6 +56,10 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [useOriginal, setUseOriginal] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [edited, setEdited] = useState(false);
+  const [editParamsJson, setEditParamsJson] = useState<string | null>(null);
+  const [previewKey, setPreviewKey] = useState(0);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const filmstripRef = useRef<HTMLDivElement>(null);
 
@@ -66,15 +74,22 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
     let cancelled = false;
 
     void (async () => {
-      const [item, nb, list] = await Promise.all([
+      const [item, nb, list, hasEdit] = await Promise.all([
         getMediaById(mediaId),
         getMediaNeighbors(mediaId),
         getMediaList(0, FILMSTRIP_SIZE * 3),
+        hasEdits(mediaId),
       ]);
       if (cancelled) return;
       setMedia(item);
       setNeighbors(nb);
       setFilmstrip(list);
+      setEdited(hasEdit);
+      if (hasEdit) {
+        setEditParamsJson(await getEdit(mediaId));
+      } else {
+        setEditParamsJson(null);
+      }
     })();
 
     return () => {
@@ -153,6 +168,23 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
     setUseOriginal(true);
   }, []);
 
+  const handleEditorSaved = useCallback(async () => {
+    const hasEdit = await hasEdits(mediaId);
+    setEdited(hasEdit);
+    if (hasEdit) {
+      setEditParamsJson(await getEdit(mediaId));
+    } else {
+      setEditParamsJson(null);
+    }
+    setPreviewKey((k) => k + 1);
+    resetView();
+  }, [mediaId, resetView]);
+
+  const editPreview = editParamsJson ? parseEditParams(editParamsJson) : null;
+  const previewFilter = editPreview ? buildCssFilter(editPreview) : undefined;
+  const previewTransform = editPreview ? buildImageTransform(editPreview) : undefined;
+  const previewClip = editPreview ? buildClipPath(editPreview.crop) : undefined;
+
   const isVideo = media?.media_type === "Video";
   const imageSrc = media
     ? useOriginal
@@ -187,6 +219,20 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          {edited && (
+            <span className="rounded-full bg-blue-600/80 px-2 py-0.5 text-xs font-medium">
+              {t("editor.hasEdits")}
+            </span>
+          )}
+          {!isVideo && (
+            <button
+              type="button"
+              onClick={() => setEditorOpen(true)}
+              className="rounded-lg px-3 py-1.5 text-sm text-neutral-300 transition hover:bg-white/10"
+            >
+              {t("viewer.edit")}
+            </button>
+          )}
           {!isVideo && (
             <>
               <button
@@ -265,19 +311,28 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
                       aria-hidden="true"
                     />
                   )}
-                  <img
-                    src={imageSrc}
-                    alt={media.filename}
-                    draggable={false}
+                  <div
                     style={{
                       transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                       transition: dragging ? "none" : "transform 0.1s ease-out",
-                      maxHeight: "100%",
-                      maxWidth: "100%",
-                      objectFit: "contain",
                     }}
-                    className="select-none"
-                  />
+                  >
+                    <img
+                      key={previewKey}
+                      src={imageSrc}
+                      alt={media.filename}
+                      draggable={false}
+                      style={{
+                        transform: previewTransform,
+                        maxHeight: "100%",
+                        maxWidth: "100%",
+                        objectFit: "contain",
+                        filter: previewFilter,
+                        clipPath: previewClip,
+                      }}
+                      className="select-none"
+                    />
+                  </div>
                 </>
               )}
             </div>
@@ -347,6 +402,18 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
             </button>
           ))}
         </div>
+      )}
+
+      {editorOpen && media && (
+        <ImageEditor
+          mediaId={mediaId}
+          imagePath={media.path}
+          filename={media.filename}
+          width={media.width ?? 1920}
+          height={media.height ?? 1080}
+          onClose={() => setEditorOpen(false)}
+          onSaved={() => void handleEditorSaved()}
+        />
       )}
     </div>
   );

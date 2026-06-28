@@ -568,3 +568,65 @@ pub fn rename_person(
         .rename_person(person_id, &name)
         .map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub fn save_edit(
+    state: State<'_, AppState>,
+    media_id: i64,
+    params: String,
+) -> Result<(), String> {
+    crate::image_edit::parse_edit_params(&params)?;
+    state
+        .db
+        .save_edit_params(media_id, &params)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_edit(state: State<'_, AppState>, media_id: i64) -> Result<Option<String>, String> {
+    state
+        .db
+        .get_edit_params(media_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn revert_edit(state: State<'_, AppState>, media_id: i64) -> Result<(), String> {
+    state
+        .db
+        .clear_edit_params(media_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn has_edits(state: State<'_, AppState>, media_id: i64) -> Result<bool, String> {
+    state.db.has_edits(media_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn export_edited(
+    state: State<'_, AppState>,
+    media_id: i64,
+    output_path: String,
+    quality: u8,
+) -> Result<(), String> {
+    let media = state
+        .db
+        .get_media_by_id(media_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("media {media_id} not found"))?;
+
+    let params = state
+        .db
+        .get_edit_params(media_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "no edit params saved for this media".to_string())?;
+
+    let quality = quality.clamp(1, 100);
+    crate::image_edit::export_edited_image(
+        std::path::Path::new(&media.path),
+        std::path::Path::new(&output_path),
+        &params,
+        quality,
+    )
+}

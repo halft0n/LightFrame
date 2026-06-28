@@ -12,6 +12,7 @@ import {
   toggleMediaSelection,
   useAppStore,
 } from "@/store/appStore";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { useTranslation } from "@/i18n/useTranslation";
 
 const MIN_COLUMN_WIDTH = 180;
@@ -115,16 +116,12 @@ export function PhotoGrid() {
   }, [selectedMediaIds.length]);
 
   if (mediaItems.length === 0) {
-    return (
-      <div className="flex flex-1 items-center justify-center text-neutral-500">
-        <p>{t("gallery.noPhotos")}</p>
-      </div>
-    );
+    return <EmptyState variant="photos" title={t("gallery.noPhotos")} />;
   }
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="border-b border-neutral-800 px-4 py-2 text-sm text-neutral-400">
+      <div className="border-b border-neutral-200/80 px-5 py-2.5 text-xs font-medium text-neutral-500 dark:border-neutral-800/80">
         {t("gallery.count", { count: totalCount })}
       </div>
 
@@ -180,8 +177,9 @@ export function PhotoGrid() {
         </div>
 
         {loadingMore && (
-          <div className="py-4 text-center text-sm text-neutral-500">
-            {t("gallery.loading")}
+          <div className="flex items-center justify-center gap-2 py-6">
+            <div className="loading-shimmer-bar shimmer" aria-hidden="true" />
+            <span className="text-sm text-neutral-500">{t("gallery.loading")}</span>
           </div>
         )}
       </div>

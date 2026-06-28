@@ -7,8 +7,10 @@ import {
   getMediaList,
   listWatchedFolders,
   onScanProgress,
+  scanFolder,
 } from "@/lib/tauri";
 import {
+  getSnapshot,
   setMedia,
   setScanning,
   setSearchQuery,
@@ -24,6 +26,9 @@ export default function App() {
   const { totalCount, searchQuery } = useAppStore();
   const [inputValue, setInputValue] = useState(searchQuery);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastAutoRescanRef = useRef(0);
+
+  const RESCAN_COOLDOWN_MS = 30_000;
 
   useEffect(() => {
     setInputValue(searchQuery);
@@ -101,29 +106,81 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+
+      const now = Date.now();
+      if (now - lastAutoRescanRef.current < RESCAN_COOLDOWN_MS) return;
+
+      const { watchedFolders } = getSnapshot();
+      if (watchedFolders.length === 0) return;
+
+      const foldersToRescan = watchedFolders.filter((folder) => {
+        if (folder.scan_status === "scanning") return false;
+        if (!folder.last_scan) return true;
+        const lastScan = new Date(folder.last_scan).getTime();
+        return now - lastScan > RESCAN_COOLDOWN_MS;
+      });
+
+      if (foldersToRescan.length === 0) return;
+
+      lastAutoRescanRef.current = now;
+
+      void Promise.all(
+        foldersToRescan.map(async (folder) => {
+          updateFolder(folder.id, { scan_status: "scanning" });
+          try {
+            await scanFolder(folder.id);
+          } catch {
+            updateFolder(folder.id, { scan_status: "error" });
+          }
+        }),
+      );
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
+    <div className="flex h-screen w-screen overflow-hidden bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
       <Sidebar />
       <main className="flex flex-1 flex-col overflow-hidden">
-        <header className="flex items-center justify-between gap-4 border-b border-neutral-200 px-6 py-3 dark:border-neutral-800">
-          <h1 className="shrink-0 text-lg font-semibold">{t("app.title")}</h1>
-          <div className="mx-4 flex max-w-md flex-1">
+        <header className="header-glass sticky top-0 z-10 flex h-[52px] shrink-0 items-center gap-4 border-b border-neutral-200/70 px-5 dark:border-neutral-800/70">
+          <h1 className="shrink-0 text-[15px] font-semibold tracking-tight text-neutral-800 dark:text-neutral-100">
+            {t("app.title")}
+          </h1>
+          <div className="relative mx-2 flex max-w-lg flex-1">
+            <svg
+              className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <path d="M20 20l-3-3" strokeLinecap="round" />
+            </svg>
             <input
               type="search"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               placeholder={t("search.placeholder")}
-              className="w-full rounded-md border border-neutral-300 bg-neutral-50 px-3 py-1.5 text-sm text-neutral-900 placeholder:text-neutral-400 focus:border-neutral-400 focus:outline-none dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:placeholder:text-neutral-500 dark:focus:border-neutral-500"
+              className="search-input w-full rounded-lg py-2 pl-9 pr-3 text-sm text-neutral-900 placeholder:text-neutral-400 dark:text-neutral-200 dark:placeholder:text-neutral-500"
             />
           </div>
           {totalCount > 0 && !searchQuery.trim() && (
-            <span className="shrink-0 text-sm text-neutral-400">
+            <span className="shrink-0 text-xs font-medium tabular-nums text-neutral-400">
               {t("gallery.count", { count: totalCount })}
             </span>
           )}
           {searchQuery.trim() && <span className="shrink-0 w-0" aria-hidden="true" />}
         </header>
-        <MainContent />
+        <div className="main-content-enter flex flex-1 flex-col overflow-hidden">
+          <MainContent />
+        </div>
       </main>
     </div>
   );

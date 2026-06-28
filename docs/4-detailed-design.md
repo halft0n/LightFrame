@@ -4,7 +4,7 @@
 > **更新日期**：2026-06-28  
 > **关联文档**：[需求规格说明书](./2-requirements.md) · [技术调研报告](./0-research-report.md) · [技术路线决策](./1-tech-stack-decision.md)  
 > **技术栈**：Tauri 2.x + Rust + React + Python AI 扩展（可选）  
-> **状态**：Phase 1–2 已实现（本文档与代码同步）
+> **状态**：Phase 1–3 已实现（本文档与代码同步）
 
 ---
 
@@ -2723,6 +2723,162 @@ import resource
 def set_memory_limit(max_mb: int):
     if hasattr(resource, 'RLIMIT_AS'):
         resource.setrlimit(resource.RLIMIT_AS, (max_mb * 1024 * 1024, -1))
+```
+
+---
+
+## 11. 图像编辑器详细设计
+
+**Phase 3 实现摘要：** 非破坏性编辑参数 JSON 持久化；`ImageEditor` 五区面板（裁剪/光线/颜色/细节/效果）；前端 CSS 实时预览 + Rust `image_edit` 导出管线；`PhotoViewer` 集成编辑入口。
+
+### 11.1 架构与数据流
+
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant IE as ImageEditor
+    participant EP as editParams.ts
+    participant IPC as Tauri IPC
+    participant DB as media_edits
+    participant R as image_edit.rs
+
+    U->>IE: 调整滑块/裁剪
+    IE->>EP: updateParams
+    EP->>IE: CSS filter/transform 预览
+    U->>IE: 保存
+    IE->>IPC: save_edit(mediaId, JSON)
+    IPC->>DB: UPSERT params_json
+    U->>IE: 导出副本
+    IE->>IPC: export_edited(path, quality)
+    IPC->>R: apply_edits + save_jpeg
+```
+
+### 11.2 编辑分区
+
+| 分区 | 组件 | 参数 |
+|------|------|------|
+| 裁剪 | `CropSection` | `crop`, `rotate`, `straighten`, `flipH/V`, `aspectRatio` |
+| 光线 | `LightSection` | `brightness`, `contrast`, `exposure`, `highlights`, `shadows`, `brilliance`, `blackPoint` |
+| 颜色 | `ColorSection` | `saturation`, `vibrance`, `warmth`, `tint`, `bwIntensity`, `bwTone` |
+| 细节 | `DetailSection` | `sharpness`, `definition`, `noiseReduction` |
+| 效果 | `EffectsSection` | `vignette`, `vignetteRadius`, `grain` |
+
+### 11.3 实时预览（前端）
+
+```typescript
+// src/lib/editParams.ts
+export function buildCssFilter(params: EditParams): string;
+export function buildImageTransform(params: EditParams): string;
+export function buildClipPath(crop: CropRect | undefined): string | undefined;
+```
+
+预览层叠加于 `<img src={getOriginalUrl(path)} />`；对比模式（按住）临时恢复默认参数。
+
+### 11.4 导出管线（Rust）
+
+```rust
+// src-tauri/src/image_edit.rs
+pub fn export_edited_image(src_path, output_path, params_json, quality) -> Result<()>;
+fn apply_edits(img: DynamicImage, params: &EditParams) -> DynamicImage;
+```
+
+处理顺序：裁剪 → 旋转/拉直/翻转 → 色调与效果像素映射 → JPEG 编码（quality 1–100）。
+
+### 11.5 edit_params JSON Schema
+
+编辑参数以 **camelCase JSON** 存储于 `media_edits.params_json`，与前端 `EditParams` 及 Rust `EditParams` 结构对齐。
+
+```json
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CatchLight EditParams",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "crop": {
+      "type": "object",
+      "properties": {
+        "x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "y": { "type": "number", "minimum": 0, "maximum": 1 },
+        "width": { "type": "number", "minimum": 0, "maximum": 1 },
+        "height": { "type": "number", "minimum": 0, "maximum": 1 }
+      },
+      "required": ["x", "y", "width", "height"]
+    },
+    "rotate": { "type": "integer", "enum": [0, 90, 180, 270], "default": 0 },
+    "straighten": { "type": "number", "minimum": -45, "maximum": 45, "default": 0 },
+    "flipH": { "type": "boolean", "default": false },
+    "flipV": { "type": "boolean", "default": false },
+    "aspectRatio": {
+      "type": "string",
+      "enum": ["free", "original", "1:1", "16:9", "4:3", "3:2", "4:5", "5:7", "3:5"]
+    },
+    "brightness": { "type": "number", "minimum": -100, "maximum": 100, "default": 0 },
+    "contrast": { "type": "number", "minimum": -100, "maximum": 100, "default": 0 },
+    "exposure": { "type": "number", "minimum": -100, "maximum": 100, "default": 0 },
+    "highlights": { "type": "number", "minimum": -100, "maximum": 100, "default": 0 },
+    "shadows": { "type": "number", "minimum": -100, "maximum": 100, "default": 0 },
+    "brilliance": { "type": "number", "minimum": -100, "maximum": 100, "default": 0 },
+    "blackPoint": { "type": "number", "minimum": -100, "maximum": 100, "default": 0 },
+    "saturation": { "type": "number", "minimum": -100, "maximum": 100, "default": 0 },
+    "vibrance": { "type": "number", "minimum": -100, "maximum": 100, "default": 0 },
+    "warmth": { "type": "number", "minimum": -100, "maximum": 100, "default": 0 },
+    "tint": { "type": "number", "minimum": -100, "maximum": 100, "default": 0 },
+    "sharpness": { "type": "number", "minimum": 0, "maximum": 100, "default": 0 },
+    "definition": { "type": "number", "minimum": 0, "maximum": 100, "default": 0 },
+    "noiseReduction": { "type": "number", "minimum": 0, "maximum": 100, "default": 0 },
+    "vignette": { "type": "number", "minimum": 0, "maximum": 100, "default": 0 },
+    "vignetteRadius": { "type": "number", "minimum": 0, "maximum": 100, "default": 50 },
+    "grain": { "type": "number", "minimum": 0, "maximum": 100, "default": 0 },
+    "bwIntensity": { "type": "number", "minimum": 0, "maximum": 100, "default": 0 },
+    "bwTone": { "type": "number", "minimum": -100, "maximum": 100, "default": 0 }
+  }
+}
+```
+
+**示例（轻微增亮 + 裁剪）：**
+
+```json
+{
+  "crop": { "x": 0.1, "y": 0.05, "width": 0.8, "height": 0.9 },
+  "rotate": 0,
+  "straighten": 0,
+  "flipH": false,
+  "flipV": false,
+  "brightness": 12,
+  "contrast": 5,
+  "exposure": 0,
+  "highlights": -8,
+  "shadows": 15,
+  "brilliance": 0,
+  "blackPoint": 0,
+  "saturation": 8,
+  "vibrance": 10,
+  "warmth": 5,
+  "tint": 0,
+  "sharpness": 20,
+  "definition": 0,
+  "noiseReduction": 0,
+  "vignette": 0,
+  "vignetteRadius": 50,
+  "grain": 0,
+  "bwIntensity": 0,
+  "bwTone": 0
+}
+```
+
+**Rust 侧字段映射**：serde `rename_all = "camelCase"`，`flip_h` ↔ `flipH`，`black_point` ↔ `blackPoint`，`noise_reduction` ↔ `noiseReduction`，`bw_intensity` ↔ `bwIntensity`，`bw_tone` ↔ `bwTone`。
+
+**默认值判定**：`isDefaultEditParams()`（前端）与空 `crop` + 全零滑块等价；`revert_edit` 删除 DB 记录。
+
+### 11.6 数据库
+
+```sql
+CREATE TABLE media_edits (
+    media_id    INTEGER PRIMARY KEY REFERENCES media_files(id) ON DELETE CASCADE,
+    params_json TEXT NOT NULL,
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
 ```
 
 ---

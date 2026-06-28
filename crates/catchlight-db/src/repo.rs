@@ -1944,6 +1944,68 @@ impl Database {
         conn.query_row("SELECT COUNT(*) FROM persons", [], |row| row.get(0))
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))
     }
+
+    pub fn save_edit_params(&self, media_id: i64, params: &str) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        let updated = conn
+            .execute(
+                "UPDATE media_files SET edit_params = ?1 WHERE id = ?2 AND is_deleted = 0",
+                params![params, media_id],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        if updated == 0 {
+            return Err(catchlight_core::Error::Database(format!(
+                "media {media_id} not found or deleted"
+            )));
+        }
+
+        Ok(())
+    }
+
+    pub fn get_edit_params(&self, media_id: i64) -> catchlight_core::Result<Option<String>> {
+        let conn = self.conn();
+        conn.query_row(
+            "SELECT edit_params FROM media_files WHERE id = ?1",
+            params![media_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn clear_edit_params(&self, media_id: i64) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        let updated = conn
+            .execute(
+                "UPDATE media_files SET edit_params = NULL WHERE id = ?1",
+                params![media_id],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        if updated == 0 {
+            return Err(catchlight_core::Error::Database(format!(
+                "media {media_id} not found"
+            )));
+        }
+
+        Ok(())
+    }
+
+    pub fn has_edits(&self, media_id: i64) -> catchlight_core::Result<bool> {
+        let conn = self.conn();
+        let value: Option<String> = conn
+            .query_row(
+                "SELECT edit_params FROM media_files WHERE id = ?1",
+                params![media_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?
+            .flatten();
+
+        Ok(value.as_ref().is_some_and(|s| !s.trim().is_empty()))
+    }
 }
 
 struct UnionFind {

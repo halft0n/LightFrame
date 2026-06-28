@@ -1,3 +1,4 @@
+import { EmptyState } from "@/components/ui/EmptyState";
 import { useTranslation } from "@/i18n/useTranslation";
 import { PhotoGrid } from "@/components/gallery/PhotoGrid";
 import { FolderManager } from "@/components/settings/FolderManager";
@@ -45,13 +46,11 @@ export function MainContent() {
 
   if (watchedFolders.length === 0 && currentView !== "settings") {
     return (
-      <div className="flex flex-1 items-center justify-center text-neutral-500">
-        <div className="space-y-4 text-center">
-          <div className="text-6xl">📷</div>
-          <p className="text-lg">{t("main.welcome")}</p>
-          <p className="text-sm text-neutral-600">{t("main.addFolder")}</p>
-        </div>
-      </div>
+      <EmptyState
+        variant="welcome"
+        title={t("main.welcome")}
+        description={t("main.addFolder")}
+      />
     );
   }
 
