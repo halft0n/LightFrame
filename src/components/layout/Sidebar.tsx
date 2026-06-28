@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "@/i18n/useTranslation";
-import { navigate, useAppStore, type AppView } from "@/store/appStore";
+import { addToAlbum, listAlbums, type Album } from "@/lib/tauri";
+import { parseDragMediaIds } from "@/lib/dragMedia";
+import { navigate, openAlbumDetail, useAppStore, type AppView } from "@/store/appStore";
 import { NavIcon, type NavIconName } from "./NavIcons";
 
 const LIBRARY_ITEMS: SidebarItem[] = [
@@ -119,16 +121,88 @@ function NavItem({
   );
 }
 
+function AlbumDropItem({
+  album,
+  currentView,
+  selectedAlbumId,
+  dragOverAlbumId,
+  onDragOver,
+  onDragLeave,
+  onDrop,
+}: {
+  album: Album;
+  currentView: AppView;
+  selectedAlbumId: number | null;
+  dragOverAlbumId: number | null;
+  onDragOver: (albumId: number, e: React.DragEvent) => void;
+  onDragLeave: () => void;
+  onDrop: (albumId: number, e: React.DragEvent) => void;
+}) {
+  const active = currentView === "album-detail" && selectedAlbumId === album.id;
+  const isDragOver = dragOverAlbumId === album.id;
+
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => openAlbumDetail(album.id)}
+        onDragOver={(e) => onDragOver(album.id, e)}
+        onDragLeave={onDragLeave}
+        onDrop={(e) => onDrop(album.id, e)}
+        className={`${navItemClass(active)} ${isDragOver ? "bg-blue-500/20 ring-1 ring-blue-500" : ""}`}
+        title={album.name}
+      >
+        <NavIcon name="albums" className={active ? "opacity-100" : "opacity-60"} />
+        <span className="truncate">{album.name}</span>
+        <span className="ml-auto text-[11px] tabular-nums text-neutral-400">{album.media_count}</span>
+      </button>
+    </li>
+  );
+}
+
 export function Sidebar() {
   const { t } = useTranslation();
-  const { currentView, watchedFolders, selectedFolderId } = useAppStore();
+  const { currentView, watchedFolders, selectedFolderId, selectedAlbumId } = useAppStore();
   const [libraryExpanded, setLibraryExpanded] = useState(true);
   const [foldersExpanded, setFoldersExpanded] = useState(true);
   const [albumsExpanded, setAlbumsExpanded] = useState(true);
+  const [albums, setAlbums] = useState<Album[]>([]);
+  const [dragOverAlbumId, setDragOverAlbumId] = useState<number | null>(null);
+
+  useEffect(() => {
+    void listAlbums()
+      .then(setAlbums)
+      .catch(() => setAlbums([]));
+  }, []);
 
   const handleNav = (view: AppView) => {
     navigate(view);
   };
+
+  const handleAlbumDragOver = useCallback((albumId: number, e: React.DragEvent) => {
+    if (![...e.dataTransfer.types].includes("application/x-catchlight-media-ids")) {
+      return;
+    }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+    setDragOverAlbumId(albumId);
+  }, []);
+
+  const handleAlbumDragLeave = useCallback(() => {
+    setDragOverAlbumId(null);
+  }, []);
+
+  const handleAlbumDrop = useCallback(async (albumId: number, e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverAlbumId(null);
+    const mediaIds = parseDragMediaIds(e.dataTransfer);
+    if (mediaIds.length === 0) return;
+    try {
+      await addToAlbum(albumId, mediaIds);
+    } catch (err) {
+      console.error("Failed to add photos to album:", err);
+    }
+  }, []);
 
   return (
     <aside className="sidebar-glass flex w-[180px] shrink-0 flex-col border-r border-neutral-200/60 dark:border-neutral-800/60">
@@ -215,6 +289,27 @@ export function Sidebar() {
               {ALBUM_ITEMS.map((item) => (
                 <NavItem key={item.view} item={item} currentView={currentView} onNav={handleNav} />
               ))}
+              {albums.length > 0 && (
+                <>
+                  <li className="px-6 pt-2 pb-0.5">
+                    <span className="text-[11px] font-medium uppercase tracking-wide text-neutral-400 dark:text-neutral-500">
+                      {t("sidebar.myAlbums")}
+                    </span>
+                  </li>
+                  {albums.map((album) => (
+                    <AlbumDropItem
+                      key={album.id}
+                      album={album}
+                      currentView={currentView}
+                      selectedAlbumId={selectedAlbumId}
+                      dragOverAlbumId={dragOverAlbumId}
+                      onDragOver={handleAlbumDragOver}
+                      onDragLeave={handleAlbumDragLeave}
+                      onDrop={handleAlbumDrop}
+                    />
+                  ))}
+                </>
+              )}
             </ul>
           )}
         </div>

@@ -3,6 +3,7 @@ mod image_edit;
 mod original_protocol;
 mod scan;
 mod state;
+mod thumb_cache;
 mod thumb_protocol;
 mod watcher;
 

@@ -202,6 +202,7 @@ export function VideosView() {
                         key={item.id}
                         item={item}
                         selected={selectedSet.has(item.id)}
+                        selectedMediaIds={selectedMediaIds}
                         onSelect={handleSelect}
                         onOpen={openViewer}
                       />

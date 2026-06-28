@@ -1530,14 +1530,15 @@ impl Database {
             ));
         }
 
-        let conn = self.conn();
-        conn.execute(
-            "INSERT INTO albums (name, description) VALUES (?1, ?2)",
-            params![trimmed, description],
-        )
-        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
-
-        let id = conn.last_insert_rowid();
+        let id = {
+            let conn = self.conn();
+            conn.execute(
+                "INSERT INTO albums (name, description) VALUES (?1, ?2)",
+                params![trimmed, description],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+            conn.last_insert_rowid()
+        };
         self.get_album(id)?.ok_or_else(|| {
             catchlight_core::Error::Other(format!("album {id} not found after insert"))
         })

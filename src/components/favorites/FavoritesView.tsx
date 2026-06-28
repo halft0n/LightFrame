@@ -121,6 +121,7 @@ export function FavoritesView() {
                 key={item.id}
                 item={item}
                 selected={false}
+                selectedMediaIds={[]}
                 onSelect={() => openViewer(item.id)}
                 onOpen={openViewer}
               />

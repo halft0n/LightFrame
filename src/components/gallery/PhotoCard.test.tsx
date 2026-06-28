@@ -31,30 +31,30 @@ const videoItem: MediaItem = {
 
 describe("PhotoCard", () => {
   it("does not show filename overlay", () => {
-    render(<PhotoCard item={photoItem} selected={false} onSelect={vi.fn()} />);
+    render(<PhotoCard item={photoItem} selected={false} selectedMediaIds={[]} onSelect={vi.fn()} />);
     expect(screen.queryByText("sunset.jpg")).not.toBeInTheDocument();
   });
 
   it("shows selection indicator when selected", () => {
     const { container } = render(
-      <PhotoCard item={photoItem} selected={true} onSelect={vi.fn()} />,
+      <PhotoCard item={photoItem} selected={true} selectedMediaIds={[1]} onSelect={vi.fn()} />,
     );
     expect(container.querySelector(".bg-blue-500")).toBeInTheDocument();
   });
 
   it("shows video duration badge for video items", () => {
-    render(<PhotoCard item={videoItem} selected={false} onSelect={vi.fn()} />);
+    render(<PhotoCard item={videoItem} selected={false} selectedMediaIds={[]} onSelect={vi.fn()} />);
     expect(screen.getByText("2:05")).toBeInTheDocument();
   });
 
   it("does not show duration for photo items", () => {
-    render(<PhotoCard item={photoItem} selected={false} onSelect={vi.fn()} />);
+    render(<PhotoCard item={photoItem} selected={false} selectedMediaIds={[]} onSelect={vi.fn()} />);
     expect(screen.queryByText(/\d+:\d{2}/)).not.toBeInTheDocument();
   });
 
   it("calls onSelect when clicked", () => {
     const onSelect = vi.fn();
-    render(<PhotoCard item={photoItem} selected={false} onSelect={onSelect} />);
+    render(<PhotoCard item={photoItem} selected={false} selectedMediaIds={[]} onSelect={onSelect} />);
 
     fireEvent.click(screen.getByRole("button"));
     expect(onSelect).toHaveBeenCalledWith(1, expect.any(Object));

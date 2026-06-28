@@ -722,3 +722,95 @@ fn test_get_on_this_day_media() {
         format!("/photos/{}-c.jpg", current_year - 3)
     );
 }
+
+#[test]
+fn test_on_this_day_no_past_photos_returns_empty() {
+    use chrono::{Datelike, NaiveDate};
+
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let today = chrono::Local::now().date_naive();
+    let month = today.month();
+    let day = today.day();
+    let current_year = today.year();
+
+    let mut current_year_photo = sample_media("/photos/this-year.jpg");
+    current_year_photo.created_at =
+        NaiveDate::from_ymd_opt(current_year, month, day).and_then(|d| d.and_hms_opt(12, 0, 0));
+    db.upsert_media(fid, &current_year_photo).unwrap();
+
+    assert!(db.get_on_this_day_media(10).unwrap().is_empty());
+}
+
+#[test]
+fn test_on_this_day_fewer_than_three_past_photos_returns_empty() {
+    use chrono::{Datelike, NaiveDate};
+
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let today = chrono::Local::now().date_naive();
+    let month = today.month();
+    let day = today.day();
+    let current_year = today.year();
+
+    let photo_on = |year: i32, suffix: &str| -> MediaFile {
+        let mut media = sample_media(&format!("/photos/{year}-{suffix}.jpg"));
+        media.created_at =
+            NaiveDate::from_ymd_opt(year, month, day).and_then(|d| d.and_hms_opt(12, 0, 0));
+        media
+    };
+
+    db.upsert_media(fid, &photo_on(current_year - 1, "a"))
+        .unwrap();
+    db.upsert_media(fid, &photo_on(current_year - 2, "b"))
+        .unwrap();
+
+    assert!(db.get_on_this_day_media(10).unwrap().is_empty());
+}
+
+#[test]
+fn test_update_album_rename() {
+    let db = create_test_db();
+    let album = db.create_album("Vacation", None).unwrap();
+
+    db.update_album(album.id, "Summer Trip", Some("2024 photos"))
+        .unwrap();
+
+    let updated = db.get_album(album.id).unwrap().expect("album should exist");
+    assert_eq!(updated.name, "Summer Trip");
+    assert_eq!(updated.description.as_deref(), Some("2024 photos"));
+}
+
+#[test]
+fn test_update_album_empty_name_fails() {
+    let db = create_test_db();
+    let album = db.create_album("Test Album", None).unwrap();
+
+    let result = db.update_album(album.id, "   ", None);
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("album name cannot be empty")
+    );
+
+    let unchanged = db.get_album(album.id).unwrap().expect("album should exist");
+    assert_eq!(unchanged.name, "Test Album");
+}
+
+#[test]
+fn test_set_album_cover() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/cover.jpg"))
+        .unwrap();
+    let album = db.create_album("My Album", None).unwrap();
+
+    db.add_to_album(album.id, &[media_id]).unwrap();
+    db.set_album_cover(album.id, media_id).unwrap();
+
+    let updated = db.get_album(album.id).unwrap().expect("album should exist");
+    assert_eq!(updated.cover_media_id, Some(media_id));
+}

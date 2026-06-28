@@ -262,6 +262,27 @@ mod tests {
     }
 
     #[test]
+    fn similar_images_have_small_phash_distance() {
+        let base = solid_image(64, 64, 128);
+        let similar: RgbImage = ImageBuffer::from_fn(64, 64, |x, y| {
+            if x == 32 && y == 32 {
+                Rgb([129, 129, 129])
+            } else {
+                Rgb([128, 128, 128])
+            }
+        });
+
+        let base_hash = compute_phash(&image::DynamicImage::ImageRgb8(base));
+        let similar_hash = compute_phash(&image::DynamicImage::ImageRgb8(similar));
+
+        let distance = hamming_distance(base_hash, similar_hash);
+        assert!(
+            distance <= 5,
+            "similar images should have small phash distance (got {distance})"
+        );
+    }
+
+    #[test]
     fn phash_from_decoded_matches_compute_phash() {
         let rgba: RgbImage = solid_image(48, 48, 200);
         let width = rgba.width();

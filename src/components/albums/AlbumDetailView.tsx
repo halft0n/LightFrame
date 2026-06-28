@@ -234,6 +234,7 @@ export function AlbumDetailView() {
                 <PhotoCard
                   item={item}
                   selected={selectedSet.has(item.id)}
+                  selectedMediaIds={selectedMediaIds}
                   onSelect={handleSelect}
                   onOpen={openViewer}
                 />
@@ -315,6 +316,7 @@ export function AlbumDetailView() {
                         <PhotoCard
                           item={item}
                           selected={selected}
+                          selectedMediaIds={[]}
                           onSelect={() => {}}
                         />
                       </button>

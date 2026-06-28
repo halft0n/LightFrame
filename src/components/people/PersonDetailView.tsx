@@ -190,6 +190,7 @@ export function PersonDetailView() {
                 key={item.id}
                 item={item}
                 selected={false}
+                selectedMediaIds={[]}
                 onSelect={() => openViewer(item.id)}
                 onOpen={openViewer}
               />

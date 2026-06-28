@@ -21,6 +21,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 http = "1"
 chrono = { version = "0.4", features = ["serde"] }
+lru = "0.12"
 
 catchlight-core.workspace = true
 catchlight-db.workspace = true

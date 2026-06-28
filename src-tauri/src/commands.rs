@@ -535,6 +535,7 @@ pub fn permanently_delete(state: State<'_, AppState>, media_id: i64) -> Result<(
         .db
         .permanently_delete_media(media_id)
         .map_err(|e| e.to_string())?;
+    state.thumb_cache.invalidate_media(media_id);
     remove_media_from_disk(&path, hash.as_deref());
     Ok(())
 }
@@ -606,6 +607,10 @@ pub fn batch_permanent_delete(
         .db
         .batch_permanent_delete(&media_ids)
         .map_err(|e| e.to_string())?;
+
+    for media_id in &media_ids {
+        state.thumb_cache.invalidate_media(*media_id);
+    }
 
     for (path, hash) in to_remove {
         remove_media_from_disk(&path, hash.as_deref());

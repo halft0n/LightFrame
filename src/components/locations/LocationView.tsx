@@ -291,6 +291,7 @@ export function LocationView() {
                   key={item.id}
                   item={item}
                   selected={false}
+                  selectedMediaIds={[]}
                   onSelect={handlePhotoSelect}
                   onOpen={openViewer}
                 />

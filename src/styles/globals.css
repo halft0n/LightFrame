@@ -118,6 +118,20 @@ input:focus:not(:focus-visible) {
   will-change: opacity, transform;
 }
 
+@keyframes info-panel-slide-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.info-panel-slide-in {
+  animation: info-panel-slide-in 0.3s ease-out both;
+  will-change: transform;
+}
+
 @keyframes shimmer {
   0% {
     background-position: -200% 0;

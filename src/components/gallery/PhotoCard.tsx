@@ -1,10 +1,12 @@
-import { memo, useState } from "react";
+import { memo, useCallback, useState } from "react";
 import type { MediaItem } from "@/lib/tauri";
 import { getThumbnailUrl } from "@/lib/tauri";
+import { dragMediaIdsForItem, setDragMediaIds } from "@/lib/dragMedia";
 
 interface PhotoCardProps {
   item: MediaItem;
   selected: boolean;
+  selectedMediaIds?: number[];
   onSelect: (id: number, event: React.MouseEvent) => void;
   onOpen?: (id: number) => void;
 }
@@ -18,6 +20,7 @@ function formatDuration(seconds: number): string {
 export const PhotoCard = memo(function PhotoCard({
   item,
   selected,
+  selectedMediaIds = [],
   onSelect,
   onOpen,
 }: PhotoCardProps) {
@@ -26,9 +29,18 @@ export const PhotoCard = memo(function PhotoCard({
 
   const isVideo = item.media_type === "Video";
 
+  const handleDragStart = useCallback(
+    (e: React.DragEvent) => {
+      setDragMediaIds(e.dataTransfer, dragMediaIdsForItem(item.id, selectedMediaIds));
+    },
+    [item.id, selectedMediaIds],
+  );
+
   return (
     <button
       type="button"
+      draggable
+      onDragStart={handleDragStart}
       onClick={(e) => onSelect(item.id, e)}
       onDoubleClick={() => onOpen?.(item.id)}
       className={`photo-card relative aspect-square w-full overflow-hidden text-left ${

@@ -69,6 +69,7 @@ impl Default for ScanStatus {
     }
 }
 
+use crate::thumb_cache::ThumbCache;
 use crate::watcher::WatchManager;
 
 pub struct AppState {
@@ -78,6 +79,7 @@ pub struct AppState {
     pub scan_concurrency: usize,
     pub scanning: Arc<AtomicBool>,
     pub watch_manager: WatchManager,
+    pub thumb_cache: ThumbCache,
 }
 
 impl AppState {
@@ -98,6 +100,7 @@ impl AppState {
             scan_concurrency: concurrency,
             scanning: Arc::new(AtomicBool::new(false)),
             watch_manager: WatchManager::new(),
+            thumb_cache: ThumbCache::new(),
         })
     }
 }

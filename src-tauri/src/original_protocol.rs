@@ -141,6 +141,7 @@ mod tests {
             scan_concurrency: 2,
             scanning: Arc::new(AtomicBool::new(false)),
             watch_manager: crate::watcher::WatchManager::new(),
+            thumb_cache: crate::thumb_cache::ThumbCache::new(),
         }
     }
 

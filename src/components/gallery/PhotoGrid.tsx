@@ -22,6 +22,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { useTranslation } from "@/i18n/useTranslation";
 
 const GAP = 3;
+const SCROLL_LISTENER_OPTIONS: AddEventListenerOptions = { passive: true };
 
 export interface PhotoGridProps {
   items?: MediaItem[];
@@ -148,6 +149,10 @@ export function PhotoGrid({
     overscan: 3,
   });
 
+  useEffect(() => {
+    rowVirtualizer.measure();
+  }, [rowHeight, columnCount, rowVirtualizer]);
+
   const handleScroll = useCallback(() => {
     const el = parentRef.current;
     if (!el || loadingMore || !hasMore) return;
@@ -162,8 +167,8 @@ export function PhotoGrid({
     const el = parentRef.current;
     if (!el) return;
 
-    el.addEventListener("scroll", handleScroll, { passive: true });
-    return () => el.removeEventListener("scroll", handleScroll);
+    el.addEventListener("scroll", handleScroll, SCROLL_LISTENER_OPTIONS);
+    return () => el.removeEventListener("scroll", handleScroll, SCROLL_LISTENER_OPTIONS);
   }, [handleScroll]);
 
   const selectedSet = new Set(selectedMediaIds);
@@ -274,6 +279,7 @@ export function PhotoGrid({
                         key={item.id}
                         item={item}
                         selected={selectedSet.has(item.id)}
+                        selectedMediaIds={selectedMediaIds}
                         onSelect={handleSelect}
                         onOpen={openViewer}
                       />

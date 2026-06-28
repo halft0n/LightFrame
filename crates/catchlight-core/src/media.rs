@@ -28,7 +28,7 @@ pub struct MediaFile {
     pub longitude: Option<f64>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ThumbnailSize {
     Micro,
     Small,

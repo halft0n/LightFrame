@@ -99,6 +99,7 @@ export function DeletedView() {
                 <PhotoCard
                   item={item}
                   selected={false}
+                  selectedMediaIds={[]}
                   onSelect={(_id, e) => {
                     if (!e.ctrlKey && !e.metaKey && !e.shiftKey) openViewer(item.id);
                   }}

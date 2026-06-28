@@ -31,8 +31,12 @@ export interface MediaItem {
   modified_at: string;
   duration_sec?: number | null;
   blake3_hash?: string | null;
+  dhash?: number | null;
+  phash?: number | null;
   latitude?: number | null;
   longitude?: number | null;
+  camera_make?: string | null;
+  camera_model?: string | null;
 }
 
 export interface ScanProgress {

@@ -23,6 +23,10 @@ pub fn handle(state: &State<'_, AppState>, request_path: &str) -> Response<Vec<u
         return error_response(StatusCode::BAD_REQUEST, "invalid size");
     };
 
+    if let Some(cached) = state.thumb_cache.get(media_id, size) {
+        return ok_response(cached, content_type_for(size));
+    }
+
     let media = match state.db.get_media_by_id(media_id) {
         Ok(Some(m)) => m,
         Ok(None) => return error_response(StatusCode::NOT_FOUND, "media not found"),
@@ -35,12 +39,8 @@ pub fn handle(state: &State<'_, AppState>, request_path: &str) -> Response<Vec<u
     if matches!(size, ThumbnailSize::Micro)
         && let Ok(Some(blob)) = state.db.get_micro_thumb(media_id)
     {
-        return Response::builder()
-            .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, "image/jpeg")
-            .header(header::CACHE_CONTROL, "max-age=31536000, immutable")
-            .body(blob)
-            .unwrap();
+        state.thumb_cache.insert(media_id, size, blob.clone());
+        return ok_response(blob, "image/jpeg");
     }
 
     let Some(hash) = media.blake3_hash else {
@@ -49,7 +49,13 @@ pub fn handle(state: &State<'_, AppState>, request_path: &str) -> Response<Vec<u
 
     let cache_path = thumb_path(&hash, size);
     if cache_path.exists() {
-        return serve_file(&cache_path);
+        return match std::fs::read(&cache_path) {
+            Ok(bytes) => {
+                state.thumb_cache.insert(media_id, size, bytes.clone());
+                ok_response(bytes, "image/webp")
+            }
+            Err(_) => error_response(StatusCode::NOT_FOUND, "thumbnail not found"),
+        };
     }
 
     let src = Path::new(&media.path);
@@ -58,7 +64,13 @@ pub fn handle(state: &State<'_, AppState>, request_path: &str) -> Response<Vec<u
     }
 
     match catchlight_thumbnail::generate(src, &hash, size) {
-        Ok(generated) => serve_file(&generated),
+        Ok(generated) => match std::fs::read(&generated) {
+            Ok(bytes) => {
+                state.thumb_cache.insert(media_id, size, bytes.clone());
+                ok_response(bytes, "image/webp")
+            }
+            Err(_) => error_response(StatusCode::NOT_FOUND, "thumbnail not found"),
+        },
         Err(e) => {
             tracing::warn!(media_id, "thumbnail generation failed: {e}");
             error_response(StatusCode::INTERNAL_SERVER_ERROR, "generation failed")
@@ -75,16 +87,20 @@ fn parse_size(s: &str) -> Option<ThumbnailSize> {
     }
 }
 
-fn serve_file(path: &Path) -> Response<Vec<u8>> {
-    match std::fs::read(path) {
-        Ok(bytes) => Response::builder()
-            .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, "image/webp")
-            .header(header::CACHE_CONTROL, "max-age=31536000, immutable")
-            .body(bytes)
-            .unwrap(),
-        Err(_) => error_response(StatusCode::NOT_FOUND, "thumbnail not found"),
+fn content_type_for(size: ThumbnailSize) -> &'static str {
+    match size {
+        ThumbnailSize::Micro => "image/jpeg",
+        ThumbnailSize::Small | ThumbnailSize::Large => "image/webp",
     }
+}
+
+fn ok_response(bytes: Vec<u8>, content_type: &str) -> Response<Vec<u8>> {
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CACHE_CONTROL, "max-age=31536000, immutable")
+        .body(bytes)
+        .unwrap()
 }
 
 fn error_response(status: StatusCode, message: &str) -> Response<Vec<u8>> {

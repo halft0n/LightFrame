@@ -23,6 +23,9 @@ import {
   closeMemoryDetail,
   openPersonDetail,
   closePersonDetail,
+  navigate,
+  addSearchHistory,
+  clearSearchHistory,
 } from "@/store/appStore";
 import type { MediaItem, WatchedFolder } from "@/lib/tauri";
 
@@ -39,6 +42,7 @@ function resetStore() {
   closeSmartAlbumDetail();
   closeMemoryDetail();
   closePersonDetail();
+  clearSearchHistory();
   setView("all");
 }
 
@@ -273,5 +277,74 @@ describe("appStore", () => {
     openAlbumDetail(5);
     setView("album-detail");
     expect(getSnapshot().selectedAlbumId).toBe(5);
+  });
+
+  it("navigate to folder sets folder state and clears detail IDs", () => {
+    openAlbumDetail(3);
+    navigate("folder", { folderId: 7, folderPath: "/photos/vacation" });
+
+    const state = getSnapshot();
+    expect(state.currentView).toBe("folder");
+    expect(state.selectedFolderId).toBe(7);
+    expect(state.selectedFolderPath).toBe("/photos/vacation");
+    expect(state.selectedAlbumId).toBeNull();
+  });
+
+  it("navigate to folder without params clears folder selection", () => {
+    navigate("folder", { folderId: 1, folderPath: "/photos" });
+    navigate("folder");
+
+    const state = getSnapshot();
+    expect(state.currentView).toBe("folder");
+    expect(state.selectedFolderId).toBeNull();
+    expect(state.selectedFolderPath).toBeNull();
+  });
+
+  it("setView clears folder state when leaving folder view", () => {
+    navigate("folder", { folderId: 2, folderPath: "/backup" });
+    setView("all");
+
+    const state = getSnapshot();
+    expect(state.currentView).toBe("all");
+    expect(state.selectedFolderId).toBeNull();
+    expect(state.selectedFolderPath).toBeNull();
+  });
+
+  describe("search history", () => {
+    it("addSearchHistory adds trimmed queries", () => {
+      addSearchHistory("  sunset  ");
+      expect(getSnapshot().searchHistory).toEqual(["sunset"]);
+    });
+
+    it("addSearchHistory ignores empty or whitespace-only queries", () => {
+      addSearchHistory("");
+      addSearchHistory("   ");
+      expect(getSnapshot().searchHistory).toEqual([]);
+    });
+
+    it("addSearchHistory moves duplicates to the front", () => {
+      addSearchHistory("beach");
+      addSearchHistory("sunset");
+      addSearchHistory("beach");
+
+      expect(getSnapshot().searchHistory).toEqual(["beach", "sunset"]);
+    });
+
+    it("addSearchHistory keeps at most 10 items", () => {
+      for (let i = 1; i <= 12; i++) {
+        addSearchHistory(`query-${i}`);
+      }
+      const history = getSnapshot().searchHistory;
+      expect(history).toHaveLength(10);
+      expect(history[0]).toBe("query-12");
+      expect(history[9]).toBe("query-3");
+    });
+
+    it("clearSearchHistory removes all entries", () => {
+      addSearchHistory("sunset");
+      addSearchHistory("beach");
+      clearSearchHistory();
+      expect(getSnapshot().searchHistory).toEqual([]);
+    });
   });
 });
