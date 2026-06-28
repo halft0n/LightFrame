@@ -87,6 +87,26 @@ pnpm tauri build
 | [Detailed Design](docs/4-detailed-design.md) | Implementation-level module design |
 | [Development Plan](docs/5-development-plan.md) | 24-week phased development roadmap |
 
+## Acknowledgements
+
+CatchLight 的诞生离不开以下优秀的开源项目：
+
+| Project | Usage |
+|---------|-------|
+| [Tauri](https://tauri.app) | Cross-platform desktop framework |
+| [React](https://react.dev) | Frontend UI library |
+| [Vite](https://vite.dev) | Frontend build tool |
+| [Tailwind CSS](https://tailwindcss.com) | Utility-first CSS framework |
+| [SQLite](https://sqlite.org) | Embedded database engine |
+| [rusqlite](https://github.com/rusqlite/rusqlite) | SQLite bindings for Rust |
+| [image](https://github.com/image-rs/image) | Rust image processing library |
+| [BLAKE3](https://github.com/BLAKE3-team/BLAKE3) | Fast cryptographic hash for deduplication |
+| [kamadak-exif](https://github.com/kamadak/exif-rs) | EXIF metadata extraction |
+| [reverse_geocoder](https://github.com/gx0r/rrgeo) | Offline reverse geocoding |
+| [iPhotron](https://github.com/OliverZhaohaibin/iPhotron-LocalPhotoAlbumManager) | UI/UX design inspiration |
+| [@fontsource/inter](https://fontsource.org/fonts/inter) | Self-hosted Inter font |
+| [@tanstack/react-virtual](https://tanstack.com/virtual) | Virtual scrolling for large lists |
+
 ## Star History
 
 <p align="center">
@@ -97,4 +117,4 @@ pnpm tauri build
 
 ## License
 
-MIT
+MIT License. See [LICENSE](LICENSE) for details.
