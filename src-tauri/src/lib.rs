@@ -22,6 +22,7 @@ pub fn run() {
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             commands::get_app_version,
+            commands::get_config,
             commands::add_watched_folder,
             commands::remove_watched_folder,
             commands::list_watched_folders,

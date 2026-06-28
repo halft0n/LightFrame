@@ -1,5 +1,6 @@
 use crate::scan;
 use crate::state::{AppState, ScanProgress};
+use catchlight_core::config::AppConfig;
 use catchlight_core::media::MediaFile;
 use catchlight_db::{MediaNeighbors, TimelineGroup, WatchedFolder};
 use tauri::{AppHandle, State};
@@ -7,6 +8,11 @@ use tauri::{AppHandle, State};
 #[tauri::command]
 pub fn get_app_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
+}
+
+#[tauri::command]
+pub fn get_config(state: State<'_, AppState>) -> AppConfig {
+    state.config.clone()
 }
 
 #[tauri::command]
