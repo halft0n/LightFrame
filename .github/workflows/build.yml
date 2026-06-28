@@ -141,21 +141,20 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           LABEL="${{ matrix.label }}"
-          mkdir -p dist
+          mkdir -p release-artifacts
 
           for f in $(find src-tauri/target -type f \( -name "*.msi" -o -name "*.exe" -o -name "*.deb" -o -name "*.AppImage" -o -name "*.dmg" \) 2>/dev/null); do
             BASENAME="$(basename "$f")"
             EXT="${BASENAME##*.}"
-            NAME="${BASENAME%.*}"
             NEW_NAME="CatchLight-${VERSION}-${LABEL}.${EXT}"
-            cp "$f" "dist/${NEW_NAME}"
-            echo "  => dist/${NEW_NAME}"
+            cp "$f" "release-artifacts/${NEW_NAME}"
+            echo "  => release-artifacts/${NEW_NAME}"
           done
 
       - uses: actions/upload-artifact@v4
         with:
           name: catchlight-${{ matrix.label }}
-          path: dist/*
+          path: release-artifacts/*
           retention-days: 30
 
   release:
