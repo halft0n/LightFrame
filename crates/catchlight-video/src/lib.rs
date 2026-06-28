@@ -14,7 +14,7 @@ pub async fn extract_frame(video: &Path, output: &Path, timestamp_secs: f64) -> 
             "1",
             "-q:v",
             "2",
-            &output.to_string_lossy().to_string(),
+            output.to_string_lossy().as_ref(),
         ])
         .output()
         .await

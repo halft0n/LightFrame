@@ -59,9 +59,8 @@ pub async fn run_scan(
     emit_progress(app, &scan_status);
 
     let root = PathBuf::from(&folder.path);
-    let files = discover_files(&root).await.map_err(|e| {
+    let files = discover_files(&root).await.inspect_err(|_| {
         let _ = db.set_folder_scan_status(folder_id, "error");
-        e
     })?;
     scan_status.set_total(files.len() as i64);
     scan_status.set_status("scanning");
@@ -83,9 +82,8 @@ pub async fn run_scan(
     .collect::<()>()
     .await;
 
-    db.update_last_scan_at(folder_id).map_err(|e| {
+    db.update_last_scan_at(folder_id).inspect_err(|_| {
         let _ = db.set_folder_scan_status(folder_id, "error");
-        e
     })?;
     db.set_folder_scan_status(folder_id, "idle")?;
     scan_status.set_status("complete");
@@ -267,13 +265,13 @@ async fn process_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_
         let _ = db.set_micro_thumb(media_id, &blob);
     }
 
-    if let (Some(lat), Some(lon)) = (media.latitude, media.longitude) {
-        if let Some(loc) = catchlight_geo::reverse_geocode(lat, lon) {
-            let country = loc.country.as_deref().unwrap_or("");
-            let city = loc.city.as_deref().unwrap_or("");
-            if !country.is_empty() {
-                let _ = db.update_media_location(media_id, city, country);
-            }
+    if let (Some(lat), Some(lon)) = (media.latitude, media.longitude)
+        && let Some(loc) = catchlight_geo::reverse_geocode(lat, lon)
+    {
+        let country = loc.country.as_deref().unwrap_or("");
+        let city = loc.city.as_deref().unwrap_or("");
+        if !country.is_empty() {
+            let _ = db.update_media_location(media_id, city, country);
         }
     }
 

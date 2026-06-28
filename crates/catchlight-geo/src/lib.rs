@@ -24,20 +24,21 @@ fn build_display_name(
     country: &Option<String>,
 ) -> String {
     let mut parts = Vec::new();
-    if let Some(c) = city {
-        if !c.is_empty() {
-            parts.push(c.as_str());
-        }
+    if let Some(c) = city
+        && !c.is_empty()
+    {
+        parts.push(c.as_str());
     }
-    if let Some(r) = region {
-        if !r.is_empty() && !parts.contains(&r.as_str()) {
-            parts.push(r.as_str());
-        }
+    if let Some(r) = region
+        && !r.is_empty()
+        && !parts.contains(&r.as_str())
+    {
+        parts.push(r.as_str());
     }
-    if let Some(c) = country {
-        if !c.is_empty() {
-            parts.push(c.as_str());
-        }
+    if let Some(c) = country
+        && !c.is_empty()
+    {
+        parts.push(c.as_str());
     }
     if parts.is_empty() {
         "Unknown".to_string()

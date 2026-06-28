@@ -576,12 +576,12 @@ impl Database {
         let mut groups: Vec<TimelineGroup> = Vec::new();
         for row in rows {
             let (date, media) = row.map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
-            if let Some(group) = groups.last_mut() {
-                if group.date == date {
-                    group.count += 1;
-                    group.media.push(media);
-                    continue;
-                }
+            if let Some(group) = groups.last_mut()
+                && group.date == date
+            {
+                group.count += 1;
+                group.media.push(media);
+                continue;
             }
             groups.push(TimelineGroup {
                 count: 1,
@@ -955,11 +955,11 @@ impl Database {
         for row in rows {
             let (id, match_type, created_at, member) =
                 row.map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
-            if let Some(group) = groups.last_mut() {
-                if group.id == id {
-                    group.members.push(member);
-                    continue;
-                }
+            if let Some(group) = groups.last_mut()
+                && group.id == id
+            {
+                group.members.push(member);
+                continue;
             }
             groups.push(DuplicateGroupDetail {
                 id,
@@ -1662,10 +1662,10 @@ impl Database {
             let mut city_counts: std::collections::HashMap<String, i64> =
                 std::collections::HashMap::new();
             for (_, city, _) in &media_rows {
-                if let Some(c) = city {
-                    if !c.is_empty() {
-                        *city_counts.entry(c.clone()).or_insert(0) += 1;
-                    }
+                if let Some(c) = city
+                    && !c.is_empty()
+                {
+                    *city_counts.entry(c.clone()).or_insert(0) += 1;
                 }
             }
             let dominant_city = city_counts
@@ -1704,7 +1704,7 @@ impl Database {
             }
         }
 
-        Ok(self.list_memories()?)
+        self.list_memories()
     }
 
     pub fn list_memories(&self) -> catchlight_core::Result<Vec<Memory>> {

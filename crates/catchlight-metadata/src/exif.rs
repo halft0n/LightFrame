@@ -17,16 +17,16 @@ pub fn extract_exif(path: &Path) -> Result<PhotoMetadata> {
 
     let mut meta = PhotoMetadata::default();
 
-    if let Some(field) = exif.get_field(exif::Tag::PixelXDimension, exif::In::PRIMARY) {
-        if let Some(v) = field.value.get_uint(0) {
-            meta.width = Some(v);
-        }
+    if let Some(field) = exif.get_field(exif::Tag::PixelXDimension, exif::In::PRIMARY)
+        && let Some(v) = field.value.get_uint(0)
+    {
+        meta.width = Some(v);
     }
 
-    if let Some(field) = exif.get_field(exif::Tag::PixelYDimension, exif::In::PRIMARY) {
-        if let Some(v) = field.value.get_uint(0) {
-            meta.height = Some(v);
-        }
+    if let Some(field) = exif.get_field(exif::Tag::PixelYDimension, exif::In::PRIMARY)
+        && let Some(v) = field.value.get_uint(0)
+    {
+        meta.height = Some(v);
     }
 
     if let Some(field) = exif.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY) {
@@ -56,16 +56,16 @@ pub fn extract_exif(path: &Path) -> Result<PhotoMetadata> {
         );
     }
 
-    if let Some(field) = exif.get_field(exif::Tag::ISOSpeed, exif::In::PRIMARY) {
-        if let Some(v) = field.value.get_uint(0) {
-            meta.iso = Some(v);
-        }
+    if let Some(field) = exif.get_field(exif::Tag::ISOSpeed, exif::In::PRIMARY)
+        && let Some(v) = field.value.get_uint(0)
+    {
+        meta.iso = Some(v);
     }
 
-    if let Some(field) = exif.get_field(exif::Tag::Orientation, exif::In::PRIMARY) {
-        if let Some(v) = field.value.get_uint(0) {
-            meta.orientation = Some(v as u16);
-        }
+    if let Some(field) = exif.get_field(exif::Tag::Orientation, exif::In::PRIMARY)
+        && let Some(v) = field.value.get_uint(0)
+    {
+        meta.orientation = Some(v as u16);
     }
 
     match extract_gps(&exif) {

@@ -104,12 +104,11 @@ impl AppState {
 
 fn load_config() -> AppConfig {
     let path = config::config_path();
-    if path.exists() {
-        if let Ok(data) = std::fs::read_to_string(&path) {
-            if let Ok(cfg) = serde_json::from_str(&data) {
-                return cfg;
-            }
-        }
+    if path.exists()
+        && let Ok(data) = std::fs::read_to_string(&path)
+        && let Ok(cfg) = serde_json::from_str(&data)
+    {
+        return cfg;
     }
     AppConfig::default()
 }

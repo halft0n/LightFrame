@@ -226,15 +226,16 @@ pub fn export_edited_image(
 }
 
 pub fn apply_edits(mut img: DynamicImage, params: &EditParams) -> DynamicImage {
-    if let Some(crop) = &params.crop {
-        if crop.width > 0.0 && crop.height > 0.0 {
-            let (w, h) = img.dimensions();
-            let x = (crop.x * w as f32).clamp(0.0, w as f32 - 1.0) as u32;
-            let y = (crop.y * h as f32).clamp(0.0, h as f32 - 1.0) as u32;
-            let cw = (crop.width * w as f32).clamp(1.0, w as f32 - x as f32) as u32;
-            let ch = (crop.height * h as f32).clamp(1.0, h as f32 - y as f32) as u32;
-            img = img.crop_imm(x, y, cw, ch);
-        }
+    if let Some(crop) = &params.crop
+        && crop.width > 0.0
+        && crop.height > 0.0
+    {
+        let (w, h) = img.dimensions();
+        let x = (crop.x * w as f32).clamp(0.0, w as f32 - 1.0) as u32;
+        let y = (crop.y * h as f32).clamp(0.0, h as f32 - 1.0) as u32;
+        let cw = (crop.width * w as f32).clamp(1.0, w as f32 - x as f32) as u32;
+        let ch = (crop.height * h as f32).clamp(1.0, h as f32 - y as f32) as u32;
+        img = img.crop_imm(x, y, cw, ch);
     }
 
     let rotate_norm = params.rotate.rem_euclid(360);
@@ -433,16 +434,17 @@ fn solve_8x8(a: &[[f32; 8]; 8], b: &[f32; 8]) -> [f32; 8] {
         }
         m.swap(col, pivot);
         let div = m[col][col];
-        for j in col..9 {
-            m[col][j] /= div;
+        for item in m[col].iter_mut().skip(col) {
+            *item /= div;
         }
         for row in 0..8 {
             if row == col {
                 continue;
             }
             let factor = m[row][col];
-            for j in col..9 {
-                m[row][j] -= factor * m[col][j];
+            let col_vals: Vec<f32> = m[col][col..9].to_vec();
+            for (j, cv) in (col..9).zip(col_vals.iter()) {
+                m[row][j] -= factor * cv;
             }
         }
     }
@@ -494,8 +496,8 @@ fn transform_point(m: &[f32; 9], x: f32, y: f32) -> (f32, f32) {
 pub(crate) fn build_curve_lut(points: &[[u16; 2]]) -> [u8; 256] {
     let mut lut = [0u8; 256];
     if points.is_empty() {
-        for i in 0..256 {
-            lut[i] = i as u8;
+        for (i, slot) in lut.iter_mut().enumerate() {
+            *slot = i as u8;
         }
         return lut;
     }
@@ -535,14 +537,14 @@ pub(crate) fn build_curve_lut(points: &[[u16; 2]]) -> [u8; 256] {
         };
     }
 
-    for x in 0..256 {
+    for (x, lut_val) in lut.iter_mut().enumerate() {
         let xf = x as f32;
         if xf <= xs[0] {
-            lut[x] = ys[0].round().clamp(0.0, 255.0) as u8;
+            *lut_val = ys[0].round().clamp(0.0, 255.0) as u8;
             continue;
         }
         if xf >= xs[n - 1] {
-            lut[x] = ys[n - 1].round().clamp(0.0, 255.0) as u8;
+            *lut_val = ys[n - 1].round().clamp(0.0, 255.0) as u8;
             continue;
         }
 
@@ -566,7 +568,7 @@ pub(crate) fn build_curve_lut(points: &[[u16; 2]]) -> [u8; 256] {
         let h01 = -2.0 * t3 + 3.0 * t2;
         let h11 = t3 - t2;
         let y = h00 * y0 + h10 * h * m0 + h01 * y1 + h11 * h * m1;
-        lut[x] = y.round().clamp(0.0, 255.0) as u8;
+        *lut_val = y.round().clamp(0.0, 255.0) as u8;
     }
 
     lut
@@ -861,10 +863,9 @@ fn apply_sharpen(img: &mut RgbaImage, amount: f32) {
     for y in 1..h - 1 {
         for x in 1..w - 1 {
             let mut rgb = [0.0f32; 3];
-            for ky in 0..3usize {
-                for kx in 0..3usize {
+            for (ky, krow) in kernel.iter().enumerate() {
+                for (kx, &k) in krow.iter().enumerate() {
                     let p = src.get_pixel(x + kx as u32 - 1, y + ky as u32 - 1);
-                    let k = kernel[ky][kx];
                     rgb[0] += p[0] as f32 * k;
                     rgb[1] += p[1] as f32 * k;
                     rgb[2] += p[2] as f32 * k;
