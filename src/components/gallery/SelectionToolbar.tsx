@@ -6,6 +6,7 @@ import {
   batchExport,
   batchToggleFavorite,
   listAlbums,
+  removeFromAlbum,
   type Album,
 } from "@/lib/tauri";
 import {
@@ -15,9 +16,13 @@ import {
 } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 
-export function SelectionToolbar() {
+export function SelectionToolbar({
+  onAlbumChanged,
+}: {
+  onAlbumChanged?: () => void | Promise<void>;
+}) {
   const { t } = useTranslation();
-  const { selectedMediaIds } = useAppStore();
+  const { selectedMediaIds, currentView, selectedAlbumId } = useAppStore();
   const [albums, setAlbums] = useState<Album[]>([]);
   const [showAlbumPicker, setShowAlbumPicker] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -26,6 +31,7 @@ export function SelectionToolbar() {
 
   const count = selectedMediaIds.length;
   const isTauri = Boolean(window.__TAURI_INTERNALS__);
+  const inAlbumContext = currentView === "album-detail" && selectedAlbumId != null;
 
   useEffect(() => {
     if (count === 0) return;
@@ -74,6 +80,22 @@ export function SelectionToolbar() {
       setShowAlbumPicker(false);
     } catch (err) {
       console.error("Failed to add selected media to album:", err);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRemoveFromAlbum = async () => {
+    if (selectedAlbumId == null) return;
+    setBusy(true);
+    try {
+      await Promise.all(
+        selectedMediaIds.map((mediaId) => removeFromAlbum(selectedAlbumId, mediaId)),
+      );
+      clearMediaSelection();
+      await onAlbumChanged?.();
+    } catch (err) {
+      console.error("Failed to remove selected media from album:", err);
     } finally {
       setBusy(false);
     }
@@ -133,35 +155,46 @@ export function SelectionToolbar() {
             {t("batch.delete")}
           </button>
 
-          <div className="relative">
+          {inAlbumContext ? (
             <button
               type="button"
               disabled={busy}
-              onClick={() => setShowAlbumPicker((v) => !v)}
+              onClick={() => void handleRemoveFromAlbum()}
               className="rounded-md px-3 py-1.5 text-sm text-neutral-200 transition hover:bg-neutral-800 disabled:opacity-50"
             >
-              {t("batch.addToAlbum")}
+              {t("batch.removeFromAlbum")}
             </button>
+          ) : (
+            <div className="relative">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setShowAlbumPicker((v) => !v)}
+                className="rounded-md px-3 py-1.5 text-sm text-neutral-200 transition hover:bg-neutral-800 disabled:opacity-50"
+              >
+                {t("batch.addToAlbum")}
+              </button>
 
-            {showAlbumPicker && (
-              <div className="absolute bottom-full left-0 mb-2 max-h-48 min-w-48 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-lg">
-                {albums.length === 0 ? (
-                  <p className="px-3 py-2 text-xs text-neutral-500">{t("albums.empty")}</p>
-                ) : (
-                  albums.map((album) => (
-                    <button
-                      key={album.id}
-                      type="button"
-                      onClick={() => void handleAddToAlbum(album.id)}
-                      className="block w-full px-3 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800"
-                    >
-                      {album.name}
-                    </button>
-                  ))
-                )}
-              </div>
-            )}
-          </div>
+              {showAlbumPicker && (
+                <div className="absolute bottom-full left-0 mb-2 max-h-48 min-w-48 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-lg">
+                  {albums.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-neutral-500">{t("albums.empty")}</p>
+                  ) : (
+                    albums.map((album) => (
+                      <button
+                        key={album.id}
+                        type="button"
+                        onClick={() => void handleAddToAlbum(album.id)}
+                        className="block w-full px-3 py-2 text-left text-sm text-neutral-200 hover:bg-neutral-800"
+                      >
+                        {album.name}
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           <button
             type="button"

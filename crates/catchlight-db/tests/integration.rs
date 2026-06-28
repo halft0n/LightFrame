@@ -24,6 +24,7 @@ fn sample_media(path: &str) -> MediaFile {
         modified_at: chrono::NaiveDateTime::default(),
         blake3_hash: Some("abcdef1234567890".to_string()),
         dhash: Some(0xDEADBEEF),
+        phash: None,
         latitude: None,
         longitude: None,
     }
@@ -365,10 +366,16 @@ fn set_and_get_micro_thumb() {
     assert_eq!(retrieved.unwrap(), blob);
 }
 
-fn sample_media_with_hashes(path: &str, blake3: Option<&str>, dhash: Option<u64>) -> MediaFile {
+fn sample_media_with_hashes(
+    path: &str,
+    blake3: Option<&str>,
+    dhash: Option<u64>,
+    phash: Option<u64>,
+) -> MediaFile {
     let mut media = sample_media(path);
     media.blake3_hash = blake3.map(str::to_string);
     media.dhash = dhash;
+    media.phash = phash;
     media
 }
 
@@ -380,18 +387,18 @@ fn test_find_exact_duplicates() {
     let id1 = db
         .upsert_media(
             fid,
-            &sample_media_with_hashes("/photos/a.jpg", Some("hash_same"), Some(1)),
+            &sample_media_with_hashes("/photos/a.jpg", Some("hash_same"), Some(1), None),
         )
         .unwrap();
     let id2 = db
         .upsert_media(
             fid,
-            &sample_media_with_hashes("/photos/b.jpg", Some("hash_same"), Some(2)),
+            &sample_media_with_hashes("/photos/b.jpg", Some("hash_same"), Some(2), None),
         )
         .unwrap();
     db.upsert_media(
         fid,
-        &sample_media_with_hashes("/photos/c.jpg", Some("hash_unique"), Some(3)),
+        &sample_media_with_hashes("/photos/c.jpg", Some("hash_unique"), Some(3), None),
     )
     .unwrap();
 
@@ -424,22 +431,22 @@ fn test_find_perceptual_duplicates() {
 
     db.upsert_media(
         fid,
-        &sample_media_with_hashes("/photos/a.jpg", Some("unique_a"), Some(hash_a)),
+        &sample_media_with_hashes("/photos/a.jpg", Some("unique_a"), Some(hash_a), None),
     )
     .unwrap();
     db.upsert_media(
         fid,
-        &sample_media_with_hashes("/photos/b.jpg", Some("unique_b"), Some(hash_b)),
+        &sample_media_with_hashes("/photos/b.jpg", Some("unique_b"), Some(hash_b), None),
     )
     .unwrap();
     db.upsert_media(
         fid,
-        &sample_media_with_hashes("/photos/c.jpg", Some("unique_c"), Some(hash_c)),
+        &sample_media_with_hashes("/photos/c.jpg", Some("unique_c"), Some(hash_c), None),
     )
     .unwrap();
     db.upsert_media(
         fid,
-        &sample_media_with_hashes("/photos/d.jpg", Some("unique_d"), Some(hash_d)),
+        &sample_media_with_hashes("/photos/d.jpg", Some("unique_d"), Some(hash_d), None),
     )
     .unwrap();
 
@@ -457,13 +464,13 @@ fn test_find_perceptual_skips_exact_group_members() {
     let id1 = db
         .upsert_media(
             fid,
-            &sample_media_with_hashes("/photos/a.jpg", Some("same_hash"), Some(0)),
+            &sample_media_with_hashes("/photos/a.jpg", Some("same_hash"), Some(0), None),
         )
         .unwrap();
     let id2 = db
         .upsert_media(
             fid,
-            &sample_media_with_hashes("/photos/b.jpg", Some("same_hash"), Some(1)),
+            &sample_media_with_hashes("/photos/b.jpg", Some("same_hash"), Some(1), None),
         )
         .unwrap();
     db.find_exact_duplicates().unwrap();
@@ -471,7 +478,7 @@ fn test_find_perceptual_skips_exact_group_members() {
     let id3 = db
         .upsert_media(
             fid,
-            &sample_media_with_hashes("/photos/c.jpg", Some("other"), Some(2)),
+            &sample_media_with_hashes("/photos/c.jpg", Some("other"), Some(2), None),
         )
         .unwrap();
 
@@ -640,4 +647,78 @@ fn test_soft_delete_and_cleanup() {
     db.set_deleted(media_id3, true).unwrap();
     db.permanently_delete_media(media_id3).unwrap();
     assert!(db.get_media_by_id(media_id3).unwrap().is_none());
+}
+
+#[test]
+fn test_find_perceptual_duplicates_via_phash() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let dhash_far = 0x7FFF_FFFF_FFFF_FFFFu64;
+    let phash_a = 0u64;
+    let phash_b = 1u64;
+
+    db.upsert_media(
+        fid,
+        &sample_media_with_hashes(
+            "/photos/a.jpg",
+            Some("unique_a"),
+            Some(dhash_far),
+            Some(phash_a),
+        ),
+    )
+    .unwrap();
+    db.upsert_media(
+        fid,
+        &sample_media_with_hashes("/photos/b.jpg", Some("unique_b"), Some(0), Some(phash_b)),
+    )
+    .unwrap();
+
+    let groups = db.find_perceptual_duplicates(5).unwrap();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].members.len(), 2);
+}
+
+#[test]
+fn test_get_on_this_day_media() {
+    use chrono::{Datelike, NaiveDate};
+
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let today = chrono::Local::now().date_naive();
+    let month = today.month();
+    let day = today.day();
+    let current_year = today.year();
+
+    let photo_on = |year: i32, suffix: &str| -> MediaFile {
+        let mut media = sample_media(&format!("/photos/{year}-{suffix}.jpg"));
+        media.created_at =
+            NaiveDate::from_ymd_opt(year, month, day).and_then(|d| d.and_hms_opt(12, 0, 0));
+        media
+    };
+
+    db.upsert_media(fid, &photo_on(current_year - 1, "a"))
+        .unwrap();
+    db.upsert_media(fid, &photo_on(current_year - 2, "b"))
+        .unwrap();
+
+    assert!(db.get_on_this_day_media(10).unwrap().is_empty());
+
+    db.upsert_media(fid, &photo_on(current_year - 3, "c"))
+        .unwrap();
+
+    let results = db.get_on_this_day_media(10).unwrap();
+    assert_eq!(results.len(), 3);
+    assert_eq!(
+        results[0].path,
+        format!("/photos/{}-a.jpg", current_year - 1)
+    );
+    assert_eq!(
+        results[1].path,
+        format!("/photos/{}-b.jpg", current_year - 2)
+    );
+    assert_eq!(
+        results[2].path,
+        format!("/photos/{}-c.jpg", current_year - 3)
+    );
 }

@@ -2,12 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PhotoCard } from "./PhotoCard";
 import { SelectionToolbar } from "./SelectionToolbar";
-import { type MediaItem } from "@/lib/tauri";
+import { batchDeleteMedia, batchToggleFavorite, type MediaItem } from "@/lib/tauri";
+import { isTypingTarget } from "@/lib/keyboard";
 import {
   clearMediaSelection,
+  loadMedia,
   loadMoreMedia,
   openViewer,
   selectMediaRange,
+  setMediaSelection,
   setSingleMediaSelection,
   setThumbnailSize,
   THUMBNAIL_WIDTHS,
@@ -182,14 +185,43 @@ export function PhotoGrid({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
+
       if (e.key === "Escape" && selectedMediaIds.length > 0) {
         clearMediaSelection();
         lastSelectedRef.current = null;
+        return;
+      }
+
+      if ((e.key === "a" || e.key === "A") && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        setMediaSelection(mediaItems.map((item) => item.id));
+        return;
+      }
+
+      if (selectedMediaIds.length === 0) return;
+
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        void (async () => {
+          await batchDeleteMedia(selectedMediaIds);
+          clearMediaSelection();
+          lastSelectedRef.current = null;
+          await loadMedia();
+        })();
+        return;
+      }
+
+      if (e.key === "f" || e.key === "F") {
+        e.preventDefault();
+        void (async () => {
+          await batchToggleFavorite(selectedMediaIds, true);
+        })();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [selectedMediaIds.length]);
+  }, [selectedMediaIds, mediaItems]);
 
   if (mediaItems.length === 0) {
     return <EmptyState variant="photos" title={t("gallery.noPhotos")} />;

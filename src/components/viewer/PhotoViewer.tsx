@@ -9,10 +9,12 @@ import {
   hasEdits,
   toggleFavorite,
   getFavoriteState,
+  deleteMedia,
   type MediaItem,
 } from "@/lib/tauri";
 import { buildClipPath, buildCssFilter, buildImageTransform, parseEditParams } from "@/lib/editParams";
-import { closeViewer, openViewer } from "@/store/appStore";
+import { isTypingTarget } from "@/lib/keyboard";
+import { closeViewer, loadMedia, openViewer } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 import { VideoPlayer } from "./VideoPlayer";
 import { ImageEditor } from "@/components/editor/ImageEditor";
@@ -115,12 +117,49 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
     if (id != null) openViewer(id);
   }, []);
 
+  const handleToggleFavorite = useCallback(async () => {
+    const next = await toggleFavorite(mediaId);
+    setIsFavorite(next);
+  }, [mediaId]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isTypingTarget(e.target)) return;
+      if (editorOpen) return;
+
       if (e.key === "Escape") {
         closeViewer();
         return;
       }
+
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        void (async () => {
+          await deleteMedia(mediaId);
+          closeViewer();
+          await loadMedia();
+        })();
+        return;
+      }
+
+      if (e.key === "f" || e.key === "F") {
+        e.preventDefault();
+        void handleToggleFavorite();
+        return;
+      }
+
+      if (e.key === "i" || e.key === "I") {
+        e.preventDefault();
+        setShowInfo((v) => !v);
+        return;
+      }
+
+      if ((e.key === "e" || e.key === "E") && media?.media_type !== "Video") {
+        e.preventDefault();
+        setEditorOpen(true);
+        return;
+      }
+
       if (media?.media_type === "Video") return;
       if (e.key === "r" || e.key === "R") {
         e.preventDefault();
@@ -136,7 +175,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [navigate, neighbors, media?.media_type]);
+  }, [navigate, neighbors, media?.media_type, mediaId, editorOpen, handleToggleFavorite]);
 
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
@@ -188,11 +227,6 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
       // User cancelled or share unavailable
     }
   }, [media]);
-
-  const handleToggleFavorite = useCallback(async () => {
-    const next = await toggleFavorite(mediaId);
-    setIsFavorite(next);
-  }, [mediaId]);
 
   const handleZoomChange = useCallback((value: number) => {
     setZoom(value);

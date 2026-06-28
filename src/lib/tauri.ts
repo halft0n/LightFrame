@@ -308,6 +308,18 @@ export async function deleteAlbum(id: number): Promise<void> {
   return invoke("delete_album", { id });
 }
 
+export async function updateAlbum(
+  id: number,
+  name: string,
+  description?: string | null,
+): Promise<void> {
+  return invoke("update_album", { id, name, description: description ?? null });
+}
+
+export async function setAlbumCover(albumId: number, mediaId: number): Promise<void> {
+  return invoke("set_album_cover", { albumId, mediaId });
+}
+
 export async function listAlbums(): Promise<Album[]> {
   return invoke<Album[]>("list_albums");
 }
@@ -425,6 +437,10 @@ export async function getSmartAlbumMedia(
 
 export async function generateMemories(): Promise<Memory[]> {
   return invoke<Memory[]>("generate_memories");
+}
+
+export async function getOnThisDay(limit = 20): Promise<MediaItem[]> {
+  return invoke<MediaItem[]>("get_on_this_day", { limit });
 }
 
 export async function listMemories(): Promise<Memory[]> {

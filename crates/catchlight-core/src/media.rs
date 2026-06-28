@@ -23,6 +23,7 @@ pub struct MediaFile {
     pub modified_at: chrono::NaiveDateTime,
     pub blake3_hash: Option<String>,
     pub dhash: Option<u64>,
+    pub phash: Option<u64>,
     pub latitude: Option<f64>,
     pub longitude: Option<f64>,
 }
@@ -112,6 +113,7 @@ mod tests {
             modified_at: chrono::NaiveDateTime::default(),
             blake3_hash: Some("abc123".to_string()),
             dhash: Some(0xFF00FF00),
+            phash: Some(0x1234567890ABCDEF),
             latitude: Some(39.9042),
             longitude: Some(116.4074),
         };

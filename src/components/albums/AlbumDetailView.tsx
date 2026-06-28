@@ -1,15 +1,25 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PhotoCard } from "@/components/gallery/PhotoCard";
+import { SelectionToolbar } from "@/components/gallery/SelectionToolbar";
 import {
   addToAlbum,
   getAlbumMedia,
   getMediaList,
   listAlbums,
   removeFromAlbum,
+  setAlbumCover,
   type Album,
   type MediaItem,
 } from "@/lib/tauri";
-import { closeAlbumDetail, openViewer, useAppStore } from "@/store/appStore";
+import {
+  clearMediaSelection,
+  closeAlbumDetail,
+  openViewer,
+  selectMediaRange,
+  setSingleMediaSelection,
+  toggleMediaSelection,
+  useAppStore,
+} from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 
 const MIN_COLUMN_WIDTH = 160;
@@ -18,8 +28,9 @@ const PAGE_SIZE = 60;
 
 export function AlbumDetailView() {
   const { t } = useTranslation();
-  const { selectedAlbumId } = useAppStore();
+  const { selectedAlbumId, selectedMediaIds } = useAppStore();
   const parentRef = useRef<HTMLDivElement>(null);
+  const lastSelectedRef = useRef<number | null>(null);
   const [album, setAlbum] = useState<Album | null>(null);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,6 +67,10 @@ export function AlbumDetailView() {
   useEffect(() => {
     void loadAlbum();
   }, [loadAlbum]);
+
+  useEffect(() => {
+    return () => clearMediaSelection();
+  }, []);
 
   const loadMore = useCallback(async () => {
     if (selectedAlbumId == null || loadingMore || !hasMore) return;
@@ -95,6 +110,17 @@ export function AlbumDetailView() {
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && selectedMediaIds.length > 0) {
+        clearMediaSelection();
+        lastSelectedRef.current = null;
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedMediaIds.length]);
+
   const openPicker = async () => {
     setShowPicker(true);
     setPickerLoading(true);
@@ -121,6 +147,29 @@ export function AlbumDetailView() {
     await removeFromAlbum(selectedAlbumId, mediaId);
     await loadAlbum();
   };
+
+  const handleSetCover = async (mediaId: number) => {
+    if (selectedAlbumId == null) return;
+    await setAlbumCover(selectedAlbumId, mediaId);
+    await loadAlbum();
+  };
+
+  const selectedSet = new Set(selectedMediaIds);
+
+  const handleSelect = useCallback(
+    (id: number, event: React.MouseEvent) => {
+      if (event.shiftKey && lastSelectedRef.current != null) {
+        selectMediaRange(lastSelectedRef.current, id, media);
+      } else if (event.ctrlKey || event.metaKey) {
+        toggleMediaSelection(id);
+        lastSelectedRef.current = id;
+      } else {
+        setSingleMediaSelection(id);
+        lastSelectedRef.current = id;
+      }
+    },
+    [media],
+  );
 
   if (selectedAlbumId == null) {
     return null;
@@ -184,23 +233,46 @@ export function AlbumDetailView() {
               <div key={item.id} className="group relative">
                 <PhotoCard
                   item={item}
-                  selected={false}
-                  onSelect={() => openViewer(item.id)}
+                  selected={selectedSet.has(item.id)}
+                  onSelect={handleSelect}
                   onOpen={openViewer}
                 />
-                <button
-                  type="button"
-                  title={t("albums.removePhoto")}
-                  onClick={() => void handleRemove(item.id)}
-                  className="absolute right-2 top-2 rounded bg-black/70 px-2 py-0.5 text-xs text-white opacity-0 transition group-hover:opacity-100"
-                >
-                  ✕
-                </button>
+                <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition group-hover:opacity-100">
+                  <button
+                    type="button"
+                    title={t("albums.setCover")}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleSetCover(item.id);
+                    }}
+                    className="rounded bg-black/70 px-2 py-0.5 text-xs text-white hover:bg-black/90"
+                  >
+                    ★
+                  </button>
+                  <button
+                    type="button"
+                    title={t("albums.removePhoto")}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleRemove(item.id);
+                    }}
+                    className="rounded bg-black/70 px-2 py-0.5 text-xs text-white hover:bg-red-900/90"
+                  >
+                    ✕
+                  </button>
+                </div>
+                {album?.cover_media_id === item.id && (
+                  <span className="absolute left-2 top-2 rounded bg-blue-600/90 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                    ★
+                  </span>
+                )}
               </div>
             ))}
           </div>
         )}
       </div>
+
+      <SelectionToolbar onAlbumChanged={loadAlbum} />
 
       {showPicker && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 p-4">

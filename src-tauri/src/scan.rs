@@ -141,20 +141,21 @@ async fn process_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_
         MediaType::Photo | MediaType::Raw | MediaType::Screenshot
     );
 
-    let (dhash, image_micro_blob) = if is_image {
+    let (dhash, phash, image_micro_blob) = if is_image {
         tokio::task::spawn_blocking({
             let path = path.clone();
             let hash = blake3_hash.clone();
-            move || -> (Option<u64>, Option<Vec<u8>>) {
+            move || -> (Option<u64>, Option<u64>, Option<Vec<u8>>) {
                 let decoded = match catchlight_core::decode::decode_image(&path) {
                     Ok(d) => d,
                     Err(e) => {
                         tracing::warn!(path = %path.display(), "decode failed: {e}");
-                        return (None, None);
+                        return (None, None, None);
                     }
                 };
 
                 let dhash = Some(catchlight_dedup::dhash_from_decoded(&decoded));
+                let phash = Some(catchlight_dedup::phash_from_decoded(&decoded));
 
                 let _ = catchlight_thumbnail::generate_from_decoded(
                     &decoded,
@@ -169,13 +170,13 @@ async fn process_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_
 
                 let micro = catchlight_thumbnail::micro_blob_from_decoded(&decoded).ok();
 
-                (dhash, micro)
+                (dhash, phash, micro)
             }
         })
         .await
         .map_err(|e| catchlight_core::Error::Other(e.to_string()))?
     } else {
-        (None, None)
+        (None, None, None)
     };
 
     if matches!(media_type, MediaType::Video) {
@@ -259,6 +260,7 @@ async fn process_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_
         modified_at,
         blake3_hash: Some(blake3_hash),
         dhash,
+        phash,
         latitude: meta.latitude,
         longitude: meta.longitude,
     };

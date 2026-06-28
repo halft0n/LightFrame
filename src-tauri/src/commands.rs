@@ -392,6 +392,34 @@ pub fn delete_album(state: State<'_, AppState>, id: i64) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn update_album(
+    state: State<'_, AppState>,
+    id: i64,
+    name: String,
+    description: Option<String>,
+) -> Result<(), String> {
+    if name.trim().is_empty() {
+        return Err("album name cannot be empty".to_string());
+    }
+    state
+        .db
+        .update_album(id, &name, description.as_deref())
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_album_cover(
+    state: State<'_, AppState>,
+    album_id: i64,
+    media_id: i64,
+) -> Result<(), String> {
+    state
+        .db
+        .set_album_cover(album_id, media_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn list_albums(state: State<'_, AppState>) -> Result<Vec<Album>, String> {
     state.db.list_albums().map_err(|e| e.to_string())
 }
@@ -647,6 +675,15 @@ pub fn get_smart_album_media(
     state
         .db
         .get_smart_album_media(id, limit, offset)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_on_this_day(state: State<'_, AppState>, limit: i64) -> Result<Vec<MediaFile>, String> {
+    let limit = limit.clamp(1, 500);
+    state
+        .db
+        .get_on_this_day_media(limit)
         .map_err(|e| e.to_string())
 }
 

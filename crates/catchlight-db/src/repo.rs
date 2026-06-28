@@ -3,6 +3,8 @@ use catchlight_core::media::{MediaFile, MediaType};
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
+type PerceptualCandidate = (i64, Option<u64>, Option<u64>);
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WatchedFolder {
     pub id: i64,
@@ -282,6 +284,30 @@ fn perceptual_similarity(a: u64, b: u64) -> f64 {
     1.0 - (hamming_distance(a, b) as f64 / 64.0)
 }
 
+const PHASH_THRESHOLD: u32 = 10;
+
+fn perceptual_pair_match(
+    dhash_a: Option<u64>,
+    dhash_b: Option<u64>,
+    phash_a: Option<u64>,
+    phash_b: Option<u64>,
+    dhash_threshold: u32,
+) -> Option<f64> {
+    if let (Some(ha), Some(hb)) = (dhash_a, dhash_b) {
+        let distance = hamming_distance(ha, hb);
+        if distance <= dhash_threshold {
+            return Some(perceptual_similarity(ha, hb));
+        }
+    }
+    if let (Some(ha), Some(hb)) = (phash_a, phash_b) {
+        let distance = hamming_distance(ha, hb);
+        if distance <= PHASH_THRESHOLD {
+            return Some(perceptual_similarity(ha, hb));
+        }
+    }
+    None
+}
+
 impl Database {
     pub fn add_watched_folder(&self, path: &str) -> catchlight_core::Result<WatchedFolder> {
         let id = {
@@ -310,8 +336,8 @@ impl Database {
         let media_type_str = format!("{:?}", media.media_type);
 
         conn.execute(
-            "INSERT INTO media_files (folder_id, path, filename, media_type, size_bytes, width, height, created_at, modified_at, blake3_hash, dhash, latitude, longitude)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
+            "INSERT INTO media_files (folder_id, path, filename, media_type, size_bytes, width, height, created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
              ON CONFLICT(path) DO UPDATE SET
                 media_type = excluded.media_type,
                 size_bytes = excluded.size_bytes,
@@ -321,6 +347,7 @@ impl Database {
                 modified_at = excluded.modified_at,
                 blake3_hash = COALESCE(excluded.blake3_hash, blake3_hash),
                 dhash = COALESCE(excluded.dhash, dhash),
+                phash = COALESCE(excluded.phash, phash),
                 latitude = COALESCE(excluded.latitude, latitude),
                 longitude = COALESCE(excluded.longitude, longitude)",
             params![
@@ -335,6 +362,7 @@ impl Database {
                 media.modified_at.to_string(),
                 media.blake3_hash,
                 media.dhash,
+                media.phash,
                 media.latitude,
                 media.longitude,
             ],
@@ -386,7 +414,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
                  FROM media_files
                  WHERE is_deleted = 0
                  ORDER BY created_at DESC
@@ -420,8 +448,9 @@ impl Database {
                     modified_at: row.get::<_, String>(8)?.parse().unwrap_or_default(),
                     blake3_hash: row.get(9)?,
                     dhash: row.get(10)?,
-                    latitude: row.get(11)?,
-                    longitude: row.get(12)?,
+                    phash: row.get(11)?,
+                    latitude: row.get(12)?,
+                    longitude: row.get(13)?,
                 })
             })
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
@@ -442,7 +471,7 @@ impl Database {
         let (sql, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match cursor {
             None => (
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
                  FROM media_files
                  WHERE is_deleted = 0
                  ORDER BY created_at DESC, id DESC
@@ -452,7 +481,7 @@ impl Database {
             ),
             Some((created_at, id)) => (
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
                  FROM media_files
                  WHERE is_deleted = 0
                    AND (created_at < ?1 OR (created_at = ?1 AND id < ?2))
@@ -496,7 +525,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
                  FROM media_files
                  WHERE folder_id = ?1 AND is_deleted = 0
                  ORDER BY COALESCE(created_at, modified_at) DESC
@@ -535,7 +564,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
                  FROM media_files
                  WHERE media_type = ?1 AND is_deleted = 0
                  ORDER BY COALESCE(created_at, modified_at) DESC
@@ -654,8 +683,9 @@ impl Database {
             modified_at: row.get::<_, String>(8)?.parse().unwrap_or_default(),
             blake3_hash: row.get(9)?,
             dhash: row.get(10)?,
-            latitude: row.get(11)?,
-            longitude: row.get(12)?,
+            phash: row.get(11)?,
+            latitude: row.get(12)?,
+            longitude: row.get(13)?,
         })
     }
 
@@ -668,7 +698,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, latitude, longitude,
+                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude,
                         date(COALESCE(created_at, modified_at)) AS group_date
                  FROM media_files
                  WHERE is_deleted = 0
@@ -679,7 +709,7 @@ impl Database {
 
         let rows = stmt
             .query_map(params![limit, offset], |row| {
-                let group_date: String = row.get(13)?;
+                let group_date: String = row.get(14)?;
                 let media = Self::map_media_row(row)?;
                 Ok((group_date, media))
             })
@@ -745,7 +775,7 @@ impl Database {
         let conn = self.conn();
         conn.query_row(
             "SELECT id, path, filename, media_type, size_bytes, width, height,
-                    created_at, modified_at, blake3_hash, dhash, latitude, longitude
+                    created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
              FROM media_files WHERE id = ?1 AND is_deleted = 0",
             params![id],
             Self::map_media_row,
@@ -758,7 +788,7 @@ impl Database {
         let conn = self.conn();
         conn.query_row(
             "SELECT id, path, filename, media_type, size_bytes, width, height,
-                    created_at, modified_at, blake3_hash, dhash, latitude, longitude
+                    created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
              FROM media_files WHERE path = ?1 AND is_deleted = 0",
             params![path],
             Self::map_media_row,
@@ -906,24 +936,24 @@ impl Database {
         threshold: u32,
     ) -> catchlight_core::Result<Vec<DuplicateGroup>> {
         let exact_member_ids = self.exact_duplicate_member_ids()?;
-        let candidates = self.load_dhash_candidates(&exact_member_ids)?;
+        let candidates = self.load_perceptual_candidates(&exact_member_ids)?;
 
         if candidates.len() < 2 {
             return Ok(Vec::new());
         }
 
-        let mut uf = UnionFind::new(candidates.iter().map(|(id, _)| *id));
+        let mut uf = UnionFind::new(candidates.iter().map(|(id, _, _)| *id));
         let mut pair_similarities: std::collections::HashMap<(i64, i64), f64> =
             std::collections::HashMap::new();
 
         for i in 0..candidates.len() {
             for j in (i + 1)..candidates.len() {
-                let (id_a, hash_a) = candidates[i];
-                let (id_b, hash_b) = candidates[j];
-                let distance = hamming_distance(hash_a, hash_b);
-                if distance <= threshold {
+                let (id_a, dhash_a, phash_a) = candidates[i];
+                let (id_b, dhash_b, phash_b) = candidates[j];
+                if let Some(sim) =
+                    perceptual_pair_match(dhash_a, dhash_b, phash_a, phash_b, threshold)
+                {
                     uf.union(id_a, id_b);
-                    let sim = perceptual_similarity(hash_a, hash_b);
                     let key = if id_a <= id_b {
                         (id_a, id_b)
                     } else {
@@ -936,7 +966,7 @@ impl Database {
 
         let mut components: std::collections::HashMap<i64, Vec<i64>> =
             std::collections::HashMap::new();
-        for (id, _) in &candidates {
+        for (id, _, _) in &candidates {
             let root = uf.find(*id);
             components.entry(root).or_default().push(*id);
         }
@@ -1001,27 +1031,34 @@ impl Database {
         Ok(ids)
     }
 
-    fn load_dhash_candidates(
+    fn load_perceptual_candidates(
         &self,
         exclude_ids: &std::collections::HashSet<i64>,
-    ) -> catchlight_core::Result<Vec<(i64, u64)>> {
+    ) -> catchlight_core::Result<Vec<PerceptualCandidate>> {
         let conn = self.conn();
         let mut stmt = conn
             .prepare(
-                "SELECT id, dhash FROM media_files
-                 WHERE dhash IS NOT NULL AND is_deleted = 0",
+                "SELECT id, dhash, phash FROM media_files
+                 WHERE (dhash IS NOT NULL OR phash IS NOT NULL) AND is_deleted = 0",
             )
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 
         let rows = stmt
-            .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, u64>(1)?)))
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, Option<u64>>(1)?,
+                    row.get::<_, Option<u64>>(2)?,
+                ))
+            })
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 
         let mut candidates = Vec::new();
         for row in rows {
-            let (id, hash) = row.map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+            let (id, dhash, phash) =
+                row.map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
             if !exclude_ids.contains(&id) {
-                candidates.push((id, hash));
+                candidates.push((id, dhash, phash));
             }
         }
         Ok(candidates)
@@ -1267,7 +1304,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
                  FROM media_files
                  WHERE is_deleted = 1
                  ORDER BY deleted_at DESC",
@@ -1449,7 +1486,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
                  FROM media_files
                  WHERE country = ?1 AND is_deleted = 0
                    AND ((?2 IS NULL AND city IS NULL) OR city = ?2)
@@ -1616,7 +1653,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT m.id, m.path, m.filename, m.media_type, m.size_bytes, m.width, m.height,
-                        m.created_at, m.modified_at, m.blake3_hash, m.dhash, m.latitude, m.longitude
+                        m.created_at, m.modified_at, m.blake3_hash, m.dhash, m.phash, m.latitude, m.longitude
                  FROM album_items ai
                  JOIN media_files m ON m.id = ai.media_id
                  WHERE ai.album_id = ?1 AND m.is_deleted = 0
@@ -1752,7 +1789,7 @@ impl Database {
         let (where_clause, filter_params) = build_smart_album_filter(&rule);
         let sql = format!(
             "SELECT id, path, filename, media_type, size_bytes, width, height,
-                    created_at, modified_at, blake3_hash, dhash, latitude, longitude
+                    created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
              FROM media_files
              WHERE {where_clause}
              ORDER BY COALESCE(created_at, modified_at) DESC
@@ -1770,6 +1807,48 @@ impl Database {
 
         let rows = stmt
             .query_map(param_refs.as_slice(), Self::map_media_row)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn get_on_this_day_media(&self, limit: i64) -> catchlight_core::Result<Vec<MediaFile>> {
+        let conn = self.conn();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM media_files
+                 WHERE is_deleted = 0
+                   AND media_type = 'Photo'
+                   AND created_at IS NOT NULL
+                   AND strftime('%m-%d', created_at) = strftime('%m-%d', 'now')
+                   AND strftime('%Y', created_at) < strftime('%Y', 'now')",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        if count < 3 {
+            return Ok(Vec::new());
+        }
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, path, filename, media_type, size_bytes, width, height,
+                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                 FROM media_files
+                 WHERE is_deleted = 0
+                   AND media_type = 'Photo'
+                   AND created_at IS NOT NULL
+                   AND strftime('%m-%d', created_at) = strftime('%m-%d', 'now')
+                   AND strftime('%Y', created_at) < strftime('%Y', 'now')
+                 ORDER BY created_at DESC
+                 LIMIT ?1",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(params![limit], Self::map_media_row)
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 
         rows.collect::<Result<Vec<_>, _>>()
@@ -1918,7 +1997,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT mf.id, mf.path, mf.filename, mf.media_type, mf.size_bytes, mf.width, mf.height,
-                        mf.created_at, mf.modified_at, mf.blake3_hash, mf.dhash, mf.latitude, mf.longitude
+                        mf.created_at, mf.modified_at, mf.blake3_hash, mf.dhash, mf.phash, mf.latitude, mf.longitude
                  FROM memory_items mi
                  JOIN media_files mf ON mf.id = mi.media_id
                  WHERE mi.memory_id = ?1 AND mf.is_deleted = 0
@@ -1944,7 +2023,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
                  FROM media_files
                  WHERE is_favorite = 1 AND is_deleted = 0
                  ORDER BY created_at DESC
@@ -1999,7 +2078,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT m.id, m.path, m.filename, m.media_type, m.size_bytes, m.width, m.height,
-                        m.created_at, m.modified_at, m.blake3_hash, m.dhash, m.latitude, m.longitude
+                        m.created_at, m.modified_at, m.blake3_hash, m.dhash, m.phash, m.latitude, m.longitude
                  FROM media_fts f
                  JOIN media_files m ON m.id = f.rowid
                  WHERE media_fts MATCH ?1 AND m.is_deleted = 0
@@ -2145,7 +2224,7 @@ impl Database {
             .prepare(
                 "SELECT DISTINCT mf.id, mf.path, mf.filename, mf.media_type, mf.size_bytes,
                         mf.width, mf.height, mf.created_at, mf.modified_at, mf.blake3_hash,
-                        mf.dhash, mf.latitude, mf.longitude
+                        mf.dhash, mf.phash, mf.latitude, mf.longitude
                  FROM face_detections fd
                  JOIN media_files mf ON mf.id = fd.media_id
                  WHERE fd.person_id = ?1 AND mf.is_deleted = 0
