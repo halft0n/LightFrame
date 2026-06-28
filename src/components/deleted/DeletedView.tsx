@@ -9,8 +9,8 @@ import {
 import { openViewer } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 
-const MIN_COLUMN_WIDTH = 180;
-const GAP = 12;
+const MIN_COLUMN_WIDTH = 160;
+const GAP = 3;
 
 export function DeletedView() {
   const { t } = useTranslation();
@@ -70,7 +70,7 @@ export function DeletedView() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="border-b border-neutral-800 px-4 py-3">
+      <div className="border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3">
         <h2 className="text-sm font-medium text-neutral-200">{t("deleted.title")}</h2>
         <p className="mt-1 text-sm text-amber-500/90">{t("deleted.notice")}</p>
         {media.length > 0 && (
@@ -86,9 +86,9 @@ export function DeletedView() {
           <p className="text-sm text-neutral-600">{t("deleted.emptyHint")}</p>
         </div>
       ) : (
-        <div ref={parentRef} className="flex-1 overflow-y-auto px-4 py-3">
+        <div ref={parentRef} className="flex-1 overflow-y-auto px-1 py-1">
           <div
-            className="grid gap-3"
+            className="grid gap-[3px]"
             style={{
               gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
             }}

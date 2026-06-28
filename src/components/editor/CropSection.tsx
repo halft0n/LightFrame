@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef } from "react";
 import {
   aspectRatioValue,
   type AspectRatioPreset,
@@ -131,6 +131,24 @@ export function CropSection({
           ↕ {t("editor.flipV")}
         </button>
       </div>
+
+      <div className="border-t border-white/10 pt-3">
+        <p className="mb-2 text-xs font-medium text-neutral-500">{t("editor.perspective")}</p>
+        <AdjustmentSlider
+          label={t("editor.perspectiveV")}
+          value={params.perspectiveV}
+          min={-100}
+          max={100}
+          onChange={(perspectiveV) => onChange({ perspectiveV })}
+        />
+        <AdjustmentSlider
+          label={t("editor.perspectiveH")}
+          value={params.perspectiveH}
+          min={-100}
+          max={100}
+          onChange={(perspectiveH) => onChange({ perspectiveH })}
+        />
+      </div>
     </EditorSection>
   );
 }
@@ -252,10 +270,3 @@ export function CropOverlay({ crop, aspectRatio, originalRatio, onChange }: Crop
   );
 }
 
-export function useCropMode(initialCrop?: CropRect) {
-  const [cropActive, setCropActive] = useState(false);
-  const [crop, setCrop] = useState<CropRect>(
-    initialCrop ?? { x: 0.05, y: 0.05, width: 0.9, height: 0.9 },
-  );
-  return { cropActive, setCropActive, crop, setCrop };
-}

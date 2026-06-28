@@ -1,8 +1,8 @@
 # CatchLight（拾光）架构设计文档
 
-> **版本：** 1.1  
+> **版本：** 1.2  
 > **日期：** 2026-06-28  
-> **状态：** Phase 1–3 已实现（与代码同步）  
+> **状态：** Phase 1–3 + 高级编辑器已实现（与代码同步）  
 > **技术栈：** Tauri 2.x + Rust + React 19 + Python AI 扩展（可选）
 
 ---
@@ -1420,9 +1420,13 @@ flowchart LR
 
 | 层级 | 职责 |
 |------|------|
-| **ImageEditor.tsx** | 分区面板（裁剪/光线/颜色/细节/效果）、滑块 UI、对比模式、裁剪 overlay |
+| **ImageEditor.tsx** | 分区面板（裁剪/光线/颜色/曲线/色阶/可选颜色/细节/效果）、滑块 UI、对比模式、裁剪 overlay、撤销/重做（50 步、Ctrl+Z/Shift+Z、300ms 防抖） |
+| **CurvesSection.tsx** | 256×256 Canvas 交互式曲线编辑器，RGB/R/G/B 四通道独立，拖拽控制点，三次样条插值 |
+| **LevelsSection.tsx** | 输入/输出黑白点 + Gamma 调节，带伪直方图可视化 |
+| **SelectiveColorSection.tsx** | 6 色范围（红/黄/绿/青/蓝/品红），每色独立 H/S/L 滑块 |
 | **editParams.ts** | TypeScript 类型、`parseEditParams`/`serializeEditParams`、`buildCssFilter`/`buildImageTransform`/`buildClipPath` 实时预览 |
-| **image_edit.rs** | JSON 反序列化、旋转/翻转/裁剪/色调映射、JPEG 导出 |
+| **curves.ts** | 曲线控制点排序、Fritsch-Carlson 单调三次样条 LUT 构建、恒等曲线检测 |
+| **image_edit.rs** | JSON 反序列化、旋转/翻转/裁剪/透视（单应性矩阵）/曲线 LUT/色阶映射/可选颜色 HSL 范围调整/色调映射、JPEG 导出 |
 | **catchlight-db** | `save_edit_params` / `get_edit_params` / `clear_edit_params` |
 
 ### 7.3 IPC 命令
@@ -1436,8 +1440,50 @@ flowchart LR
 
 ### 7.4 预览 vs 导出
 
-- **预览**：前端 `buildCssFilter` + `buildImageTransform` + `clip-path`，零延迟交互
-- **导出**：Rust `apply_edits()` 完整像素管线（裁剪 → 几何变换 → 亮度/对比/饱和度/暗角/颗粒等），保证输出质量
+- **预览**：前端 `buildCssFilter` + `buildImageTransform` + `clip-path`，零延迟交互。曲线和色阶通过亮度/对比度近似模拟；透视通过 CSS `perspective(800px) rotateX/Y` 预览。
+- **导出**：Rust `apply_edits()` 完整像素管线：
+
+  ```
+  裁剪 → 旋转(90/180/270) → 拉直(双线性) → 翻转 → 透视(单应性变换)
+    → 色阶映射 → 曲线 LUT(RGB+R+G+B) → 黑场 → 曝光/亮度
+    → 阴影/高光 → 鲜明度 → 对比度/清晰度 → 可选颜色(HSL范围调整)
+    → 饱和度/自然饱和度 → 色温/色调 → 黑白 → 暗角 → 颗粒
+    → 锐化(卷积核) → 降噪(box blur)
+  ```
+
+### 7.5 撤销/重做
+
+编辑器内置最多 50 步历史栈，基于 `useRef` 管理快照：
+- 每次参数变更以 300ms 防抖推入历史，避免拖拽滑块时洪泛
+- Ctrl+Z 撤销 / Ctrl+Shift+Z 重做，工具栏显示当前步数/总步数
+- 加载已保存参数时初始化历史栈，重置/恢复原始时清空
+
+### 7.6 编辑参数 JSON Schema
+
+```json
+{
+  "crop": { "x": 0.1, "y": 0.1, "width": 0.8, "height": 0.8 },
+  "rotate": 0, "straighten": 0, "flipH": false, "flipV": false,
+  "perspectiveV": 0, "perspectiveH": 0,
+  "curves": {
+    "rgb": [[0,0],[128,128],[255,255]],
+    "r": [[0,0],[255,200]]
+  },
+  "levels": {
+    "inputBlack": 0, "inputWhite": 255, "gamma": 1.0,
+    "outputBlack": 0, "outputWhite": 255
+  },
+  "selectiveColor": {
+    "reds": { "hue": 10, "saturation": 20, "luminance": -5 }
+  },
+  "brightness": 0, "contrast": 0, "exposure": 0,
+  "highlights": 0, "shadows": 0, "brilliance": 0, "blackPoint": 0,
+  "saturation": 0, "vibrance": 0, "warmth": 0, "tint": 0,
+  "sharpness": 0, "definition": 0, "noiseReduction": 0,
+  "vignette": 0, "vignetteRadius": 50, "grain": 0,
+  "bwIntensity": 0, "bwTone": 0
+}
+```
 
 ---
 

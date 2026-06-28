@@ -9,15 +9,16 @@ beforeEach(() => {
 });
 
 describe("Sidebar", () => {
-  it("renders the brand name", () => {
+  it("renders the library section header", () => {
     render(<Sidebar />);
-    expect(screen.getByText("CatchLight")).toBeInTheDocument();
+    expect(screen.getAllByText("基础图库").length).toBeGreaterThanOrEqual(1);
   });
 
   it("renders library section in Chinese", () => {
     render(<Sidebar />);
     expect(screen.getByText("所有照片")).toBeInTheDocument();
-    expect(screen.getByText("时间线")).toBeInTheDocument();
+    expect(screen.getByText("视频")).toBeInTheDocument();
+    expect(screen.getByText("收藏")).toBeInTheDocument();
     expect(screen.getByText("地点")).toBeInTheDocument();
     expect(screen.getByText("人物")).toBeInTheDocument();
   });
@@ -37,7 +38,7 @@ describe("Sidebar", () => {
     setLocale("en");
     render(<Sidebar />);
     expect(screen.getByText("All Photos")).toBeInTheDocument();
-    expect(screen.getByText("Timeline")).toBeInTheDocument();
+    expect(screen.getByText("Videos")).toBeInTheDocument();
     expect(screen.getByText("Duplicates")).toBeInTheDocument();
     expect(screen.getByText("Settings")).toBeInTheDocument();
   });

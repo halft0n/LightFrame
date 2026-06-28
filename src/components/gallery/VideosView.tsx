@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PhotoCard } from "./PhotoCard";
-import { SelectionToolbar } from "./SelectionToolbar";
-import { getMediaList } from "@/lib/tauri";
+import { getMediaByType, getMediaCountByType } from "@/lib/tauri";
 import {
-  appendMedia,
   clearMediaSelection,
   openViewer,
   selectMediaRange,
@@ -20,12 +18,15 @@ const GAP = 3;
 const ROW_HEIGHT = MIN_COLUMN_WIDTH + GAP;
 const PAGE_SIZE = 60;
 
-export function PhotoGrid() {
+export function VideosView() {
   const { t } = useTranslation();
-  const { mediaItems, totalCount, selectedMediaIds } = useAppStore();
+  const { selectedMediaIds } = useAppStore();
   const parentRef = useRef<HTMLDivElement>(null);
   const lastSelectedRef = useRef<number | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [mediaItems, setMediaItems] = useState<Awaited<ReturnType<typeof getMediaByType>>>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
   const columnCount = Math.max(
@@ -34,6 +35,31 @@ export function PhotoGrid() {
   );
   const rowCount = Math.ceil(mediaItems.length / columnCount);
   const hasMore = mediaItems.length < totalCount;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadInitial() {
+      setLoading(true);
+      try {
+        const [items, count] = await Promise.all([
+          getMediaByType("Video", 0, PAGE_SIZE),
+          getMediaCountByType("Video"),
+        ]);
+        if (!cancelled) {
+          setMediaItems(items);
+          setTotalCount(count);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    void loadInitial();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     const el = parentRef.current;
@@ -55,8 +81,8 @@ export function PhotoGrid() {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
-      const items = await getMediaList(mediaItems.length, PAGE_SIZE);
-      appendMedia(items);
+      const items = await getMediaByType("Video", mediaItems.length, PAGE_SIZE);
+      setMediaItems((prev) => [...prev, ...items]);
     } finally {
       setLoadingMore(false);
     }
@@ -115,8 +141,16 @@ export function PhotoGrid() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedMediaIds.length]);
 
+  if (loading) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-neutral-500">
+        <p className="text-sm">{t("gallery.loading")}</p>
+      </div>
+    );
+  }
+
   if (mediaItems.length === 0) {
-    return <EmptyState variant="photos" title={t("gallery.noPhotos")} />;
+    return <EmptyState variant="photos" title={t("videos.empty")} />;
   }
 
   return (
@@ -179,8 +213,6 @@ export function PhotoGrid() {
           </div>
         )}
       </div>
-
-      <SelectionToolbar />
     </div>
   );
 }

@@ -10,8 +10,8 @@ import {
 import { closePersonDetail, openViewer, useAppStore } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 
-const MIN_COLUMN_WIDTH = 180;
-const GAP = 12;
+const MIN_COLUMN_WIDTH = 160;
+const GAP = 3;
 const PAGE_SIZE = 60;
 
 export function PersonDetailView() {
@@ -121,11 +121,11 @@ export function PersonDetailView() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex items-center gap-3 border-b border-neutral-800 px-4 py-2">
+      <div className="flex items-center gap-3 border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-2">
         <button
           type="button"
           onClick={closePersonDetail}
-          className="rounded-md px-2 py-1 text-sm text-neutral-400 transition hover:bg-white/10 hover:text-neutral-200"
+          className="rounded-md px-2 py-1 text-sm text-neutral-500 dark:text-neutral-400 transition hover:bg-white/10 hover:text-neutral-200"
         >
           ← {t("people.back")}
         </button>
@@ -173,14 +173,14 @@ export function PersonDetailView() {
         </span>
       </div>
 
-      <div ref={parentRef} className="flex-1 overflow-y-auto px-4 py-4">
+      <div ref={parentRef} className="flex-1 overflow-y-auto px-1 py-1">
         {media.length === 0 ? (
           <div className="flex flex-1 items-center justify-center py-12 text-neutral-500">
             <p>{t("gallery.noPhotos")}</p>
           </div>
         ) : (
           <div
-            className="grid gap-3"
+            className="grid gap-[3px]"
             style={{
               gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
             }}

@@ -62,7 +62,7 @@ export function AlbumListView() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
+      <div className="flex items-center justify-between border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3">
         <h2 className="text-sm font-medium text-neutral-200">{t("albums.title")}</h2>
         <button
           type="button"
@@ -74,9 +74,9 @@ export function AlbumListView() {
       </div>
 
       {showCreate && (
-        <div className="border-b border-neutral-800 bg-neutral-900/80 px-4 py-3">
+        <div className="border-b border-neutral-200/80 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/80 px-4 py-3">
           <div className="flex max-w-md flex-col gap-2">
-            <label className="text-sm text-neutral-400">{t("albums.nameLabel")}</label>
+            <label className="text-sm text-neutral-500 dark:text-neutral-400">{t("albums.nameLabel")}</label>
             <input
               type="text"
               value={name}
@@ -100,7 +100,7 @@ export function AlbumListView() {
                   setName("");
                   setDescription("");
                 }}
-                className="rounded-md px-3 py-1.5 text-sm text-neutral-400 transition hover:bg-neutral-800"
+                className="rounded-md px-3 py-1.5 text-sm text-neutral-500 dark:text-neutral-400 transition hover:bg-neutral-100 dark:hover:bg-neutral-800"
               >
                 {t("viewer.close")}
               </button>
@@ -115,14 +115,14 @@ export function AlbumListView() {
           <p className="text-sm text-neutral-600">{t("albums.emptyHint")}</p>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto px-4 py-3">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="flex-1 overflow-y-auto px-1 py-1">
+          <div className="grid gap-[3px] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {albums.map((album) => (
               <button
                 key={album.id}
                 type="button"
                 onClick={() => openAlbumDetail(album.id)}
-                className="group relative flex flex-col overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900/50 text-left transition hover:border-neutral-600 hover:bg-neutral-800/80"
+                className="group relative flex flex-col overflow-hidden rounded-lg border border-neutral-200/80 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900/50 text-left transition hover:border-neutral-300 dark:hover:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800/80"
               >
                 <div className="aspect-square w-full bg-neutral-800">
                   {album.cover_media_id != null ? (

@@ -46,7 +46,7 @@ export function PeopleView() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
+      <div className="flex items-center justify-between border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3">
         <h2 className="text-sm font-medium text-neutral-200">{t("people.title")}</h2>
         {aiStatus && (
           <span
@@ -70,8 +70,8 @@ export function PeopleView() {
           </p>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto px-4 py-3">
-          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <div className="flex-1 overflow-y-auto px-1 py-1">
+          <div className="grid gap-[3px] sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {persons.map((person) => {
               const coverId = personCoverMediaId(person);
               return (
@@ -79,7 +79,7 @@ export function PeopleView() {
                   key={person.id}
                   type="button"
                   onClick={() => openPersonDetail(person.id)}
-                  className="group flex flex-col items-center gap-2 rounded-lg border border-neutral-800 bg-neutral-900/50 p-4 text-center transition hover:border-neutral-600 hover:bg-neutral-800/80"
+                  className="group flex flex-col items-center gap-2 rounded-lg border border-neutral-200/80 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900/50 p-4 text-center transition hover:border-neutral-300 dark:hover:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800/80"
                 >
                   <div className="h-20 w-20 overflow-hidden rounded-full bg-neutral-800 ring-2 ring-neutral-700 transition group-hover:ring-neutral-500">
                     {coverId != null ? (

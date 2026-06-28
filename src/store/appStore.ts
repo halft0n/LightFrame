@@ -3,6 +3,7 @@ import type { MediaItem, ScanProgress, WatchedFolder } from "@/lib/tauri";
 
 export type AppView =
   | "all"
+  | "videos"
   | "timeline"
   | "locations"
   | "people"

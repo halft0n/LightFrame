@@ -12,8 +12,8 @@ import {
 import { openViewer } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 
-const MIN_COLUMN_WIDTH = 180;
-const GAP = 12;
+const MIN_COLUMN_WIDTH = 160;
+const GAP = 3;
 const PAGE_SIZE = 60;
 
 interface SelectedLocation {
@@ -156,11 +156,11 @@ export function LocationView() {
   if (selected) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="flex items-center gap-3 border-b border-neutral-800 px-4 py-2">
+        <div className="flex items-center gap-3 border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-2">
           <button
             type="button"
             onClick={handleBack}
-            className="rounded-md px-2 py-1 text-sm text-neutral-400 transition hover:bg-white/10 hover:text-neutral-200"
+            className="rounded-md px-2 py-1 text-sm text-neutral-500 dark:text-neutral-400 transition hover:bg-white/10 hover:text-neutral-200"
           >
             ← {t("locations.allPhotos")}
           </button>
@@ -170,7 +170,7 @@ export function LocationView() {
           </span>
         </div>
 
-        <div ref={parentRef} className="flex-1 overflow-y-auto px-4 py-3">
+        <div ref={parentRef} className="flex-1 overflow-y-auto px-1 py-1">
           {mediaLoading ? (
             <div className="flex items-center justify-center py-12 text-neutral-500">
               <p>{t("gallery.loading")}</p>
@@ -181,7 +181,7 @@ export function LocationView() {
             </div>
           ) : (
             <div
-              className="grid gap-3"
+              className="grid gap-[3px]"
               style={{
                 gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
               }}
@@ -208,7 +208,7 @@ export function LocationView() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {stats && (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-neutral-800 px-4 py-3 text-sm text-neutral-400">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3 text-sm text-neutral-500 dark:text-neutral-400">
           <span className="font-medium text-neutral-200">{t("locations.title")}</span>
           <span>{t("locations.photosWithGps", { count: stats.total_with_gps })}</span>
           <span>{t("locations.countries", { count: stats.countries })}</span>
@@ -216,17 +216,17 @@ export function LocationView() {
         </div>
       )}
 
-      <div ref={parentRef} className="flex-1 overflow-y-auto px-4 py-3">
+      <div ref={parentRef} className="flex-1 overflow-y-auto px-1 py-1">
         {[...byCountry.entries()].map(([country, cityGroups]) => (
           <section key={country} className="mb-6">
             <h2 className="mb-3 text-base font-semibold text-neutral-100">{country}</h2>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div className="grid gap-[3px] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {cityGroups.map((group) => (
                 <button
                   key={`${group.country}-${group.city ?? ""}`}
                   type="button"
                   onClick={() => handleSelectGroup(group)}
-                  className="group flex items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-900/50 p-3 text-left transition hover:border-neutral-600 hover:bg-neutral-800/80"
+                  className="group flex items-center gap-3 rounded-lg border border-neutral-200/80 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900/50 p-3 text-left transition hover:border-neutral-300 dark:hover:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800/80"
                 >
                   <div className="h-16 w-16 shrink-0 overflow-hidden rounded-md bg-neutral-800">
                     <img

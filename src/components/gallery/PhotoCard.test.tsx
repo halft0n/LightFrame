@@ -30,9 +30,16 @@ const videoItem: MediaItem = {
 };
 
 describe("PhotoCard", () => {
-  it("renders filename on hover overlay", () => {
+  it("does not show filename overlay", () => {
     render(<PhotoCard item={photoItem} selected={false} onSelect={vi.fn()} />);
-    expect(screen.getByText("sunset.jpg")).toBeInTheDocument();
+    expect(screen.queryByText("sunset.jpg")).not.toBeInTheDocument();
+  });
+
+  it("shows selection indicator when selected", () => {
+    const { container } = render(
+      <PhotoCard item={photoItem} selected={true} onSelect={vi.fn()} />,
+    );
+    expect(container.querySelector(".bg-blue-500")).toBeInTheDocument();
   });
 
   it("shows video duration badge for video items", () => {

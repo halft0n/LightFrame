@@ -1,0 +1,86 @@
+use http::{header, StatusCode};
+use std::path::Path;
+use tauri::http::Response;
+
+pub fn handle(request_path: &str) -> Response<Vec<u8>> {
+    let raw = request_path
+        .trim_start_matches('/')
+        .trim_start_matches("localhost/");
+
+    let decoded = percent_decode(raw);
+    let file_path = Path::new(&decoded);
+
+    if !file_path.exists() {
+        return error_response(StatusCode::NOT_FOUND, "file not found");
+    }
+
+    match std::fs::read(file_path) {
+        Ok(bytes) => {
+            let mime = guess_mime(file_path);
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, mime)
+                .header(header::CACHE_CONTROL, "max-age=3600")
+                .body(bytes)
+                .unwrap()
+        }
+        Err(e) => {
+            tracing::warn!("original protocol read error: {e}");
+            error_response(StatusCode::INTERNAL_SERVER_ERROR, "read failed")
+        }
+    }
+}
+
+fn guess_mime(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .as_deref()
+    {
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("png") => "image/png",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("bmp") => "image/bmp",
+        Some("tiff" | "tif") => "image/tiff",
+        Some("svg") => "image/svg+xml",
+        Some("heic" | "heif") => "image/heif",
+        Some("avif") => "image/avif",
+        Some("mp4") => "video/mp4",
+        Some("mov") => "video/quicktime",
+        Some("avi") => "video/x-msvideo",
+        Some("mkv") => "video/x-matroska",
+        Some("webm") => "video/webm",
+        _ => "application/octet-stream",
+    }
+}
+
+fn percent_decode(s: &str) -> String {
+    let mut result = Vec::with_capacity(s.len());
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(val) = u8::from_str_radix(
+                std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""),
+                16,
+            ) {
+                result.push(val);
+                i += 3;
+                continue;
+            }
+        }
+        result.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8(result).unwrap_or_else(|_| s.to_string())
+}
+
+fn error_response(status: StatusCode, message: &str) -> Response<Vec<u8>> {
+    Response::builder()
+        .status(status)
+        .header(header::CONTENT_TYPE, "text/plain")
+        .body(message.as_bytes().to_vec())
+        .unwrap()
+}

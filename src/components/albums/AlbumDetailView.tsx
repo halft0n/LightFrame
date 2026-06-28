@@ -12,8 +12,8 @@ import {
 import { closeAlbumDetail, openViewer, useAppStore } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 
-const MIN_COLUMN_WIDTH = 180;
-const GAP = 12;
+const MIN_COLUMN_WIDTH = 160;
+const GAP = 3;
 const PAGE_SIZE = 60;
 
 export function AlbumDetailView() {
@@ -107,11 +107,11 @@ export function AlbumDetailView() {
 
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden">
-      <div className="flex items-center gap-3 border-b border-neutral-800 px-4 py-2">
+      <div className="flex items-center gap-3 border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-2">
         <button
           type="button"
           onClick={closeAlbumDetail}
-          className="rounded-md px-2 py-1 text-sm text-neutral-400 transition hover:bg-white/10 hover:text-neutral-200"
+          className="rounded-md px-2 py-1 text-sm text-neutral-500 dark:text-neutral-400 transition hover:bg-white/10 hover:text-neutral-200"
         >
           ← {t("albums.back")}
         </button>
@@ -132,7 +132,7 @@ export function AlbumDetailView() {
         </div>
       </div>
 
-      <div ref={parentRef} className="flex-1 overflow-y-auto px-4 py-3">
+      <div ref={parentRef} className="flex-1 overflow-y-auto px-1 py-1">
         {media.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-12 text-neutral-500">
             <p>{t("gallery.noPhotos")}</p>
@@ -146,7 +146,7 @@ export function AlbumDetailView() {
           </div>
         ) : (
           <div
-            className="grid gap-3"
+            className="grid gap-[3px]"
             style={{
               gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
             }}
@@ -176,17 +176,17 @@ export function AlbumDetailView() {
       {showPicker && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 p-4">
           <div className="flex max-h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900 shadow-xl">
-            <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
+            <div className="flex items-center justify-between border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3">
               <h3 className="text-sm font-medium text-neutral-200">{t("albums.addPhotos")}</h3>
               <button
                 type="button"
                 onClick={() => setShowPicker(false)}
-                className="text-neutral-400 hover:text-neutral-200"
+                className="text-neutral-500 dark:text-neutral-400 hover:text-neutral-200"
               >
                 ✕
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto px-4 py-3">
+            <div className="flex-1 overflow-y-auto px-1 py-1">
               {pickerLoading ? (
                 <p className="py-8 text-center text-neutral-500">{t("gallery.loading")}</p>
               ) : pickerMedia.length === 0 ? (
@@ -222,11 +222,11 @@ export function AlbumDetailView() {
                 </div>
               )}
             </div>
-            <div className="flex justify-end gap-2 border-t border-neutral-800 px-4 py-3">
+            <div className="flex justify-end gap-2 border-t border-neutral-200/80 dark:border-neutral-800 px-4 py-3">
               <button
                 type="button"
                 onClick={() => setShowPicker(false)}
-                className="rounded-md px-3 py-1.5 text-sm text-neutral-400 hover:bg-neutral-800"
+                className="rounded-md px-3 py-1.5 text-sm text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
               >
                 {t("viewer.close")}
               </button>

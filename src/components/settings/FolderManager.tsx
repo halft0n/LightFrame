@@ -55,7 +55,14 @@ export function FolderManager() {
     { value: "system", labelKey: "theme.system" },
   ];
 
+  const isTauri = Boolean(window.__TAURI_INTERNALS__);
+
   const handleAddFolder = async () => {
+    if (!isTauri) {
+      alert(t("settings.tauriOnly"));
+      return;
+    }
+
     const selected = await open({
       directory: true,
       multiple: false,

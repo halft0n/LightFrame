@@ -1,5 +1,6 @@
 mod commands;
 mod image_edit;
+mod original_protocol;
 mod scan;
 mod state;
 mod thumb_protocol;
@@ -84,6 +85,9 @@ pub fn run() {
         .register_uri_scheme_protocol("thumb", |ctx, request| {
             let state = ctx.app_handle().state::<AppState>();
             thumb_protocol::handle(&state, request.uri().path())
+        })
+        .register_uri_scheme_protocol("original", |_ctx, request| {
+            original_protocol::handle(request.uri().path())
         })
         .run(tauri::generate_context!())
         .expect("error while running CatchLight");

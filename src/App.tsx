@@ -147,11 +147,8 @@ export default function App() {
     <div className="flex h-screen w-screen overflow-hidden bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">
       <Sidebar />
       <main className="flex flex-1 flex-col overflow-hidden">
-        <header className="header-glass sticky top-0 z-10 flex h-[52px] shrink-0 items-center gap-4 border-b border-neutral-200/70 px-5 dark:border-neutral-800/70">
-          <h1 className="shrink-0 text-[15px] font-semibold tracking-tight text-neutral-800 dark:text-neutral-100">
-            {t("app.title")}
-          </h1>
-          <div className="relative mx-2 flex max-w-lg flex-1">
+        <header className="header-glass sticky top-0 z-10 flex h-[44px] shrink-0 items-center gap-3 border-b border-neutral-200/70 px-4 dark:border-neutral-800/70">
+          <div className="relative flex flex-1 max-w-2xl">
             <svg
               className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
               viewBox="0 0 24 24"
@@ -172,11 +169,10 @@ export default function App() {
             />
           </div>
           {totalCount > 0 && !searchQuery.trim() && (
-            <span className="shrink-0 text-xs font-medium tabular-nums text-neutral-400">
-              {t("gallery.count", { count: totalCount })}
+            <span className="shrink-0 text-[11px] tabular-nums text-neutral-400 dark:text-neutral-500">
+              {totalCount.toLocaleString()}
             </span>
           )}
-          {searchQuery.trim() && <span className="shrink-0 w-0" aria-hidden="true" />}
         </header>
         <div className="main-content-enter flex flex-1 flex-col overflow-hidden">
           <MainContent />

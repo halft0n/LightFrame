@@ -2729,7 +2729,7 @@ def set_memory_limit(max_mb: int):
 
 ## 11. 图像编辑器详细设计
 
-**Phase 3 实现摘要：** 非破坏性编辑参数 JSON 持久化；`ImageEditor` 五区面板（裁剪/光线/颜色/细节/效果）；前端 CSS 实时预览 + Rust `image_edit` 导出管线；`PhotoViewer` 集成编辑入口。
+**Phase 3+ 实现摘要：** 非破坏性编辑参数 JSON 持久化；`ImageEditor` 八区面板（裁剪/光线/颜色/曲线/色阶/可选颜色/细节/效果）；前端 CSS 实时预览 + Rust `image_edit` 导出管线（含曲线 LUT/色阶/可选颜色/透视变换）；50 步撤销/重做历史（Ctrl+Z/Shift+Z）；`PhotoViewer` 集成编辑入口。
 
 ### 11.1 架构与数据流
 
@@ -2757,9 +2757,12 @@ sequenceDiagram
 
 | 分区 | 组件 | 参数 |
 |------|------|------|
-| 裁剪 | `CropSection` | `crop`, `rotate`, `straighten`, `flipH/V`, `aspectRatio` |
+| 裁剪与变换 | `CropSection` | `crop`, `rotate`, `straighten`, `flipH/V`, `aspectRatio`, `perspectiveV`, `perspectiveH` |
 | 光线 | `LightSection` | `brightness`, `contrast`, `exposure`, `highlights`, `shadows`, `brilliance`, `blackPoint` |
 | 颜色 | `ColorSection` | `saturation`, `vibrance`, `warmth`, `tint`, `bwIntensity`, `bwTone` |
+| 曲线 | `CurvesSection` | `curves.rgb`, `curves.r`, `curves.g`, `curves.b`（控制点数组 + 三次样条插值） |
+| 色阶 | `LevelsSection` | `levels.inputBlack/inputWhite/gamma/outputBlack/outputWhite` |
+| 可选颜色 | `SelectiveColorSection` | `selectiveColor.{reds,yellows,greens,cyans,blues,magentas}` 各含 `{hue, saturation, luminance}` |
 | 细节 | `DetailSection` | `sharpness`, `definition`, `noiseReduction` |
 | 效果 | `EffectsSection` | `vignette`, `vignetteRadius`, `grain` |
 
@@ -2782,7 +2785,13 @@ pub fn export_edited_image(src_path, output_path, params_json, quality) -> Resul
 fn apply_edits(img: DynamicImage, params: &EditParams) -> DynamicImage;
 ```
 
-处理顺序：裁剪 → 旋转/拉直/翻转 → 色调与效果像素映射 → JPEG 编码（quality 1–100）。
+处理顺序：
+
+1. 裁剪 → 旋转(90/180/270) → 拉直(双线性采样) → 翻转 → 透视(单应性矩阵变换)
+2. 色阶映射(input/gamma/output) → 曲线 LUT(RGB/R/G/B 四通道) → 黑场
+3. 曝光/亮度 → 阴影/高光 → 鲜明度 → 对比度/清晰度
+4. 可选颜色(按 HSL 色相范围) → 饱和度/自然饱和度 → 色温/色调 → 黑白
+5. 暗角 → 颗粒 → 锐化(卷积核) → 降噪(box blur) → JPEG 编码(quality 1–100)
 
 ### 11.5 edit_params JSON Schema
 
@@ -2812,6 +2821,39 @@ fn apply_edits(img: DynamicImage, params: &EditParams) -> DynamicImage;
     "aspectRatio": {
       "type": "string",
       "enum": ["free", "original", "1:1", "16:9", "4:3", "3:2", "4:5", "5:7", "3:5"]
+    },
+    "perspectiveV": { "type": "number", "minimum": -100, "maximum": 100, "default": 0 },
+    "perspectiveH": { "type": "number", "minimum": -100, "maximum": 100, "default": 0 },
+    "curves": {
+      "type": "object",
+      "properties": {
+        "rgb": { "type": "array", "items": { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 } },
+        "r": { "type": "array", "items": { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 } },
+        "g": { "type": "array", "items": { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 } },
+        "b": { "type": "array", "items": { "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2 } }
+      },
+      "required": ["rgb"]
+    },
+    "levels": {
+      "type": "object",
+      "properties": {
+        "inputBlack": { "type": "integer", "minimum": 0, "maximum": 254, "default": 0 },
+        "inputWhite": { "type": "integer", "minimum": 1, "maximum": 255, "default": 255 },
+        "gamma": { "type": "number", "minimum": 0.1, "maximum": 9.9, "default": 1.0 },
+        "outputBlack": { "type": "integer", "minimum": 0, "maximum": 254, "default": 0 },
+        "outputWhite": { "type": "integer", "minimum": 1, "maximum": 255, "default": 255 }
+      }
+    },
+    "selectiveColor": {
+      "type": "object",
+      "properties": {
+        "reds": { "$ref": "#/$defs/scChannel" },
+        "yellows": { "$ref": "#/$defs/scChannel" },
+        "greens": { "$ref": "#/$defs/scChannel" },
+        "cyans": { "$ref": "#/$defs/scChannel" },
+        "blues": { "$ref": "#/$defs/scChannel" },
+        "magentas": { "$ref": "#/$defs/scChannel" }
+      }
     },
     "brightness": { "type": "number", "minimum": -100, "maximum": 100, "default": 0 },
     "contrast": { "type": "number", "minimum": -100, "maximum": 100, "default": 0 },
@@ -2867,9 +2909,11 @@ fn apply_edits(img: DynamicImage, params: &EditParams) -> DynamicImage;
 }
 ```
 
-**Rust 侧字段映射**：serde `rename_all = "camelCase"`，`flip_h` ↔ `flipH`，`black_point` ↔ `blackPoint`，`noise_reduction` ↔ `noiseReduction`，`bw_intensity` ↔ `bwIntensity`，`bw_tone` ↔ `bwTone`。
+**Rust 侧字段映射**：serde `rename_all = "camelCase"`，`flip_h` ↔ `flipH`，`black_point` ↔ `blackPoint`，`noise_reduction` ↔ `noiseReduction`，`bw_intensity` ↔ `bwIntensity`，`bw_tone` ↔ `bwTone`，`perspective_v` ↔ `perspectiveV`，`selective_color` ↔ `selectiveColor`。
 
-**默认值判定**：`isDefaultEditParams()`（前端）与空 `crop` + 全零滑块等价；`revert_edit` 删除 DB 记录。
+**默认值判定**：`isDefaultEditParams()`（前端）检查全零滑块 + 无 crop + 无 curves/levels/selectiveColor + 透视为零；`revert_edit` 删除 DB 记录。
+
+**撤销/重做**：`ImageEditor` 维护最多 50 步 `EditParams` 快照历史栈，300ms 防抖防止拖拽洪泛。Ctrl+Z 撤销 / Ctrl+Shift+Z 重做。
 
 ### 11.6 数据库
 

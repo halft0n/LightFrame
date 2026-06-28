@@ -1,6 +1,7 @@
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useTranslation } from "@/i18n/useTranslation";
 import { PhotoGrid } from "@/components/gallery/PhotoGrid";
+import { VideosView } from "@/components/gallery/VideosView";
 import { FolderManager } from "@/components/settings/FolderManager";
 import { TimelineView } from "@/components/timeline/TimelineView";
 import { LocationView } from "@/components/locations/LocationView";
@@ -78,6 +79,15 @@ export function MainContent() {
     return (
       <>
         <PhotoGrid />
+        <ViewerLayer />
+      </>
+    );
+  }
+
+  if (currentView === "videos") {
+    return (
+      <>
+        <VideosView />
         <ViewerLayer />
       </>
     );

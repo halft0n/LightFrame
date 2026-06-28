@@ -1,4 +1,4 @@
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 export type MediaType =
@@ -153,7 +153,7 @@ export function getThumbnailUrl(id: number, size: "small" | "large" | "micro" = 
 }
 
 export function getOriginalUrl(path: string): string {
-  return convertFileSrc(path);
+  return `original://localhost/${encodeURIComponent(path)}`;
 }
 
 export async function addWatchedFolder(path: string): Promise<WatchedFolder> {

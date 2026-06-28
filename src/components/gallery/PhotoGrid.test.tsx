@@ -40,10 +40,10 @@ describe("PhotoGrid", () => {
     expect(screen.getByText("暂无照片")).toBeInTheDocument();
   });
 
-  it("renders gallery count header", () => {
+  it("renders grid with media items", () => {
     setMedia([sampleMedia], 15);
     render(<PhotoGrid />);
-    expect(screen.getByText("共 15 项")).toBeInTheDocument();
     expect(getSnapshot().mediaItems).toHaveLength(1);
+    expect(getSnapshot().totalCount).toBe(15);
   });
 });

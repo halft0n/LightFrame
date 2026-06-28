@@ -79,11 +79,11 @@ export function DedupView() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex items-center justify-between border-b border-neutral-800 px-6 py-3">
+      <div className="flex items-center justify-between border-b border-neutral-200/80 dark:border-neutral-800 px-6 py-3">
         <div>
           <h2 className="text-base font-semibold">{t("dedup.title")}</h2>
           {groups.length > 0 && (
-            <p className="text-xs text-neutral-400">
+            <p className="text-xs text-neutral-500 dark:text-neutral-400">
               {t("dedup.groupCount", { count: groups.length })}
             </p>
           )}
@@ -103,7 +103,7 @@ export function DedupView() {
       </div>
 
       {scanResult && (
-        <div className="border-b border-neutral-800 bg-green-900/20 px-6 py-2 text-sm text-green-400">
+        <div className="border-b border-neutral-200/80 dark:border-neutral-800 bg-green-900/20 px-6 py-2 text-sm text-green-400">
           {scanResult}
         </div>
       )}
@@ -124,9 +124,9 @@ export function DedupView() {
               return (
                 <div
                   key={group.id}
-                  className="overflow-hidden rounded-xl border border-neutral-800 bg-neutral-900/50"
+                  className="overflow-hidden rounded-xl border border-neutral-200/80 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900/50"
                 >
-                  <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
+                  <div className="flex items-center justify-between border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3">
                     <div className="flex items-center gap-3">
                       <span
                         className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
@@ -139,7 +139,7 @@ export function DedupView() {
                           ? t("dedup.exact")
                           : t("dedup.perceptual")}
                       </span>
-                      <span className="text-sm text-neutral-400">
+                      <span className="text-sm text-neutral-500 dark:text-neutral-400">
                         {group.members.length} {t("gallery.count", { count: "" }).replace(/\s*$/, "")}
                       </span>
                     </div>
@@ -147,7 +147,7 @@ export function DedupView() {
                       <button
                         type="button"
                         onClick={() => handleDismiss(group.id)}
-                        className="rounded-lg px-3 py-1.5 text-xs text-neutral-400 transition hover:bg-neutral-800 hover:text-neutral-200"
+                        className="rounded-lg px-3 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 transition hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-200"
                       >
                         {t("dedup.dismiss")}
                       </button>
@@ -161,7 +161,7 @@ export function DedupView() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                  <div className="grid grid-cols-2 gap-[3px] p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
                     {group.members.map((member) => {
                       const isKept = member.media_id === keepId;
                       return (

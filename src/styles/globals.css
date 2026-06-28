@@ -30,7 +30,7 @@
   --shimmer-highlight: rgb(250 250 250);
   --focus-ring: rgb(59 130 246 / 0.45);
   --card-radius: 10px;
-  --photo-radius: 8px;
+  --photo-radius: 4px;
 }
 
 .dark {
@@ -197,34 +197,24 @@ input:focus:not(:focus-visible) {
 
 .photo-card {
   border-radius: var(--photo-radius);
-  transition:
-    transform 0.25s cubic-bezier(0.34, 1.2, 0.64, 1),
-    box-shadow 0.25s ease;
+  transition: opacity 0.15s ease;
+  overflow: hidden;
 }
 
-.photo-card:hover {
-  transform: translateY(-2px) scale(1.01);
-  box-shadow:
-    0 8px 24px rgb(0 0 0 / 0.12),
-    0 2px 8px rgb(0 0 0 / 0.08);
-}
-
-.dark .photo-card:hover {
-  box-shadow:
-    0 8px 28px rgb(0 0 0 / 0.45),
-    0 2px 10px rgb(0 0 0 / 0.25);
-}
-
-.photo-card-overlay {
+.photo-card:hover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 0.06);
   pointer-events: none;
 }
 
-.photo-card img {
-  transition: transform 0.35s cubic-bezier(0.34, 1.2, 0.64, 1), opacity 0.3s ease;
+.dark .photo-card:hover::after {
+  background: rgb(255 255 255 / 0.06);
 }
 
-.photo-card:hover img {
-  transform: scale(1.04);
+.photo-card img {
+  transition: opacity 0.3s ease;
 }
 
 @keyframes empty-icon-float {

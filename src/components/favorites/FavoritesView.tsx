@@ -4,8 +4,8 @@ import { getFavorites, getFavoritesCount, type MediaItem } from "@/lib/tauri";
 import { openViewer } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 
-const MIN_COLUMN_WIDTH = 180;
-const GAP = 12;
+const MIN_COLUMN_WIDTH = 160;
+const GAP = 3;
 const PAGE_SIZE = 60;
 
 export function FavoritesView() {
@@ -90,7 +90,7 @@ export function FavoritesView() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="border-b border-neutral-800 px-4 py-3">
+      <div className="border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3">
         <h2 className="text-sm font-medium text-neutral-200">{t("favorites.title")}</h2>
         {totalCount > 0 && (
           <p className="mt-0.5 text-sm text-neutral-500">
@@ -105,9 +105,9 @@ export function FavoritesView() {
           <p className="text-sm text-neutral-600">{t("favorites.emptyHint")}</p>
         </div>
       ) : (
-        <div ref={parentRef} className="flex-1 overflow-y-auto px-4 py-3">
+        <div ref={parentRef} className="flex-1 overflow-y-auto px-1 py-1">
           <div
-            className="grid gap-3"
+            className="grid gap-[3px]"
             style={{
               gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
             }}

@@ -8,8 +8,8 @@ import {
 import { openViewer } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 
-const MIN_COLUMN_WIDTH = 180;
-const GAP = 12;
+const MIN_COLUMN_WIDTH = 160;
+const GAP = 3;
 const PAGE_SIZE = 60;
 
 export function ScreenshotView() {
@@ -110,16 +110,16 @@ export function ScreenshotView() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="border-b border-neutral-800 px-6 py-3">
+      <div className="border-b border-neutral-200/80 dark:border-neutral-800 px-6 py-3">
         <h2 className="text-base font-semibold">{t("screenshots.title")}</h2>
-        <p className="text-xs text-neutral-400">
+        <p className="text-xs text-neutral-500 dark:text-neutral-400">
           {t("gallery.count", { count: totalCount })}
         </p>
       </div>
 
-      <div ref={parentRef} className="flex-1 overflow-y-auto px-4 py-4">
+      <div ref={parentRef} className="flex-1 overflow-y-auto px-1 py-1">
         <div
-          className="grid gap-3"
+          className="grid gap-[3px]"
           style={{
             gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
           }}

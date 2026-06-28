@@ -5,8 +5,8 @@ import { getTimelineGroups, type MediaItem, type TimelineGroup } from "@/lib/tau
 import { openViewer } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 
-const MIN_COLUMN_WIDTH = 180;
-const GAP = 12;
+const MIN_COLUMN_WIDTH = 160;
+const GAP = 3;
 const HEADER_HEIGHT = 52;
 const ROW_HEIGHT = MIN_COLUMN_WIDTH + GAP;
 const PAGE_SIZE = 200;
@@ -220,11 +220,11 @@ export function TimelineView() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="border-b border-neutral-800 px-4 py-2 text-sm text-neutral-400">
+      <div className="border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-2 text-sm text-neutral-500 dark:text-neutral-400">
         {t("timeline.title")} · {t("gallery.count", { count: totalPhotos })}
       </div>
 
-      <div ref={parentRef} className="flex-1 overflow-y-auto px-4 py-3">
+      <div ref={parentRef} className="flex-1 overflow-y-auto px-1 py-1">
         <div
           style={{
             height: `${rowVirtualizer.getTotalSize()}px`,
@@ -249,7 +249,7 @@ export function TimelineView() {
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                 >
-                  <div className="sticky top-0 z-10 flex items-center gap-3 bg-neutral-950/95 py-3 backdrop-blur-sm">
+                  <div className="sticky top-0 z-10 flex items-center gap-3 bg-white/95 dark:bg-neutral-950/95 py-3 backdrop-blur-sm">
                     <h2 className="text-base font-semibold text-neutral-100">
                       {formatDateHeader(row.date, locale, t)}
                     </h2>
@@ -274,7 +274,7 @@ export function TimelineView() {
                 }}
               >
                 <div
-                  className="grid gap-3"
+                  className="grid gap-[3px]"
                   style={{
                     gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
                   }}
