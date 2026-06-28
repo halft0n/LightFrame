@@ -1,0 +1,30 @@
+---
+description: Enforce local CI checks before any git push
+alwaysApply: true
+---
+
+# Pre-Push Quality Gate
+
+Before every `git push`, you MUST run and verify ALL of the following checks pass locally. Do NOT push if any check fails.
+
+## Required Checks (run in order)
+
+1. **Rust formatting**: `cargo fmt --check`
+2. **Rust linting**: `cargo clippy --workspace -- -D warnings`
+3. **Rust tests**: `cargo test --workspace`
+4. **Frontend tests**: `pnpm test`
+5. **TypeScript type check**: `npx tsc --noEmit`
+
+## Quick Command
+
+```bash
+cargo fmt --check && cargo clippy --workspace -- -D warnings && cargo test --workspace && pnpm test && npx tsc --noEmit
+```
+
+## Rules
+
+- If `cargo fmt --check` fails, run `cargo fmt --all` first, then re-check.
+- If `cargo clippy` reports warnings, fix them before pushing. Do NOT suppress with `#[allow(...)]` unless there is a justified reason.
+- If any test fails, fix the failing test or code before pushing.
+- After fixing issues, re-run ALL checks to ensure no regressions.
+- Only after all 5 checks pass green, proceed with `git push`.
