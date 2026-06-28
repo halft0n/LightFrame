@@ -19,15 +19,10 @@ pub fn run() {
 
     let app_state = AppState::new().expect("failed to initialize application state");
 
-    let builder = tauri::Builder::default()
+    tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_process::init());
-
-    #[cfg(desktop)]
-    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
-
-    builder
+        .plugin(tauri_plugin_process::init())
         .manage(app_state)
         .setup(|app| {
             let handle = app.handle().clone();
