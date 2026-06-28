@@ -21,7 +21,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
-            commands::greet,
             commands::get_app_version,
             commands::add_watched_folder,
             commands::remove_watched_folder,

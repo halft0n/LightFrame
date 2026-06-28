@@ -22,7 +22,7 @@ function ScanIndicator({ status }: { status: ScanStatus }) {
   }
 
   if (status === "error") {
-    return <span className="text-xs text-red-400">Error</span>;
+    return <span className="text-xs text-red-400">{t("settings.error")}</span>;
   }
 
   return null;

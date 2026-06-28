@@ -5,11 +5,6 @@ use catchlight_db::{MediaNeighbors, TimelineGroup, WatchedFolder};
 use tauri::{AppHandle, State};
 
 #[tauri::command]
-pub fn greet(name: &str) -> String {
-    format!("Welcome to CatchLight, {}!", name)
-}
-
-#[tauri::command]
 pub fn get_app_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
@@ -19,19 +14,19 @@ pub fn add_watched_folder(
     app: AppHandle,
     state: State<'_, AppState>,
     path: String,
-) -> Result<i64, String> {
+) -> Result<WatchedFolder, String> {
     let folder_path = std::path::Path::new(&path);
     if !folder_path.is_dir() {
         return Err(format!("not a directory: {path}"));
     }
 
-    let folder_id = state
+    let folder = state
         .db
         .add_watched_folder(&path)
         .map_err(|e| e.to_string())?;
 
-    scan::spawn_scan(app, &state, folder_id);
-    Ok(folder_id)
+    scan::spawn_scan(app, &state, folder.id);
+    Ok(folder)
 }
 
 #[tauri::command]
@@ -56,6 +51,8 @@ pub fn get_media_list(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<MediaFile>, String> {
+    let limit = limit.clamp(1, 500);
+    let offset = offset.max(0);
     state
         .db
         .get_all_media(limit, offset)
@@ -90,10 +87,16 @@ pub fn get_scan_status(state: State<'_, AppState>) -> ScanProgress {
 }
 
 #[tauri::command]
-pub fn get_timeline_groups(state: State<'_, AppState>) -> Result<Vec<TimelineGroup>, String> {
+pub fn get_timeline_groups(
+    state: State<'_, AppState>,
+    limit: Option<i64>,
+    offset: Option<i64>,
+) -> Result<Vec<TimelineGroup>, String> {
+    let limit = limit.unwrap_or(200);
+    let offset = offset.unwrap_or(0);
     state
         .db
-        .get_timeline_groups(5000)
+        .get_timeline_groups(limit, offset)
         .map_err(|e| e.to_string())
 }
 

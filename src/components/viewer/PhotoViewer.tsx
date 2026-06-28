@@ -18,6 +18,13 @@ const MIN_ZOOM = 1;
 const MAX_ZOOM = 5;
 const FILMSTRIP_SIZE = 20;
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1073741824) return `${(bytes / 1048576).toFixed(1)} MB`;
+  return `${(bytes / 1073741824).toFixed(1)} GB`;
+}
+
 function formatMediaDate(item: MediaItem, locale: string): string {
   const raw = item.created_at ?? item.modified_at;
   if (!raw) return "—";
@@ -158,6 +165,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
             disabled={neighbors.prev_id == null}
             className="rounded-lg px-3 py-1.5 text-sm text-neutral-300 transition hover:bg-white/10 disabled:opacity-30"
             title={t("viewer.prev")}
+            aria-label={t("viewer.prev")}
           >
             ‹
           </button>
@@ -167,6 +175,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
             disabled={neighbors.next_id == null}
             className="rounded-lg px-3 py-1.5 text-sm text-neutral-300 transition hover:bg-white/10 disabled:opacity-30"
             title={t("viewer.next")}
+            aria-label={t("viewer.next")}
           >
             ›
           </button>
@@ -259,28 +268,32 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
           <aside className="w-72 shrink-0 overflow-y-auto border-l border-white/10 bg-black/60 p-4 text-sm">
             <dl className="space-y-3">
               <div>
-                <dt className="text-neutral-500">{t("folder.path")}</dt>
+                <dt className="text-neutral-500">{t("viewer.filename")}</dt>
                 <dd className="mt-0.5 break-all text-neutral-200">{media.filename}</dd>
               </div>
               <div>
-                <dt className="text-neutral-500">{t("folder.lastScan")}</dt>
+                <dt className="text-neutral-500">{t("viewer.size")}</dt>
+                <dd className="mt-0.5 text-neutral-200">{formatFileSize(media.size_bytes)}</dd>
+              </div>
+              <div>
+                <dt className="text-neutral-500">{t("viewer.date")}</dt>
                 <dd className="mt-0.5 text-neutral-200">{formatMediaDate(media, locale)}</dd>
               </div>
               {media.width != null && media.height != null && (
                 <div>
-                  <dt className="text-neutral-500">Dimensions</dt>
+                  <dt className="text-neutral-500">{t("viewer.dimensions")}</dt>
                   <dd className="mt-0.5 text-neutral-200">
                     {media.width} × {media.height}
                   </dd>
                 </div>
               )}
               <div>
-                <dt className="text-neutral-500">Type</dt>
+                <dt className="text-neutral-500">{t("viewer.type")}</dt>
                 <dd className="mt-0.5 text-neutral-200">{media.media_type}</dd>
               </div>
               {(media.latitude != null || media.longitude != null) && (
                 <div>
-                  <dt className="text-neutral-500">Location</dt>
+                  <dt className="text-neutral-500">{t("viewer.location")}</dt>
                   <dd className="mt-0.5 text-neutral-200">
                     {media.latitude?.toFixed(4)}, {media.longitude?.toFixed(4)}
                   </dd>

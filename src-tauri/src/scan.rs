@@ -2,6 +2,7 @@ use crate::state::{AppState, ScanStatus};
 use catchlight_core::media::{MediaFile, MediaType, ThumbnailSize};
 use catchlight_db::Database;
 use catchlight_indexer::{classify_extension, scan_folder as discover_files};
+use futures::stream::{self, StreamExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -36,7 +37,7 @@ pub fn spawn_scan(app: AppHandle, state: &AppState, folder_id: i64) {
         let result = run_scan(&app, db, scan_status.clone(), semaphore, folder_id).await;
         if let Err(e) = result {
             error!(folder_id, "scan failed: {e}");
-            scan_status.set_phase("error");
+            scan_status.set_status("error");
             emit_progress(&app, &scan_status);
         }
         scanning.store(false, Ordering::SeqCst);
@@ -60,32 +61,29 @@ pub async fn run_scan(
     let root = PathBuf::from(&folder.path);
     let files = discover_files(&root).await?;
     scan_status.set_total(files.len() as i64);
-    scan_status.set_phase("processing");
+    scan_status.set_status("scanning");
     emit_progress(app, &scan_status);
 
-    let mut handles = Vec::with_capacity(files.len());
-    for path in files {
+    let concurrency = semaphore.available_permits().max(2);
+
+    stream::iter(files.into_iter().map(|path| {
         let db = Arc::clone(&db);
         let scan_status = scan_status.clone();
-        let semaphore = Arc::clone(&semaphore);
         let app = app.clone();
-
-        handles.push(tauri::async_runtime::spawn(async move {
-            let _permit = semaphore.acquire().await.expect("semaphore closed");
+        async move {
             if let Err(e) = process_file(&db, folder_id, &path).await {
                 warn!(path = %path.display(), "failed to process file: {e}");
             }
-            scan_status.increment_processed();
+            scan_status.increment_scanned();
             emit_progress(&app, &scan_status);
-        }));
-    }
-
-    for handle in handles {
-        let _ = handle.await;
-    }
+        }
+    }))
+    .buffer_unordered(concurrency)
+    .collect::<()>()
+    .await;
 
     db.update_last_scan_at(folder_id)?;
-    scan_status.set_phase("complete");
+    scan_status.set_status("complete");
     emit_progress(app, &scan_status);
 
     Ok(())
@@ -167,6 +165,20 @@ async fn process_file(
         .await
         .map_err(|e| catchlight_core::Error::Other(e.to_string()))?;
     }
+
+    let media_type = if matches!(media_type, MediaType::Photo) {
+        if let (Some(w), Some(h)) = (meta.width, meta.height) {
+            if catchlight_ai::detect_screenshot(&path, w, h).unwrap_or(false) {
+                MediaType::Screenshot
+            } else {
+                media_type
+            }
+        } else {
+            media_type
+        }
+    } else {
+        media_type
+    };
 
     let media = MediaFile {
         id: 0,

@@ -30,6 +30,7 @@ export interface MediaItem {
   created_at?: string | null;
   modified_at: string;
   duration_sec?: number | null;
+  blake3_hash?: string | null;
   latitude?: number | null;
   longitude?: number | null;
 }
@@ -80,8 +81,8 @@ export async function getMediaById(id: number): Promise<MediaItem | null> {
   return invoke<MediaItem | null>("get_media_by_id", { id });
 }
 
-export async function getTimelineGroups(): Promise<TimelineGroup[]> {
-  return invoke<TimelineGroup[]>("get_timeline_groups");
+export async function getTimelineGroups(limit = 200, offset = 0): Promise<TimelineGroup[]> {
+  return invoke<TimelineGroup[]>("get_timeline_groups", { limit, offset });
 }
 
 export async function getMediaNeighbors(id: number): Promise<MediaNeighbors> {

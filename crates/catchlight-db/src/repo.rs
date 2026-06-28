@@ -7,8 +7,25 @@ use serde::{Deserialize, Serialize};
 pub struct WatchedFolder {
     pub id: i64,
     pub path: String,
-    pub added_at: String,
-    pub last_scan_at: Option<String>,
+    pub media_count: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_scan: Option<String>,
+    #[serde(default = "default_scan_status")]
+    pub scan_status: String,
+}
+
+fn default_scan_status() -> String {
+    "idle".to_string()
+}
+
+fn map_watched_folder_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<WatchedFolder> {
+    Ok(WatchedFolder {
+        id: row.get(0)?,
+        path: row.get(1)?,
+        media_count: row.get(2)?,
+        last_scan: row.get(3)?,
+        scan_status: default_scan_status(),
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,23 +42,25 @@ pub struct MediaNeighbors {
 }
 
 impl Database {
-    pub fn add_watched_folder(&self, path: &str) -> catchlight_core::Result<i64> {
-        let conn = self.conn();
-        conn.execute(
-            "INSERT OR IGNORE INTO watched_folders (path) VALUES (?1)",
-            params![path],
-        )
-        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+    pub fn add_watched_folder(&self, path: &str) -> catchlight_core::Result<WatchedFolder> {
+        let id = {
+            let conn = self.conn();
+            conn.execute(
+                "INSERT OR IGNORE INTO watched_folders (path) VALUES (?1)",
+                params![path],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 
-        let id = conn
-            .query_row(
+            conn.query_row(
                 "SELECT id FROM watched_folders WHERE path = ?1",
                 params![path],
                 |row| row.get(0),
             )
-            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?
+        };
 
-        Ok(id)
+        self.get_watched_folder(id)?
+            .ok_or_else(|| catchlight_core::Error::Other(format!("folder {id} not found after insert")))
     }
 
     pub fn upsert_media(&self, folder_id: i64, media: &MediaFile) -> catchlight_core::Result<i64> {
@@ -140,19 +159,16 @@ impl Database {
         let conn = self.conn();
         let mut stmt = conn
             .prepare(
-                "SELECT id, path, added_at, last_scan_at FROM watched_folders ORDER BY added_at",
+                "SELECT w.id, w.path, COALESCE(COUNT(m.id), 0) as media_count, w.last_scan_at as last_scan
+                 FROM watched_folders w
+                 LEFT JOIN media_files m ON m.folder_id = w.id
+                 GROUP BY w.id
+                 ORDER BY w.added_at",
             )
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 
         let rows = stmt
-            .query_map([], |row| {
-                Ok(WatchedFolder {
-                    id: row.get(0)?,
-                    path: row.get(1)?,
-                    added_at: row.get(2)?,
-                    last_scan_at: row.get(3)?,
-                })
-            })
+            .query_map([], map_watched_folder_row)
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 
         rows.collect::<Result<Vec<_>, _>>()
@@ -162,16 +178,13 @@ impl Database {
     pub fn get_watched_folder(&self, id: i64) -> catchlight_core::Result<Option<WatchedFolder>> {
         let conn = self.conn();
         conn.query_row(
-            "SELECT id, path, added_at, last_scan_at FROM watched_folders WHERE id = ?1",
+            "SELECT w.id, w.path, COALESCE(COUNT(m.id), 0) as media_count, w.last_scan_at as last_scan
+             FROM watched_folders w
+             LEFT JOIN media_files m ON m.folder_id = w.id
+             WHERE w.id = ?1
+             GROUP BY w.id",
             params![id],
-            |row| {
-                Ok(WatchedFolder {
-                    id: row.get(0)?,
-                    path: row.get(1)?,
-                    added_at: row.get(2)?,
-                    last_scan_at: row.get(3)?,
-                })
-            },
+            map_watched_folder_row,
         )
         .optional()
         .map_err(|e| catchlight_core::Error::Database(e.to_string()))
@@ -229,7 +242,11 @@ impl Database {
         })
     }
 
-    pub fn get_timeline_groups(&self, limit: i64) -> catchlight_core::Result<Vec<TimelineGroup>> {
+    pub fn get_timeline_groups(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> catchlight_core::Result<Vec<TimelineGroup>> {
         let conn = self.conn();
         let mut stmt = conn
             .prepare(
@@ -238,12 +255,12 @@ impl Database {
                         date(COALESCE(created_at, modified_at)) AS group_date
                  FROM media_files
                  ORDER BY COALESCE(created_at, modified_at) DESC
-                 LIMIT ?1",
+                 LIMIT ?1 OFFSET ?2",
             )
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 
         let rows = stmt
-            .query_map(params![limit], |row| {
+            .query_map(params![limit, offset], |row| {
                 let group_date: String = row.get(13)?;
                 let media = Self::map_media_row(row)?;
                 Ok((group_date, media))

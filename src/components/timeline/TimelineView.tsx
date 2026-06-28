@@ -9,6 +9,8 @@ const MIN_COLUMN_WIDTH = 180;
 const GAP = 12;
 const HEADER_HEIGHT = 52;
 const ROW_HEIGHT = MIN_COLUMN_WIDTH + GAP;
+const PAGE_SIZE = 200;
+const SCROLL_THRESHOLD = 200;
 
 type VirtualRow =
   | { type: "header"; date: string; count: number; key: string }
@@ -87,6 +89,9 @@ export function TimelineView() {
   const parentRef = useRef<HTMLDivElement>(null);
   const [groups, setGroups] = useState<TimelineGroup[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [offset, setOffset] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
 
   const columnCount = Math.max(
@@ -97,9 +102,11 @@ export function TimelineView() {
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    void getTimelineGroups().then((data) => {
+    void getTimelineGroups(PAGE_SIZE, 0).then((data) => {
       if (!cancelled) {
         setGroups(data);
+        setHasMore(data.length >= PAGE_SIZE);
+        setOffset(data.length);
         setLoading(false);
       }
     });
@@ -107,6 +114,34 @@ export function TimelineView() {
       cancelled = true;
     };
   }, []);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const data = await getTimelineGroups(PAGE_SIZE, offset);
+      setGroups((prev) => [...prev, ...data]);
+      setHasMore(data.length >= PAGE_SIZE);
+      setOffset((prev) => prev + data.length);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [loadingMore, hasMore, offset]);
+
+  useEffect(() => {
+    const el = parentRef.current;
+    if (!el) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      if (scrollHeight - scrollTop - clientHeight < SCROLL_THRESHOLD) {
+        void loadMore();
+      }
+    };
+
+    el.addEventListener("scroll", handleScroll);
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, [loadMore]);
 
   useEffect(() => {
     const el = parentRef.current;

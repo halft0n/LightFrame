@@ -6,6 +6,10 @@ fn create_test_db() -> Database {
     Database::open(Path::new(":memory:")).expect("in-memory DB should open")
 }
 
+fn insert_folder_id(db: &Database, path: &str) -> i64 {
+    db.add_watched_folder(path).unwrap().id
+}
+
 fn sample_media(path: &str) -> MediaFile {
     MediaFile {
         id: 0,
@@ -32,28 +36,30 @@ fn open_and_migrate() {
 #[test]
 fn add_watched_folder() {
     let db = create_test_db();
-    let id = db.add_watched_folder("/photos").unwrap();
-    assert!(id > 0);
+    let folder = db.add_watched_folder("/photos").unwrap();
+    assert!(folder.id > 0);
+    assert_eq!(folder.media_count, 0);
+    assert_eq!(folder.scan_status, "idle");
 
-    let id2 = db.add_watched_folder("/photos").unwrap();
-    assert_eq!(id, id2, "duplicate folder should return same id");
+    let folder2 = db.add_watched_folder("/photos").unwrap();
+    assert_eq!(folder.id, folder2.id, "duplicate folder should return same id");
 }
 
 #[test]
 fn add_different_folders() {
     let db = create_test_db();
-    let id1 = db.add_watched_folder("/photos").unwrap();
-    let id2 = db.add_watched_folder("/videos").unwrap();
+    let id1 = insert_folder_id(&db, "/photos");
+    let id2 = insert_folder_id(&db, "/videos");
     assert_ne!(id1, id2);
 }
 
 #[test]
 fn upsert_and_get_media() {
     let db = create_test_db();
-    let folder_id = db.add_watched_folder("/photos").unwrap();
+    let fid = insert_folder_id(&db, "/photos");
 
     let media = sample_media("/photos/sunset.jpg");
-    let media_id = db.upsert_media(folder_id, &media).unwrap();
+    let media_id = db.upsert_media(fid, &media).unwrap();
     assert!(media_id > 0);
 
     let results = db.get_all_media(100, 0).unwrap();
@@ -66,11 +72,11 @@ fn upsert_and_get_media() {
 #[test]
 fn upsert_idempotent() {
     let db = create_test_db();
-    let folder_id = db.add_watched_folder("/photos").unwrap();
+    let fid = insert_folder_id(&db, "/photos");
 
     let media = sample_media("/photos/sunset.jpg");
-    db.upsert_media(folder_id, &media).unwrap();
-    db.upsert_media(folder_id, &media).unwrap();
+    db.upsert_media(fid, &media).unwrap();
+    db.upsert_media(fid, &media).unwrap();
 
     let count = db.get_media_count().unwrap();
     assert_eq!(count, 1, "duplicate upsert should not create new row");
@@ -79,13 +85,13 @@ fn upsert_idempotent() {
 #[test]
 fn get_media_count() {
     let db = create_test_db();
-    let folder_id = db.add_watched_folder("/photos").unwrap();
+    let fid = insert_folder_id(&db, "/photos");
 
     assert_eq!(db.get_media_count().unwrap(), 0);
 
-    db.upsert_media(folder_id, &sample_media("/photos/a.jpg")).unwrap();
-    db.upsert_media(folder_id, &sample_media("/photos/b.png")).unwrap();
-    db.upsert_media(folder_id, &sample_media("/photos/c.webp")).unwrap();
+    db.upsert_media(fid, &sample_media("/photos/a.jpg")).unwrap();
+    db.upsert_media(fid, &sample_media("/photos/b.png")).unwrap();
+    db.upsert_media(fid, &sample_media("/photos/c.webp")).unwrap();
 
     assert_eq!(db.get_media_count().unwrap(), 3);
 }
@@ -93,10 +99,10 @@ fn get_media_count() {
 #[test]
 fn get_media_pagination() {
     let db = create_test_db();
-    let folder_id = db.add_watched_folder("/photos").unwrap();
+    let fid = insert_folder_id(&db, "/photos");
 
     for i in 0..10 {
-        db.upsert_media(folder_id, &sample_media(&format!("/photos/{i}.jpg")))
+        db.upsert_media(fid, &sample_media(&format!("/photos/{i}.jpg")))
             .unwrap();
     }
 
@@ -113,8 +119,8 @@ fn get_media_pagination() {
 #[test]
 fn multiple_folders_media() {
     let db = create_test_db();
-    let f1 = db.add_watched_folder("/photos").unwrap();
-    let f2 = db.add_watched_folder("/backup").unwrap();
+    let f1 = insert_folder_id(&db, "/photos");
+    let f2 = insert_folder_id(&db, "/backup");
 
     db.upsert_media(f1, &sample_media("/photos/a.jpg")).unwrap();
     db.upsert_media(f2, &sample_media("/backup/b.jpg")).unwrap();
@@ -141,11 +147,12 @@ fn list_watched_folders_returns_all_added() {
 #[test]
 fn get_watched_folder_by_id() {
     let db = create_test_db();
-    let id = db.add_watched_folder("/photos").unwrap();
+    let fid = insert_folder_id(&db, "/photos");
 
-    let folder = db.get_watched_folder(id).unwrap().expect("folder should exist");
-    assert_eq!(folder.id, id);
+    let folder = db.get_watched_folder(fid).unwrap().expect("folder should exist");
+    assert_eq!(folder.id, fid);
     assert_eq!(folder.path, "/photos");
+    assert_eq!(folder.media_count, 0);
 
     let missing = db.get_watched_folder(9999).unwrap();
     assert!(missing.is_none());
@@ -154,15 +161,15 @@ fn get_watched_folder_by_id() {
 #[test]
 fn remove_watched_folder_deletes_folder_and_media() {
     let db = create_test_db();
-    let folder_id = db.add_watched_folder("/photos").unwrap();
+    let fid = insert_folder_id(&db, "/photos");
 
-    db.upsert_media(folder_id, &sample_media("/photos/a.jpg")).unwrap();
-    db.upsert_media(folder_id, &sample_media("/photos/b.jpg")).unwrap();
+    db.upsert_media(fid, &sample_media("/photos/a.jpg")).unwrap();
+    db.upsert_media(fid, &sample_media("/photos/b.jpg")).unwrap();
     assert_eq!(db.get_media_count().unwrap(), 2);
 
-    db.remove_watched_folder(folder_id).unwrap();
+    db.remove_watched_folder(fid).unwrap();
 
-    assert!(db.get_watched_folder(folder_id).unwrap().is_none());
+    assert!(db.get_watched_folder(fid).unwrap().is_none());
     assert_eq!(db.get_media_count().unwrap(), 0);
     assert!(db.list_watched_folders().unwrap().is_empty());
 }
@@ -170,9 +177,9 @@ fn remove_watched_folder_deletes_folder_and_media() {
 #[test]
 fn get_media_by_id() {
     let db = create_test_db();
-    let folder_id = db.add_watched_folder("/photos").unwrap();
+    let fid = insert_folder_id(&db, "/photos");
     let media_id = db
-        .upsert_media(folder_id, &sample_media("/photos/sunset.jpg"))
+        .upsert_media(fid, &sample_media("/photos/sunset.jpg"))
         .unwrap();
 
     let media = db.get_media_by_id(media_id).unwrap().expect("media should exist");
@@ -187,19 +194,31 @@ fn get_media_by_id() {
 #[test]
 fn update_last_scan_at() {
     let db = create_test_db();
-    let folder_id = db.add_watched_folder("/photos").unwrap();
+    let fid = insert_folder_id(&db, "/photos");
 
     let before = db
-        .get_watched_folder(folder_id)
+        .get_watched_folder(fid)
         .unwrap()
         .expect("folder should exist");
-    assert!(before.last_scan_at.is_none());
+    assert!(before.last_scan.is_none());
 
-    db.update_last_scan_at(folder_id).unwrap();
+    db.update_last_scan_at(fid).unwrap();
 
     let after = db
-        .get_watched_folder(folder_id)
+        .get_watched_folder(fid)
         .unwrap()
         .expect("folder should exist");
-    assert!(after.last_scan_at.is_some());
+    assert!(after.last_scan.is_some());
+}
+
+#[test]
+fn watched_folder_media_count() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    db.upsert_media(fid, &sample_media("/photos/a.jpg")).unwrap();
+    db.upsert_media(fid, &sample_media("/photos/b.jpg")).unwrap();
+
+    let folder = db.get_watched_folder(fid).unwrap().expect("folder should exist");
+    assert_eq!(folder.media_count, 2);
 }

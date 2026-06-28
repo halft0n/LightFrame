@@ -3,3 +3,4 @@ pub mod python_sidecar;
 pub mod screenshot;
 
 pub use dispatcher::AiDispatcher;
+pub use screenshot::detect_screenshot;

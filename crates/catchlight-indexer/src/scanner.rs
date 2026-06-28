@@ -9,7 +9,7 @@ pub async fn scan(root: &Path) -> Result<Vec<PathBuf>> {
     let files = tokio::task::spawn_blocking(move || {
         let mut results = Vec::new();
         for entry in walkdir::WalkDir::new(&root)
-            .follow_links(true)
+            .follow_links(false)
             .into_iter()
             .filter_map(|e| e.ok())
         {
