@@ -18,6 +18,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rusqlite = { version = "0.33", features = ["bundled", "blob"] }
 blake3 = "1"
+image = "0.25"
 
 catchlight-core = { path = "crates/catchlight-core" }
 catchlight-db = { path = "crates/catchlight-db" }

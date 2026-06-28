@@ -12,6 +12,8 @@ pub fn dhash(path: &Path) -> Result<u64> {
     perceptual::compute_dhash(path)
 }
 
+pub use perceptual::dhash_from_decoded;
+
 pub fn hamming_distance(a: u64, b: u64) -> u32 {
     (a ^ b).count_ones()
 }

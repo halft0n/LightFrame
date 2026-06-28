@@ -1,5 +1,5 @@
 use catchlight_core::config;
-use catchlight_core::media::ThumbnailSize;
+use catchlight_core::media::{DecodedImage, ThumbnailSize};
 use catchlight_core::Result;
 use std::path::{Path, PathBuf};
 use tracing::debug;
@@ -54,5 +54,37 @@ pub fn generate_micro_blob(src: &Path) -> Result<Vec<u8>> {
         .write_to(&mut buf, image::ImageFormat::Jpeg)
         .map_err(|e| catchlight_core::Error::Thumbnail(e.to_string()))?;
 
+    Ok(buf.into_inner())
+}
+
+pub fn generate_from_decoded(
+    decoded: &DecodedImage,
+    hash: &str,
+    size: ThumbnailSize,
+) -> Result<PathBuf> {
+    let out = thumb_path(hash, size);
+    if out.exists() {
+        return Ok(out);
+    }
+    if let Some(parent) = out.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let img = decoded.to_dynamic_image();
+    let pixels = size.pixels();
+    let thumb = img.thumbnail(pixels, pixels);
+    thumb
+        .save(&out)
+        .map_err(|e| catchlight_core::Error::Thumbnail(e.to_string()))?;
+    debug!(path = %out.display(), size = pixels, "thumbnail generated");
+    Ok(out)
+}
+
+pub fn micro_blob_from_decoded(decoded: &DecodedImage) -> Result<Vec<u8>> {
+    let img = decoded.to_dynamic_image();
+    let thumb = img.thumbnail(64, 64);
+    let mut buf = std::io::Cursor::new(Vec::new());
+    thumb
+        .write_to(&mut buf, image::ImageFormat::Jpeg)
+        .map_err(|e| catchlight_core::Error::Thumbnail(e.to_string()))?;
     Ok(buf.into_inner())
 }

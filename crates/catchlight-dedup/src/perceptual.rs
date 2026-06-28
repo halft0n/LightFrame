@@ -1,3 +1,4 @@
+use catchlight_core::media::DecodedImage;
 use catchlight_core::Result;
 use image::imageops::FilterType;
 use std::path::Path;
@@ -20,6 +21,22 @@ pub fn compute_dhash(path: &Path) -> Result<u64> {
     }
 
     Ok(hash)
+}
+
+pub fn dhash_from_decoded(decoded: &DecodedImage) -> u64 {
+    let img = decoded.to_dynamic_image();
+    let gray = img
+        .resize_exact(9, 8, image::imageops::FilterType::Lanczos3)
+        .to_luma8();
+    let mut hash: u64 = 0;
+    for y in 0..8 {
+        for x in 0..8 {
+            if gray.get_pixel(x, y)[0] > gray.get_pixel(x + 1, y)[0] {
+                hash |= 1 << (y * 8 + x);
+            }
+        }
+    }
+    hash
 }
 
 #[cfg(test)]

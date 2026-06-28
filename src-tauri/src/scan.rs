@@ -142,34 +142,47 @@ async fn process_file(
     .await
     .map_err(|e| catchlight_core::Error::Other(e.to_string()))??;
 
-    let dhash = if matches!(
+    let is_image = matches!(
         media_type,
         MediaType::Photo | MediaType::Raw | MediaType::Screenshot
-    ) {
+    );
+
+    let (dhash, image_micro_blob) = if is_image {
         tokio::task::spawn_blocking({
             let path = path.clone();
-            move || catchlight_dedup::dhash(&path)
+            let hash = blake3_hash.clone();
+            move || -> (Option<u64>, Option<Vec<u8>>) {
+                let decoded = match catchlight_core::decode::decode_image(&path) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        tracing::warn!(path = %path.display(), "decode failed: {e}");
+                        return (None, None);
+                    }
+                };
+
+                let dhash = Some(catchlight_dedup::dhash_from_decoded(&decoded));
+
+                let _ = catchlight_thumbnail::generate_from_decoded(
+                    &decoded,
+                    &hash,
+                    ThumbnailSize::Micro,
+                );
+                let _ = catchlight_thumbnail::generate_from_decoded(
+                    &decoded,
+                    &hash,
+                    ThumbnailSize::Small,
+                );
+
+                let micro = catchlight_thumbnail::micro_blob_from_decoded(&decoded).ok();
+
+                (dhash, micro)
+            }
         })
         .await
         .map_err(|e| catchlight_core::Error::Other(e.to_string()))?
-        .ok()
     } else {
-        None
+        (None, None)
     };
-
-    if matches!(
-        media_type,
-        MediaType::Photo | MediaType::Raw | MediaType::Screenshot
-    ) {
-        let hash = blake3_hash.clone();
-        let thumb_path = path.clone();
-        tokio::task::spawn_blocking(move || {
-            let _ = catchlight_thumbnail::generate(&thumb_path, &hash, ThumbnailSize::Micro);
-            let _ = catchlight_thumbnail::generate(&thumb_path, &hash, ThumbnailSize::Small);
-        })
-        .await
-        .map_err(|e| catchlight_core::Error::Other(e.to_string()))?;
-    }
 
     if matches!(media_type, MediaType::Video) {
         let hash = blake3_hash.clone();
@@ -213,18 +226,7 @@ async fn process_file(
         media_type
     };
 
-    let micro_blob = if matches!(
-        media_type,
-        MediaType::Photo | MediaType::Raw | MediaType::Screenshot
-    ) {
-        tokio::task::spawn_blocking({
-            let path = path.clone();
-            move || catchlight_thumbnail::generate_micro_blob(&path)
-        })
-        .await
-        .map_err(|e| catchlight_core::Error::Other(e.to_string()))?
-        .ok()
-    } else if matches!(media_type, MediaType::Video) {
+    let micro_blob = if matches!(media_type, MediaType::Video) {
         let hash = blake3_hash.clone();
         tokio::task::spawn_blocking(move || {
             let small_thumb = catchlight_thumbnail::thumb_path(&hash, ThumbnailSize::Small);
@@ -237,7 +239,7 @@ async fn process_file(
         .await
         .map_err(|e| catchlight_core::Error::Other(e.to_string()))?
     } else {
-        None
+        image_micro_blob
     };
 
     let media = MediaFile {

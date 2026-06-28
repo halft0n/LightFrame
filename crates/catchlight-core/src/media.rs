@@ -44,6 +44,21 @@ impl ThumbnailSize {
     }
 }
 
+/// A fully decoded image in RGBA format, ready for processing.
+pub struct DecodedImage {
+    pub rgba: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl DecodedImage {
+    pub fn to_dynamic_image(&self) -> image::DynamicImage {
+        let img = image::RgbaImage::from_raw(self.width, self.height, self.rgba.clone())
+            .expect("invalid RGBA buffer dimensions");
+        image::DynamicImage::ImageRgba8(img)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
