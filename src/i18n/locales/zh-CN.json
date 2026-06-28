@@ -55,6 +55,7 @@
   "settings.rescan": "重新扫描",
   "settings.rescanAll": "全部重新扫描",
   "gallery.loading": "加载中…",
+  "gallery.loadMore": "加载更多",
   "gallery.noPhotos": "暂无照片",
   "gallery.count": "共 {count} 项",
   "timeline.title": "时间线",

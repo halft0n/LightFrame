@@ -110,10 +110,12 @@ input:focus:not(:focus-visible) {
 
 .page-enter {
   animation: page-enter 0.35s ease-out both;
+  will-change: opacity, transform;
 }
 
 .main-content-enter {
   animation: page-enter 0.3s ease-out both;
+  will-change: opacity, transform;
 }
 
 @keyframes shimmer {
@@ -126,6 +128,7 @@ input:focus:not(:focus-visible) {
 }
 
 .shimmer {
+  will-change: background-position;
   background: linear-gradient(
     110deg,
     var(--shimmer-base) 0%,
@@ -195,6 +198,20 @@ input:focus:not(:focus-visible) {
   background: var(--bg-secondary);
 }
 
+.dedup-group-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 320px;
+}
+
+.card-list-item {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 88px;
+}
+
+.card-thumb {
+  will-change: transform;
+}
+
 .photo-card {
   border-radius: var(--photo-radius);
   transition: opacity 0.15s ease;
@@ -229,6 +246,7 @@ input:focus:not(:focus-visible) {
 
 .empty-state-icon {
   animation: empty-icon-float 4s ease-in-out infinite;
+  will-change: transform;
 }
 
 .settings-card {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 import type { MediaItem } from "@/lib/tauri";
 import { getThumbnailUrl } from "@/lib/tauri";
 
@@ -15,7 +15,12 @@ function formatDuration(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-export function PhotoCard({ item, selected, onSelect, onOpen }: PhotoCardProps) {
+export const PhotoCard = memo(function PhotoCard({
+  item,
+  selected,
+  onSelect,
+  onOpen,
+}: PhotoCardProps) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
 
@@ -79,4 +84,4 @@ export function PhotoCard({ item, selected, onSelect, onOpen }: PhotoCardProps) 
       )}
     </button>
   );
-}
+});

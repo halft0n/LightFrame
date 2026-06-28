@@ -55,6 +55,7 @@
   "settings.rescan": "Rescan",
   "settings.rescanAll": "Rescan All",
   "gallery.loading": "Loading…",
+  "gallery.loadMore": "Load More",
   "gallery.noPhotos": "No photos yet",
   "gallery.count": "{count} items",
   "timeline.title": "Timeline",

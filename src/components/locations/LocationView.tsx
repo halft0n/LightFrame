@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PhotoCard } from "@/components/gallery/PhotoCard";
 import {
   getLocationGroups,
@@ -15,6 +15,7 @@ import { useTranslation } from "@/i18n/useTranslation";
 const MIN_COLUMN_WIDTH = 160;
 const GAP = 3;
 const PAGE_SIZE = 60;
+const CARD_PAGE_SIZE = 20;
 
 interface SelectedLocation {
   country: string;
@@ -37,6 +38,42 @@ function locationLabel(country: string, city: string | null): string {
   return country;
 }
 
+interface LocationGroupCardProps {
+  group: LocationGroup;
+  countLabel: string;
+  onSelect: (group: LocationGroup) => void;
+}
+
+const LocationGroupCard = memo(function LocationGroupCard({
+  group,
+  countLabel,
+  onSelect,
+}: LocationGroupCardProps) {
+  return (
+    <button
+      type="button"
+      onClick={() => onSelect(group)}
+      className="card-list-item group flex items-center gap-3 rounded-lg border border-neutral-200/80 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900/50 p-3 text-left transition hover:border-neutral-300 dark:hover:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800/80"
+    >
+      <div className="h-16 w-16 shrink-0 overflow-hidden rounded-md bg-neutral-800">
+        <img
+          src={getThumbnailUrl(group.sample_media_id, "small")}
+          alt=""
+          className="card-thumb h-full w-full object-cover transition group-hover:scale-105"
+          loading="lazy"
+          decoding="async"
+        />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate font-medium text-neutral-100">
+          {group.city ?? group.country}
+        </p>
+        <p className="text-sm text-neutral-500">{countLabel}</p>
+      </div>
+    </button>
+  );
+});
+
 export function LocationView() {
   const { t } = useTranslation();
   const parentRef = useRef<HTMLDivElement>(null);
@@ -49,6 +86,7 @@ export function LocationView() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [visibleCount, setVisibleCount] = useState(CARD_PAGE_SIZE);
 
   const columnCount = Math.max(
     1,
@@ -62,6 +100,7 @@ export function LocationView() {
       if (!cancelled) {
         setGroups(groupData);
         setStats(statsData);
+        setVisibleCount(CARD_PAGE_SIZE);
         setLoading(false);
       }
     });
@@ -106,6 +145,10 @@ export function LocationView() {
     await loadLocationMedia(selected.country, selected.city, media.length, true);
   }, [selected, loadingMore, hasMore, media.length, loadLocationMedia]);
 
+  const handlePhotoSelect = useCallback((id: number, _event: React.MouseEvent) => {
+    openViewer(id);
+  }, []);
+
   useEffect(() => {
     const el = parentRef.current;
     if (!el || !selected) return;
@@ -117,7 +160,7 @@ export function LocationView() {
       }
     };
 
-    el.addEventListener("scroll", handleScroll);
+    el.addEventListener("scroll", handleScroll, { passive: true });
     return () => el.removeEventListener("scroll", handleScroll);
   }, [loadMore, selected]);
 
@@ -134,7 +177,12 @@ export function LocationView() {
     return () => observer.disconnect();
   }, [selected]);
 
-  const byCountry = useMemo(() => groupByCountry(groups), [groups]);
+  const visibleGroups = useMemo(
+    () => groups.slice(0, visibleCount),
+    [groups, visibleCount],
+  );
+  const hasMoreCards = visibleCount < groups.length;
+  const byCountry = useMemo(() => groupByCountry(visibleGroups), [visibleGroups]);
 
   if (loading) {
     return (
@@ -191,7 +239,7 @@ export function LocationView() {
                   key={item.id}
                   item={item}
                   selected={false}
-                  onSelect={() => openViewer(item.id)}
+                  onSelect={handlePhotoSelect}
                   onOpen={openViewer}
                 />
               ))}
@@ -222,33 +270,27 @@ export function LocationView() {
             <h2 className="mb-3 text-base font-semibold text-neutral-100">{country}</h2>
             <div className="grid gap-[3px] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {cityGroups.map((group) => (
-                <button
+                <LocationGroupCard
                   key={`${group.country}-${group.city ?? ""}`}
-                  type="button"
-                  onClick={() => handleSelectGroup(group)}
-                  className="group flex items-center gap-3 rounded-lg border border-neutral-200/80 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900/50 p-3 text-left transition hover:border-neutral-300 dark:hover:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800/80"
-                >
-                  <div className="h-16 w-16 shrink-0 overflow-hidden rounded-md bg-neutral-800">
-                    <img
-                      src={getThumbnailUrl(group.sample_media_id, "small")}
-                      alt=""
-                      className="h-full w-full object-cover transition group-hover:scale-105"
-                      loading="lazy"
-                    />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-neutral-100">
-                      {group.city ?? group.country}
-                    </p>
-                    <p className="text-sm text-neutral-500">
-                      {t("gallery.count", { count: group.count })}
-                    </p>
-                  </div>
-                </button>
+                  group={group}
+                  countLabel={t("gallery.count", { count: group.count })}
+                  onSelect={handleSelectGroup}
+                />
               ))}
             </div>
           </section>
         ))}
+        {hasMoreCards && (
+          <div className="flex justify-center pb-6">
+            <button
+              type="button"
+              onClick={() => setVisibleCount((prev) => prev + CARD_PAGE_SIZE)}
+              className="rounded-lg border border-neutral-200/80 dark:border-neutral-700 px-6 py-2 text-sm text-neutral-500 dark:text-neutral-400 transition hover:border-neutral-300 dark:hover:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-200"
+            >
+              {t("gallery.loadMore")} ({groups.length - visibleCount})
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
