@@ -1,8 +1,15 @@
 # CatchLight / 拾光
 
+[![Build Status](https://github.com/halft0n/CatchLight/actions/workflows/build.yml/badge.svg)](https://github.com/halft0n/CatchLight/actions/workflows/build.yml)
+[![Latest Release](https://img.shields.io/github/v/release/halft0n/CatchLight?include_prereleases&label=release)](https://github.com/halft0n/CatchLight/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)](https://github.com/halft0n/CatchLight/releases)
+[![Language](https://img.shields.io/badge/backend-Rust-orange?logo=rust)](https://www.rust-lang.org)
+[![Framework](https://img.shields.io/badge/framework-Tauri%202-blue?logo=tauri)](https://tauri.app)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 > 拾一束光，留一段时光。 Catch the light, keep the moment.
 
-CatchLight 是一款跨平台（Windows + Linux）、本地优先的照片查看与管理软件。不复制、不导入，以 Everything 级极速索引就地浏览用户现有文件夹中的照片与视频，并提供去重、截图识别等智能整理能力。
+CatchLight 是一款跨平台（Windows + Linux + macOS）、本地优先的照片查看与管理软件。不复制、不导入，以 Everything 级极速索引就地浏览用户现有文件夹中的照片与视频，并提供去重、截图识别等智能整理能力。
 
 ## Features
 
@@ -80,6 +87,14 @@ pnpm tauri build
 | [Detailed Design](docs/4-detailed-design.md) | Implementation-level module design |
 | [Development Plan](docs/5-development-plan.md) | 24-week phased development roadmap |
 
+## Star History
+
+<p align="center">
+  <a href="https://www.star-history.com/#halft0n/CatchLight&type=Date">
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=halft0n/CatchLight&type=Date" />
+  </a>
+</p>
+
 ## License
 
-TBD
+MIT
