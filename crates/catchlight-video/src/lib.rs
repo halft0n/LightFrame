@@ -52,3 +52,27 @@ pub async fn get_duration(video: &Path) -> Result<f64> {
 pub fn find_ffmpeg() -> Option<PathBuf> {
     which::which("ffmpeg").ok()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn find_ffmpeg_does_not_panic() {
+        let _result = find_ffmpeg();
+    }
+
+    #[tokio::test]
+    async fn extract_frame_nonexistent_video() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("frame.jpg");
+        let result = extract_frame(Path::new("/nonexistent/video.mp4"), &output, 1.0).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn get_duration_nonexistent_video() {
+        let result = get_duration(Path::new("/nonexistent/video.mp4")).await;
+        assert!(result.is_err());
+    }
+}

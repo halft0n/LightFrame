@@ -36,3 +36,27 @@ impl Default for AiDispatcher {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_dispatcher_has_no_python() {
+        let d = AiDispatcher::new();
+        assert!(!d.is_python_available());
+    }
+
+    #[test]
+    fn default_dispatcher_has_no_python() {
+        let d = AiDispatcher::default();
+        assert!(!d.is_python_available());
+    }
+
+    #[tokio::test]
+    async fn ensure_python_degrades_gracefully() {
+        let mut d = AiDispatcher::new();
+        let result = d.ensure_python().await;
+        assert!(result.is_ok(), "should not error even if Python unavailable");
+    }
+}

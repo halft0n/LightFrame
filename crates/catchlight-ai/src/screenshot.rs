@@ -32,3 +32,56 @@ pub fn classify_screenshot(_path: &Path) -> Result<MediaType> {
     // TODO: use CLIP ONNX or Python sidecar for sub-classification
     Ok(MediaType::Screenshot)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn detect_1080p_png_as_screenshot() {
+        let path = Path::new("screenshot.png");
+        assert!(detect_screenshot(path, 1920, 1080).unwrap());
+    }
+
+    #[test]
+    fn detect_1440p_png_as_screenshot() {
+        let path = Path::new("shot.png");
+        assert!(detect_screenshot(path, 2560, 1440).unwrap());
+    }
+
+    #[test]
+    fn detect_4k_png_as_screenshot() {
+        let path = Path::new("shot.png");
+        assert!(detect_screenshot(path, 3840, 2160).unwrap());
+    }
+
+    #[test]
+    fn phone_portrait_png_is_screenshot() {
+        let path = Path::new("phone.png");
+        assert!(detect_screenshot(path, 1170, 2532).unwrap());
+    }
+
+    #[test]
+    fn common_res_but_jpg_not_screenshot() {
+        let path = Path::new("photo.jpg");
+        assert!(!detect_screenshot(path, 1920, 1080).unwrap());
+    }
+
+    #[test]
+    fn uncommon_resolution_not_screenshot() {
+        let path = Path::new("photo.png");
+        assert!(!detect_screenshot(path, 1234, 5678).unwrap());
+    }
+
+    #[test]
+    fn non_standard_photo_dimensions_not_screenshot() {
+        let path = Path::new("photo.png");
+        assert!(!detect_screenshot(path, 4032, 3024).unwrap());
+    }
+
+    #[test]
+    fn classify_returns_screenshot_type() {
+        let result = classify_screenshot(Path::new("any.png")).unwrap();
+        assert_eq!(result, MediaType::Screenshot);
+    }
+}

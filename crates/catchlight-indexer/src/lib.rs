@@ -51,3 +51,77 @@ pub fn classify_extension(path: &Path) -> catchlight_core::media::MediaType {
 pub async fn scan_folder(folder: &Path) -> Result<Vec<PathBuf>> {
     scanner::scan(folder).await
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use catchlight_core::media::MediaType;
+
+    #[test]
+    fn detect_photo_extensions() {
+        for ext in &["jpg", "jpeg", "png", "gif", "bmp", "webp", "heic", "avif"] {
+            let name = format!("photo.{ext}");
+            let path = Path::new(&name);
+            assert!(is_media_file(path), "should detect .{ext} as media");
+        }
+    }
+
+    #[test]
+    fn detect_video_extensions() {
+        for ext in &["mp4", "mov", "avi", "mkv", "webm"] {
+            let name = format!("video.{ext}");
+            let path = Path::new(&name);
+            assert!(is_media_file(path), "should detect .{ext} as media");
+        }
+    }
+
+    #[test]
+    fn reject_non_media_extensions() {
+        for ext in &["txt", "pdf", "doc", "exe", "zip", "rs", "toml"] {
+            let name = format!("file.{ext}");
+            let path = Path::new(&name);
+            assert!(!is_media_file(path), ".{ext} should not be media");
+        }
+    }
+
+    #[test]
+    fn case_insensitive_detection() {
+        assert!(is_media_file(Path::new("PHOTO.JPG")));
+        assert!(is_media_file(Path::new("Video.MP4")));
+        assert!(is_media_file(Path::new("image.Png")));
+    }
+
+    #[test]
+    fn no_extension_is_not_media() {
+        assert!(!is_media_file(Path::new("noextension")));
+        assert!(!is_media_file(Path::new(".hidden")));
+    }
+
+    #[test]
+    fn classify_photo() {
+        assert_eq!(classify_extension(Path::new("a.jpg")), MediaType::Photo);
+        assert_eq!(classify_extension(Path::new("b.png")), MediaType::Photo);
+        assert_eq!(classify_extension(Path::new("c.webp")), MediaType::Photo);
+    }
+
+    #[test]
+    fn classify_video() {
+        assert_eq!(classify_extension(Path::new("a.mp4")), MediaType::Video);
+        assert_eq!(classify_extension(Path::new("b.mov")), MediaType::Video);
+        assert_eq!(classify_extension(Path::new("c.mkv")), MediaType::Video);
+    }
+
+    #[test]
+    fn classify_raw() {
+        assert_eq!(classify_extension(Path::new("a.cr2")), MediaType::Raw);
+        assert_eq!(classify_extension(Path::new("b.nef")), MediaType::Raw);
+        assert_eq!(classify_extension(Path::new("c.dng")), MediaType::Raw);
+        assert_eq!(classify_extension(Path::new("d.arw")), MediaType::Raw);
+    }
+
+    #[test]
+    fn classify_unknown() {
+        assert_eq!(classify_extension(Path::new("a.txt")), MediaType::Unknown);
+        assert_eq!(classify_extension(Path::new("noext")), MediaType::Unknown);
+    }
+}

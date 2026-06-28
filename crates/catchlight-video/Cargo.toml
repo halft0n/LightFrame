@@ -9,3 +9,7 @@ catchlight-core.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 which = "7"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }
+tempfile = "3"

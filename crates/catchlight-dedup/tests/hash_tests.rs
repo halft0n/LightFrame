@@ -1,0 +1,79 @@
+use catchlight_dedup::{hamming_distance, is_perceptually_similar};
+use std::io::Write;
+
+#[test]
+fn hamming_distance_identical() {
+    assert_eq!(hamming_distance(0, 0), 0);
+    assert_eq!(hamming_distance(u64::MAX, u64::MAX), 0);
+    assert_eq!(hamming_distance(0xDEADBEEF, 0xDEADBEEF), 0);
+}
+
+#[test]
+fn hamming_distance_one_bit() {
+    assert_eq!(hamming_distance(0b0000, 0b0001), 1);
+    assert_eq!(hamming_distance(0b1000, 0b0000), 1);
+}
+
+#[test]
+fn hamming_distance_all_different() {
+    assert_eq!(hamming_distance(0u64, u64::MAX), 64);
+}
+
+#[test]
+fn hamming_distance_symmetric() {
+    let a = 0x12345678u64;
+    let b = 0x87654321u64;
+    assert_eq!(hamming_distance(a, b), hamming_distance(b, a));
+}
+
+#[test]
+fn perceptual_similarity_identical() {
+    assert!(is_perceptually_similar(0xABCD, 0xABCD, 0));
+}
+
+#[test]
+fn perceptual_similarity_within_threshold() {
+    assert!(is_perceptually_similar(0b0000, 0b0011, 5));
+    assert!(is_perceptually_similar(0b0000, 0b0011, 2));
+}
+
+#[test]
+fn perceptual_similarity_beyond_threshold() {
+    assert!(!is_perceptually_similar(0b0000, 0b1111, 3));
+}
+
+#[test]
+fn blake3_hash_deterministic() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("test.bin");
+    {
+        let mut f = std::fs::File::create(&path).unwrap();
+        f.write_all(b"hello catchlight").unwrap();
+    }
+
+    let h1 = catchlight_dedup::file_hash(&path).unwrap();
+    let h2 = catchlight_dedup::file_hash(&path).unwrap();
+    assert_eq!(h1, h2);
+    assert!(!h1.is_empty());
+    assert_eq!(h1.len(), 64, "BLAKE3 hex hash should be 64 chars");
+}
+
+#[test]
+fn blake3_hash_different_content() {
+    let dir = tempfile::tempdir().unwrap();
+
+    let p1 = dir.path().join("a.bin");
+    let p2 = dir.path().join("b.bin");
+    std::fs::write(&p1, b"content A").unwrap();
+    std::fs::write(&p2, b"content B").unwrap();
+
+    let h1 = catchlight_dedup::file_hash(&p1).unwrap();
+    let h2 = catchlight_dedup::file_hash(&p2).unwrap();
+    assert_ne!(h1, h2);
+}
+
+#[test]
+fn blake3_hash_nonexistent_file() {
+    let result = catchlight_dedup::file_hash(std::path::Path::new("/nonexistent/file.bin"));
+    assert!(result.is_err());
+}

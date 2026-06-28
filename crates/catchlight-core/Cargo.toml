@@ -9,3 +9,6 @@ serde.workspace = true
 thiserror.workspace = true
 chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
+
+[dev-dependencies]
+serde_json.workspace = true

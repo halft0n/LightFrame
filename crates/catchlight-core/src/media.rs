@@ -43,3 +43,62 @@ impl ThumbnailSize {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn thumbnail_size_pixels() {
+        assert_eq!(ThumbnailSize::Micro.pixels(), 64);
+        assert_eq!(ThumbnailSize::Small.pixels(), 256);
+        assert_eq!(ThumbnailSize::Large.pixels(), 1024);
+    }
+
+    #[test]
+    fn media_type_equality() {
+        assert_eq!(MediaType::Photo, MediaType::Photo);
+        assert_ne!(MediaType::Photo, MediaType::Video);
+        assert_ne!(MediaType::Screenshot, MediaType::Unknown);
+    }
+
+    #[test]
+    fn media_type_serde_roundtrip() {
+        let original = MediaType::Screenshot;
+        let json = serde_json::to_string(&original).unwrap();
+        let deserialized: MediaType = serde_json::from_str(&json).unwrap();
+        assert_eq!(original, deserialized);
+    }
+
+    #[test]
+    fn thumbnail_size_serde_roundtrip() {
+        for size in [ThumbnailSize::Micro, ThumbnailSize::Small, ThumbnailSize::Large] {
+            let json = serde_json::to_string(&size).unwrap();
+            let back: ThumbnailSize = serde_json::from_str(&json).unwrap();
+            assert_eq!(size, back);
+        }
+    }
+
+    #[test]
+    fn media_file_serialize() {
+        let file = MediaFile {
+            id: 1,
+            path: "/photos/test.jpg".to_string(),
+            filename: "test.jpg".to_string(),
+            media_type: MediaType::Photo,
+            size_bytes: 1024,
+            width: Some(1920),
+            height: Some(1080),
+            created_at: None,
+            modified_at: chrono::NaiveDateTime::default(),
+            blake3_hash: Some("abc123".to_string()),
+            dhash: Some(0xFF00FF00),
+            latitude: Some(39.9042),
+            longitude: Some(116.4074),
+        };
+
+        let json = serde_json::to_string(&file).unwrap();
+        assert!(json.contains("test.jpg"));
+        assert!(json.contains("Photo"));
+    }
+}

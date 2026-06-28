@@ -10,3 +10,7 @@ tokio.workspace = true
 tracing.workspace = true
 notify = "7"
 walkdir = "2"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }
+tempfile = "3"
