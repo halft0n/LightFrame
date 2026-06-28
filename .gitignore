@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+dist-ssr/
+*.local
+
+# Rust / Cargo
+target/
+**/*.rs.bk
+Cargo.lock
+
+# Tauri
+src-tauri/target/
+src-tauri/WixTools/
+src-tauri/gen/schemas/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+logs/
+
+# Test & coverage
+coverage/
+.nyc_output/
+*.lcov
+
+# AI models (downloaded at runtime)
+models/
+
+# Thumbnail cache
+cache/
+
+# Python AI extension
+catchlight-ai-py/__pycache__/
+catchlight-ai-py/*.egg-info/
+catchlight-ai-py/dist/
+catchlight-ai-py/build/
+*.pyc
+__pycache__/
+.venv/

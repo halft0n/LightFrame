@@ -1,0 +1,12 @@
+[package]
+name = "catchlight-thumbnail"
+version.workspace = true
+edition.workspace = true
+description = "Three-tier thumbnail generation and caching"
+
+[dependencies]
+catchlight-core.workspace = true
+blake3.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+image = "0.25"

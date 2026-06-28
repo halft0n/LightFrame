@@ -1,0 +1,25 @@
+[package]
+name = "catchlight-app"
+version.workspace = true
+edition.workspace = true
+description = "CatchLight (拾光) — cross-platform photo viewer and manager"
+default-run = "catchlight-app"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+catchlight-core.workspace = true
+catchlight-db.workspace = true
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]

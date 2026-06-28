@@ -1,0 +1,15 @@
+{
+  "app.title": "CatchLight",
+  "sidebar.library": "Library",
+  "sidebar.allPhotos": "All Photos",
+  "sidebar.timeline": "Timeline",
+  "sidebar.locations": "Locations",
+  "sidebar.people": "People",
+  "sidebar.tools": "Tools",
+  "sidebar.duplicates": "Duplicates",
+  "sidebar.screenshots": "Screenshots",
+  "sidebar.settings": "Settings",
+  "sidebar.albums": "Albums",
+  "main.welcome": "Welcome to CatchLight",
+  "main.addFolder": "Add a folder to start browsing photos"
+}

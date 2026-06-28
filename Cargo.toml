@@ -1,0 +1,30 @@
+[workspace]
+members = ["src-tauri", "crates/*"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["CatchLight Contributors"]
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+thiserror = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+rusqlite = { version = "0.33", features = ["bundled", "blob"] }
+blake3 = "1"
+
+catchlight-core = { path = "crates/catchlight-core" }
+catchlight-db = { path = "crates/catchlight-db" }
+catchlight-indexer = { path = "crates/catchlight-indexer" }
+catchlight-metadata = { path = "crates/catchlight-metadata" }
+catchlight-thumbnail = { path = "crates/catchlight-thumbnail" }
+catchlight-dedup = { path = "crates/catchlight-dedup" }
+catchlight-ai = { path = "crates/catchlight-ai" }
+catchlight-geo = { path = "crates/catchlight-geo" }
+catchlight-video = { path = "crates/catchlight-video" }

@@ -1,0 +1,12 @@
+[package]
+name = "catchlight-indexer"
+version.workspace = true
+edition.workspace = true
+description = "File system indexing engine (MFT/USN on Windows, walkdir/inotify on Linux)"
+
+[dependencies]
+catchlight-core.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+notify = "7"
+walkdir = "2"

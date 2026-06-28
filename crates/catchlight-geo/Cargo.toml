@@ -1,0 +1,10 @@
+[package]
+name = "catchlight-geo"
+version.workspace = true
+edition.workspace = true
+description = "Reverse geocoding and location grouping"
+
+[dependencies]
+catchlight-core.workspace = true
+serde.workspace = true
+tracing.workspace = true

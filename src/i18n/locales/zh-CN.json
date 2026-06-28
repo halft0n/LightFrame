@@ -1,0 +1,15 @@
+{
+  "app.title": "拾光",
+  "sidebar.library": "图库",
+  "sidebar.allPhotos": "所有照片",
+  "sidebar.timeline": "时间线",
+  "sidebar.locations": "地点",
+  "sidebar.people": "人物",
+  "sidebar.tools": "工具",
+  "sidebar.duplicates": "重复照片",
+  "sidebar.screenshots": "截图",
+  "sidebar.settings": "设置",
+  "sidebar.albums": "相簿",
+  "main.welcome": "欢迎使用 拾光",
+  "main.addFolder": "添加文件夹开始浏览照片"
+}
