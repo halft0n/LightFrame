@@ -57,6 +57,9 @@ mod tests {
     async fn ensure_python_degrades_gracefully() {
         let mut d = AiDispatcher::new();
         let result = d.ensure_python().await;
-        assert!(result.is_ok(), "should not error even if Python unavailable");
+        assert!(
+            result.is_ok(),
+            "should not error even if Python unavailable"
+        );
     }
 }

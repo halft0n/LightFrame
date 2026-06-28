@@ -177,11 +177,8 @@ fn v3(conn: &Connection) -> catchlight_core::Result<()> {
     }
 
     if !columns.iter().any(|c| c == "deleted_at") {
-        conn.execute(
-            "ALTER TABLE media_files ADD COLUMN deleted_at TEXT",
-            [],
-        )
-        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        conn.execute("ALTER TABLE media_files ADD COLUMN deleted_at TEXT", [])
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
     }
 
     conn.execute(

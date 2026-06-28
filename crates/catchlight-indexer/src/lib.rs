@@ -1,20 +1,18 @@
 pub mod scanner;
 pub mod watcher;
 
-pub use watcher::{is_media_change_event, FolderWatcher};
+pub use watcher::{FolderWatcher, is_media_change_event};
 
 use catchlight_core::Result;
 use std::path::{Path, PathBuf};
 
 const PHOTO_EXTENSIONS: &[&str] = &[
-    "jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "tif", "heic", "heif",
-    "avif", "svg", "ico", "raw", "cr2", "cr3", "nef", "arw", "dng", "orf",
-    "rw2", "pef", "raf",
+    "jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "tif", "heic", "heif", "avif", "svg",
+    "ico", "raw", "cr2", "cr3", "nef", "arw", "dng", "orf", "rw2", "pef", "raf",
 ];
 
 const VIDEO_EXTENSIONS: &[&str] = &[
-    "mp4", "mov", "avi", "mkv", "wmv", "flv", "webm", "m4v", "3gp", "mts",
-    "m2ts", "ts",
+    "mp4", "mov", "avi", "mkv", "wmv", "flv", "webm", "m4v", "3gp", "mts", "m2ts", "ts",
 ];
 
 pub fn is_media_file(path: &Path) -> bool {
@@ -38,7 +36,9 @@ pub fn classify_extension(path: &Path) -> catchlight_core::media::MediaType {
         return catchlight_core::media::MediaType::Video;
     }
 
-    let raw_exts = ["raw", "cr2", "cr3", "nef", "arw", "dng", "orf", "rw2", "pef", "raf"];
+    let raw_exts = [
+        "raw", "cr2", "cr3", "nef", "arw", "dng", "orf", "rw2", "pef", "raf",
+    ];
     if raw_exts.contains(&ext.as_str()) {
         return catchlight_core::media::MediaType::Raw;
     }

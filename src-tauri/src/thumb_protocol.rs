@@ -1,13 +1,15 @@
 use crate::state::AppState;
 use catchlight_core::media::ThumbnailSize;
 use catchlight_thumbnail::thumb_path;
-use http::{header, StatusCode};
+use http::{StatusCode, header};
 use std::path::Path;
-use tauri::http::Response;
 use tauri::State;
+use tauri::http::Response;
 
 pub fn handle(state: &State<'_, AppState>, request_path: &str) -> Response<Vec<u8>> {
-    let path = request_path.trim_start_matches('/').trim_start_matches("localhost/");
+    let path = request_path
+        .trim_start_matches('/')
+        .trim_start_matches("localhost/");
 
     let Some((media_id_str, size_str)) = path.split_once('/') else {
         return error_response(StatusCode::BAD_REQUEST, "invalid thumb URL");

@@ -1,5 +1,5 @@
 use crate::state::AppState;
-use catchlight_indexer::{is_media_change_event, FolderWatcher};
+use catchlight_indexer::{FolderWatcher, is_media_change_event};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};

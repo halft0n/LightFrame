@@ -87,7 +87,11 @@ mod tests {
 
     #[test]
     fn thumbnail_size_serde_roundtrip() {
-        for size in [ThumbnailSize::Micro, ThumbnailSize::Small, ThumbnailSize::Large] {
+        for size in [
+            ThumbnailSize::Micro,
+            ThumbnailSize::Small,
+            ThumbnailSize::Large,
+        ] {
             let json = serde_json::to_string(&size).unwrap();
             let back: ThumbnailSize = serde_json::from_str(&json).unwrap();
             assert_eq!(size, back);

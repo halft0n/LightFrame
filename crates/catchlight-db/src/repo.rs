@@ -1,6 +1,6 @@
 use crate::Database;
 use catchlight_core::media::{MediaFile, MediaType};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,7 +24,9 @@ fn map_watched_folder_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<WatchedFo
         path: row.get(1)?,
         media_count: row.get(2)?,
         last_scan: row.get(3)?,
-        scan_status: row.get::<_, Option<String>>(4)?.unwrap_or_else(default_scan_status),
+        scan_status: row
+            .get::<_, Option<String>>(4)?
+            .unwrap_or_else(default_scan_status),
     })
 }
 
@@ -269,8 +271,9 @@ impl Database {
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?
         };
 
-        self.get_watched_folder(id)?
-            .ok_or_else(|| catchlight_core::Error::Other(format!("folder {id} not found after insert")))
+        self.get_watched_folder(id)?.ok_or_else(|| {
+            catchlight_core::Error::Other(format!("folder {id} not found after insert"))
+        })
     }
 
     pub fn upsert_media(&self, folder_id: i64, media: &MediaFile) -> catchlight_core::Result<i64> {
@@ -344,7 +347,11 @@ impl Database {
         Ok(result.flatten())
     }
 
-    pub fn get_all_media(&self, limit: i64, offset: i64) -> catchlight_core::Result<Vec<MediaFile>> {
+    pub fn get_all_media(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> catchlight_core::Result<Vec<MediaFile>> {
         let conn = self.conn();
         let mut stmt = conn
             .prepare(
@@ -377,11 +384,10 @@ impl Database {
                     size_bytes: row.get(4)?,
                     width: row.get(5)?,
                     height: row.get(6)?,
-                    created_at: row.get::<_, Option<String>>(7)?
+                    created_at: row
+                        .get::<_, Option<String>>(7)?
                         .and_then(|s| s.parse().ok()),
-                    modified_at: row.get::<_, String>(8)?
-                        .parse()
-                        .unwrap_or_default(),
+                    modified_at: row.get::<_, String>(8)?.parse().unwrap_or_default(),
                     blake3_hash: row.get(9)?,
                     dhash: row.get(10)?,
                     latitude: row.get(11)?,
@@ -480,17 +486,18 @@ impl Database {
 
     pub fn remove_watched_folder(&self, id: i64) -> catchlight_core::Result<()> {
         let conn = self.conn();
-        conn.execute(
-            "DELETE FROM media_files WHERE folder_id = ?1",
-            params![id],
-        )
-        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        conn.execute("DELETE FROM media_files WHERE folder_id = ?1", params![id])
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
         conn.execute("DELETE FROM watched_folders WHERE id = ?1", params![id])
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
         Ok(())
     }
 
-    pub fn set_folder_scan_status(&self, folder_id: i64, status: &str) -> catchlight_core::Result<()> {
+    pub fn set_folder_scan_status(
+        &self,
+        folder_id: i64,
+        status: &str,
+    ) -> catchlight_core::Result<()> {
         let conn = self.conn();
         conn.execute(
             "UPDATE watched_folders SET scan_status = ?1 WHERE id = ?2",
@@ -701,10 +708,8 @@ impl Database {
             let mut groups = Vec::new();
             for row in rows {
                 let ids_str = row.map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
-                let media_ids: Vec<i64> = ids_str
-                    .split(',')
-                    .filter_map(|s| s.parse().ok())
-                    .collect();
+                let media_ids: Vec<i64> =
+                    ids_str.split(',').filter_map(|s| s.parse().ok()).collect();
                 if media_ids.len() >= 2 {
                     groups.push(media_ids);
                 }
@@ -716,10 +721,9 @@ impl Database {
         for media_ids in hash_groups {
             let similarities = vec![1.0; media_ids.len()];
             let group_id = self.create_duplicate_group("exact", &media_ids, &similarities)?;
-            groups.push(
-                self.get_duplicate_group_by_id(group_id)?
-                    .ok_or_else(|| catchlight_core::Error::Other(format!("group {group_id} not found")))?,
-            );
+            groups.push(self.get_duplicate_group_by_id(group_id)?.ok_or_else(|| {
+                catchlight_core::Error::Other(format!("group {group_id} not found"))
+            })?);
         }
 
         Ok(groups)
@@ -793,16 +797,17 @@ impl Database {
             }
 
             let group_id = self.create_duplicate_group("perceptual", &members, &similarities)?;
-            groups.push(
-                self.get_duplicate_group_by_id(group_id)?
-                    .ok_or_else(|| catchlight_core::Error::Other(format!("group {group_id} not found")))?,
-            );
+            groups.push(self.get_duplicate_group_by_id(group_id)?.ok_or_else(|| {
+                catchlight_core::Error::Other(format!("group {group_id} not found"))
+            })?);
         }
 
         Ok(groups)
     }
 
-    fn exact_duplicate_member_ids(&self) -> catchlight_core::Result<std::collections::HashSet<i64>> {
+    fn exact_duplicate_member_ids(
+        &self,
+    ) -> catchlight_core::Result<std::collections::HashSet<i64>> {
         let conn = self.conn();
         let mut stmt = conn
             .prepare(
@@ -850,7 +855,10 @@ impl Database {
         Ok(candidates)
     }
 
-    fn get_duplicate_group_by_id(&self, group_id: i64) -> catchlight_core::Result<Option<DuplicateGroup>> {
+    fn get_duplicate_group_by_id(
+        &self,
+        group_id: i64,
+    ) -> catchlight_core::Result<Option<DuplicateGroup>> {
         let conn = self.conn();
         let mut stmt = conn
             .prepare(
@@ -966,8 +974,11 @@ impl Database {
 
     pub fn delete_duplicate_group(&self, group_id: i64) -> catchlight_core::Result<()> {
         let conn = self.conn();
-        conn.execute("DELETE FROM duplicate_groups WHERE id = ?1", params![group_id])
-            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        conn.execute(
+            "DELETE FROM duplicate_groups WHERE id = ?1",
+            params![group_id],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
         Ok(())
     }
 
@@ -1004,8 +1015,10 @@ impl Database {
 
     pub fn get_duplicate_groups_count(&self) -> catchlight_core::Result<i64> {
         let conn = self.conn();
-        conn.query_row("SELECT COUNT(*) FROM duplicate_groups", [], |row| row.get(0))
-            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+        conn.query_row("SELECT COUNT(*) FROM duplicate_groups", [], |row| {
+            row.get(0)
+        })
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))
     }
 
     pub fn resolve_duplicate_group(
@@ -1118,12 +1131,20 @@ impl Database {
         Ok(())
     }
 
-    pub fn batch_set_deleted(&self, media_ids: &[i64], deleted: bool) -> catchlight_core::Result<usize> {
+    pub fn batch_set_deleted(
+        &self,
+        media_ids: &[i64],
+        deleted: bool,
+    ) -> catchlight_core::Result<usize> {
         if media_ids.is_empty() {
             return Ok(0);
         }
         let conn = self.conn();
-        let placeholders: Vec<String> = media_ids.iter().enumerate().map(|(i, _)| format!("?{}", i + 1)).collect();
+        let placeholders: Vec<String> = media_ids
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect();
         let sql = if deleted {
             format!(
                 "UPDATE media_files SET is_deleted = 1, deleted_at = datetime('now') WHERE id IN ({})",
@@ -1135,19 +1156,30 @@ impl Database {
                 placeholders.join(", ")
             )
         };
-        let params: Vec<&dyn rusqlite::ToSql> = media_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+        let params: Vec<&dyn rusqlite::ToSql> = media_ids
+            .iter()
+            .map(|id| id as &dyn rusqlite::ToSql)
+            .collect();
         let affected = conn
             .execute(&sql, params.as_slice())
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
         Ok(affected)
     }
 
-    pub fn batch_set_favorite(&self, media_ids: &[i64], favorite: bool) -> catchlight_core::Result<usize> {
+    pub fn batch_set_favorite(
+        &self,
+        media_ids: &[i64],
+        favorite: bool,
+    ) -> catchlight_core::Result<usize> {
         if media_ids.is_empty() {
             return Ok(0);
         }
         let conn = self.conn();
-        let placeholders: Vec<String> = media_ids.iter().enumerate().map(|(i, _)| format!("?{}", i + 2)).collect();
+        let placeholders: Vec<String> = media_ids
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 2))
+            .collect();
         let sql = format!(
             "UPDATE media_files SET is_favorite = ?1 WHERE is_deleted = 0 AND id IN ({})",
             placeholders.join(", ")
@@ -1169,12 +1201,19 @@ impl Database {
             return Ok(0);
         }
         let conn = self.conn();
-        let placeholders: Vec<String> = media_ids.iter().enumerate().map(|(i, _)| format!("?{}", i + 1)).collect();
+        let placeholders: Vec<String> = media_ids
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect();
         let sql = format!(
             "DELETE FROM media_files WHERE is_deleted = 1 AND id IN ({})",
             placeholders.join(", ")
         );
-        let params: Vec<&dyn rusqlite::ToSql> = media_ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+        let params: Vec<&dyn rusqlite::ToSql> = media_ids
+            .iter()
+            .map(|id| id as &dyn rusqlite::ToSql)
+            .collect();
         let affected = conn
             .execute(&sql, params.as_slice())
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
@@ -1290,8 +1329,9 @@ impl Database {
         .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 
         let id = conn.last_insert_rowid();
-        self.get_album(id)?
-            .ok_or_else(|| catchlight_core::Error::Other(format!("album {id} not found after insert")))
+        self.get_album(id)?.ok_or_else(|| {
+            catchlight_core::Error::Other(format!("album {id} not found after insert"))
+        })
     }
 
     pub fn update_album(
@@ -1444,9 +1484,8 @@ impl Database {
             ));
         }
 
-        let rule_json = serde_json::to_string(rule).map_err(|e| {
-            catchlight_core::Error::Other(format!("failed to serialize rule: {e}"))
-        })?;
+        let rule_json = serde_json::to_string(rule)
+            .map_err(|e| catchlight_core::Error::Other(format!("failed to serialize rule: {e}")))?;
 
         let conn = self.conn();
         conn.execute(
@@ -1494,7 +1533,10 @@ impl Database {
 
         for album in &mut albums {
             let rule: SmartAlbumRule = serde_json::from_str(&album.rule_json).map_err(|e| {
-                catchlight_core::Error::Other(format!("invalid rule_json for album {}: {e}", album.id))
+                catchlight_core::Error::Other(format!(
+                    "invalid rule_json for album {}: {e}",
+                    album.id
+                ))
             })?;
             album.media_count = smart_album_media_count(self, &rule)?;
         }
@@ -1576,7 +1618,9 @@ impl Database {
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 
         let groups: Vec<(String, String, String, i64)> = group_stmt
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?
             .filter_map(|r| r.ok())
             .collect();
@@ -1712,7 +1756,11 @@ impl Database {
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))
     }
 
-    pub fn get_favorites(&self, limit: i64, offset: i64) -> catchlight_core::Result<Vec<MediaFile>> {
+    pub fn get_favorites(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> catchlight_core::Result<Vec<MediaFile>> {
         let conn = self.conn();
         let mut stmt = conn
             .prepare(

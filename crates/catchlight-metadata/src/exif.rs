@@ -37,11 +37,23 @@ pub fn extract_exif(path: &Path) -> Result<PhotoMetadata> {
     }
 
     if let Some(field) = exif.get_field(exif::Tag::Make, exif::In::PRIMARY) {
-        meta.camera_make = Some(field.display_value().to_string().trim_matches('"').to_string());
+        meta.camera_make = Some(
+            field
+                .display_value()
+                .to_string()
+                .trim_matches('"')
+                .to_string(),
+        );
     }
 
     if let Some(field) = exif.get_field(exif::Tag::Model, exif::In::PRIMARY) {
-        meta.camera_model = Some(field.display_value().to_string().trim_matches('"').to_string());
+        meta.camera_model = Some(
+            field
+                .display_value()
+                .to_string()
+                .trim_matches('"')
+                .to_string(),
+        );
     }
 
     if let Some(field) = exif.get_field(exif::Tag::ISOSpeed, exif::In::PRIMARY) {
@@ -70,16 +82,32 @@ pub fn extract_exif(path: &Path) -> Result<PhotoMetadata> {
 }
 
 fn extract_gps(exif: &exif::Exif) -> std::result::Result<(f64, f64), ()> {
-    let lat = exif.get_field(exif::Tag::GPSLatitude, exif::In::PRIMARY).ok_or(())?;
-    let lat_ref = exif.get_field(exif::Tag::GPSLatitudeRef, exif::In::PRIMARY).ok_or(())?;
-    let lon = exif.get_field(exif::Tag::GPSLongitude, exif::In::PRIMARY).ok_or(())?;
-    let lon_ref = exif.get_field(exif::Tag::GPSLongitudeRef, exif::In::PRIMARY).ok_or(())?;
+    let lat = exif
+        .get_field(exif::Tag::GPSLatitude, exif::In::PRIMARY)
+        .ok_or(())?;
+    let lat_ref = exif
+        .get_field(exif::Tag::GPSLatitudeRef, exif::In::PRIMARY)
+        .ok_or(())?;
+    let lon = exif
+        .get_field(exif::Tag::GPSLongitude, exif::In::PRIMARY)
+        .ok_or(())?;
+    let lon_ref = exif
+        .get_field(exif::Tag::GPSLongitudeRef, exif::In::PRIMARY)
+        .ok_or(())?;
 
     let lat_val = parse_dms(&lat.value).ok_or(())?;
     let lon_val = parse_dms(&lon.value).ok_or(())?;
 
-    let lat_sign = if lat_ref.display_value().to_string().contains('S') { -1.0 } else { 1.0 };
-    let lon_sign = if lon_ref.display_value().to_string().contains('W') { -1.0 } else { 1.0 };
+    let lat_sign = if lat_ref.display_value().to_string().contains('S') {
+        -1.0
+    } else {
+        1.0
+    };
+    let lon_sign = if lon_ref.display_value().to_string().contains('W') {
+        -1.0
+    } else {
+        1.0
+    };
 
     Ok((lat_val * lat_sign, lon_val * lon_sign))
 }

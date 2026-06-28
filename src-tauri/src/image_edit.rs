@@ -446,7 +446,9 @@ fn solve_8x8(a: &[[f32; 8]; 8], b: &[f32; 8]) -> [f32; 8] {
             }
         }
     }
-    [m[0][8], m[1][8], m[2][8], m[3][8], m[4][8], m[5][8], m[6][8], m[7][8]]
+    [
+        m[0][8], m[1][8], m[2][8], m[3][8], m[4][8], m[5][8], m[6][8], m[7][8],
+    ]
 }
 
 fn invert_homography(m: &[f32; 9]) -> Option<[f32; 9]> {
@@ -483,7 +485,10 @@ fn transform_point(m: &[f32; 9], x: f32, y: f32) -> (f32, f32) {
     if w.abs() < 1e-8 {
         return (0.0, 0.0);
     }
-    ((m[0] * x + m[1] * y + m[2]) / w, (m[3] * x + m[4] * y + m[5]) / w)
+    (
+        (m[0] * x + m[1] * y + m[2]) / w,
+        (m[3] * x + m[4] * y + m[5]) / w,
+    )
 }
 
 pub(crate) fn build_curve_lut(points: &[[u16; 2]]) -> [u8; 256] {
@@ -511,7 +516,11 @@ pub(crate) fn build_curve_lut(points: &[[u16; 2]]) -> [u8; 256] {
     let mut ms = vec![0.0f32; n];
     for i in 0..n - 1 {
         let dx = xs[i + 1] - xs[i];
-        ms[i] = if dx != 0.0 { (ys[i + 1] - ys[i]) / dx } else { 0.0 };
+        ms[i] = if dx != 0.0 {
+            (ys[i + 1] - ys[i]) / dx
+        } else {
+            0.0
+        };
     }
     ms[n - 1] = ms[n - 2];
 
@@ -600,7 +609,12 @@ fn hue_in_range(h: f32, start: f32, end: f32) -> bool {
     }
 }
 
-fn apply_selective_color(h: f32, s: f32, l: f32, channel: &SelectiveColorChannel) -> (f32, f32, f32) {
+fn apply_selective_color(
+    h: f32,
+    s: f32,
+    l: f32,
+    channel: &SelectiveColorChannel,
+) -> (f32, f32, f32) {
     let mut nh = (h + channel.hue / 360.0).fract();
     if nh < 0.0 {
         nh += 1.0;
@@ -755,7 +769,10 @@ fn apply_pixel_adjustments(img: &mut RgbaImage, params: &EditParams) {
                 ];
                 for (name, ch) in channels {
                     if let Some(channel) = ch {
-                        if channel.hue == 0.0 && channel.saturation == 0.0 && channel.luminance == 0.0 {
+                        if channel.hue == 0.0
+                            && channel.saturation == 0.0
+                            && channel.luminance == 0.0
+                        {
                             continue;
                         }
                         let (start, end) = selective_color_hue_range(name);
@@ -791,7 +808,8 @@ fn apply_pixel_adjustments(img: &mut RgbaImage, params: &EditParams) {
                 let dy = y as f32 - cy;
                 let dist = (dx * dx + dy * dy).sqrt() / max_dist;
                 if dist > vignette_radius {
-                    let falloff = ((dist - vignette_radius) / (1.0 - vignette_radius)).clamp(0.0, 1.0);
+                    let falloff =
+                        ((dist - vignette_radius) / (1.0 - vignette_radius)).clamp(0.0, 1.0);
                     let factor = 1.0 - vignette * falloff;
                     r *= factor;
                     g *= factor;
@@ -1162,7 +1180,9 @@ mod tests {
             }
         }"#;
         let params = parse_edit_params(json).expect("selective color json should parse");
-        let sc = params.selective_color.expect("selective color should be present");
+        let sc = params
+            .selective_color
+            .expect("selective color should be present");
         let reds = sc.reds.expect("reds channel should be present");
         assert!(approx_eq(reds.hue, 10.0));
         assert!(approx_eq(reds.saturation, 20.0));
@@ -1397,7 +1417,10 @@ mod tests {
             ..Default::default()
         };
         let edited = apply_edits(original, &params);
-        assert!(is_near_grayscale(&edited), "B&W at 100% should yield grayscale");
+        assert!(
+            is_near_grayscale(&edited),
+            "B&W at 100% should yield grayscale"
+        );
     }
 
     #[test]
@@ -1500,10 +1523,16 @@ mod tests {
         };
         for v in [0.0, 10.0 / 255.0, 50.0 / 255.0] {
             let out = apply_levels_value(v, &levels);
-            assert!(approx_eq(out, 0.0), "values at/below inputBlack should map to 0");
+            assert!(
+                approx_eq(out, 0.0),
+                "values at/below inputBlack should map to 0"
+            );
         }
         let out_high = apply_levels_value(200.0 / 255.0, &levels);
-        assert!(out_high > 0.5, "values above inputBlack should remain bright");
+        assert!(
+            out_high > 0.5,
+            "values above inputBlack should remain bright"
+        );
     }
 
     #[test]
@@ -1549,7 +1578,10 @@ mod tests {
         let blue_diff: u32 = (0..3)
             .map(|i| (blue_before[i] as i32 - blue_after[i] as i32).unsigned_abs())
             .sum();
-        assert!(red_diff > blue_diff, "reds adjustment should affect red pixels more than blue");
+        assert!(
+            red_diff > blue_diff,
+            "reds adjustment should affect red pixels more than blue"
+        );
     }
 
     #[test]

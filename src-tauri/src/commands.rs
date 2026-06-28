@@ -1,9 +1,9 @@
 use crate::scan;
 use crate::state::{AppState, ScanProgress};
 use crate::watcher;
+use catchlight_ai::AiStatus;
 use catchlight_core::config::AppConfig;
 use catchlight_core::media::MediaFile;
-use catchlight_ai::AiStatus;
 use catchlight_db::{
     Album, DuplicateGroupDetail, LocationGroup, LocationStats, MediaNeighbors, Memory, Person,
     SmartAlbum, SmartAlbumRule, TimelineGroup, WatchedFolder,
@@ -64,10 +64,7 @@ pub fn remove_watched_folder(
 
 #[tauri::command]
 pub fn list_watched_folders(state: State<'_, AppState>) -> Result<Vec<WatchedFolder>, String> {
-    state
-        .db
-        .list_watched_folders()
-        .map_err(|e| e.to_string())
+    state.db.list_watched_folders().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -95,7 +92,11 @@ pub fn get_media_by_id(state: State<'_, AppState>, id: i64) -> Result<Option<Med
 }
 
 #[tauri::command]
-pub fn scan_folder(app: AppHandle, state: State<'_, AppState>, folder_id: i64) -> Result<(), String> {
+pub fn scan_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    folder_id: i64,
+) -> Result<(), String> {
     state
         .db
         .get_watched_folder(folder_id)
@@ -136,22 +137,15 @@ pub fn get_timeline_groups(
 }
 
 #[tauri::command]
-pub fn get_media_neighbors(
-    state: State<'_, AppState>,
-    id: i64,
-) -> Result<MediaNeighbors, String> {
-    state
-        .db
-        .get_media_neighbors(id)
-        .map_err(|e| e.to_string())
+pub fn get_media_neighbors(state: State<'_, AppState>, id: i64) -> Result<MediaNeighbors, String> {
+    state.db.get_media_neighbors(id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn run_dedup_scan(state: State<'_, AppState>) -> Result<DedupScanResult, String> {
     let db = state.db.clone();
     tokio::task::spawn_blocking(move || {
-        db.clear_duplicate_groups()
-            .map_err(|e| e.to_string())?;
+        db.clear_duplicate_groups().map_err(|e| e.to_string())?;
 
         let exact_groups = db.find_exact_duplicates().map_err(|e| e.to_string())?;
         let perceptual_groups = db
@@ -224,10 +218,7 @@ pub async fn dismiss_duplicate_group(
 
 #[tauri::command]
 pub fn get_location_groups(state: State<'_, AppState>) -> Result<Vec<LocationGroup>, String> {
-    state
-        .db
-        .get_location_groups()
-        .map_err(|e| e.to_string())
+    state.db.get_location_groups().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -248,10 +239,7 @@ pub fn get_media_by_location(
 
 #[tauri::command]
 pub fn get_location_stats(state: State<'_, AppState>) -> Result<LocationStats, String> {
-    state
-        .db
-        .get_location_stats()
-        .map_err(|e| e.to_string())
+    state.db.get_location_stats().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -381,10 +369,7 @@ pub fn delete_media(state: State<'_, AppState>, media_id: i64) -> Result<(), Str
 
 #[tauri::command]
 pub fn get_deleted_media(state: State<'_, AppState>) -> Result<Vec<MediaFile>, String> {
-    state
-        .db
-        .list_deleted_media()
-        .map_err(|e| e.to_string())
+    state.db.list_deleted_media().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -404,7 +389,10 @@ pub fn permanently_delete(state: State<'_, AppState>, media_id: i64) -> Result<(
 }
 
 #[tauri::command]
-pub fn batch_delete_media(state: State<'_, AppState>, media_ids: Vec<i64>) -> Result<usize, String> {
+pub fn batch_delete_media(
+    state: State<'_, AppState>,
+    media_ids: Vec<i64>,
+) -> Result<usize, String> {
     state
         .db
         .batch_set_deleted(&media_ids, true)
@@ -436,7 +424,10 @@ pub fn batch_toggle_favorite(
 }
 
 #[tauri::command]
-pub fn batch_restore_media(state: State<'_, AppState>, media_ids: Vec<i64>) -> Result<usize, String> {
+pub fn batch_restore_media(
+    state: State<'_, AppState>,
+    media_ids: Vec<i64>,
+) -> Result<usize, String> {
     state
         .db
         .batch_set_deleted(&media_ids, false)
@@ -444,7 +435,10 @@ pub fn batch_restore_media(state: State<'_, AppState>, media_ids: Vec<i64>) -> R
 }
 
 #[tauri::command]
-pub fn batch_permanent_delete(state: State<'_, AppState>, media_ids: Vec<i64>) -> Result<usize, String> {
+pub fn batch_permanent_delete(
+    state: State<'_, AppState>,
+    media_ids: Vec<i64>,
+) -> Result<usize, String> {
     state
         .db
         .batch_permanent_delete(&media_ids)
@@ -492,18 +486,12 @@ pub fn create_smart_album(
 
 #[tauri::command]
 pub fn list_smart_albums(state: State<'_, AppState>) -> Result<Vec<SmartAlbum>, String> {
-    state
-        .db
-        .list_smart_albums()
-        .map_err(|e| e.to_string())
+    state.db.list_smart_albums().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn delete_smart_album(state: State<'_, AppState>, id: i64) -> Result<(), String> {
-    state
-        .db
-        .delete_smart_album(id)
-        .map_err(|e| e.to_string())
+    state.db.delete_smart_album(id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -587,11 +575,7 @@ pub fn rename_person(
 }
 
 #[tauri::command]
-pub fn save_edit(
-    state: State<'_, AppState>,
-    media_id: i64,
-    params: String,
-) -> Result<(), String> {
+pub fn save_edit(state: State<'_, AppState>, media_id: i64, params: String) -> Result<(), String> {
     crate::image_edit::parse_edit_params(&params)?;
     state
         .db

@@ -59,7 +59,10 @@ async fn scan_ignores_non_media() {
 #[tokio::test]
 async fn scan_nonexistent_folder() {
     let result = scan_folder(std::path::Path::new("/nonexistent/path/12345")).await;
-    assert!(result.is_ok(), "walkdir silently returns empty for nonexistent paths");
+    assert!(
+        result.is_ok(),
+        "walkdir silently returns empty for nonexistent paths"
+    );
 }
 
 #[tokio::test]

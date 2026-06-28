@@ -33,9 +33,12 @@ pub async fn extract_frame(video: &Path, output: &Path, timestamp_secs: f64) -> 
 pub async fn get_duration(video: &Path) -> Result<f64> {
     let output = Command::new("ffprobe")
         .args([
-            "-v", "quiet",
-            "-show_entries", "format=duration",
-            "-of", "default=noprint_wrappers=1:nokey=1",
+            "-v",
+            "quiet",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
             &video.to_string_lossy(),
         ])
         .output()

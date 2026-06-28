@@ -13,7 +13,9 @@ impl PythonSidecar {
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
             .spawn()
-            .map_err(|e| catchlight_core::Error::Ai(format!("failed to spawn Python sidecar: {e}")))?;
+            .map_err(|e| {
+                catchlight_core::Error::Ai(format!("failed to spawn Python sidecar: {e}"))
+            })?;
 
         Ok(Self { _process: process })
     }

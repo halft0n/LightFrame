@@ -1,6 +1,6 @@
+use catchlight_core::Result;
 use catchlight_core::config;
 use catchlight_core::media::{DecodedImage, ThumbnailSize};
-use catchlight_core::Result;
 use std::path::{Path, PathBuf};
 use tracing::debug;
 
@@ -29,8 +29,7 @@ pub fn generate(src: &Path, hash: &str, size: ThumbnailSize) -> Result<PathBuf> 
         std::fs::create_dir_all(parent)?;
     }
 
-    let img = image::open(src)
-        .map_err(|e| catchlight_core::Error::Thumbnail(e.to_string()))?;
+    let img = image::open(src).map_err(|e| catchlight_core::Error::Thumbnail(e.to_string()))?;
 
     let pixels = size.pixels();
     let thumb = img.thumbnail(pixels, pixels);
@@ -44,8 +43,7 @@ pub fn generate(src: &Path, hash: &str, size: ThumbnailSize) -> Result<PathBuf> 
 }
 
 pub fn generate_micro_blob(src: &Path) -> Result<Vec<u8>> {
-    let img = image::open(src)
-        .map_err(|e| catchlight_core::Error::Thumbnail(e.to_string()))?;
+    let img = image::open(src).map_err(|e| catchlight_core::Error::Thumbnail(e.to_string()))?;
 
     let thumb = img.thumbnail(64, 64);
     let mut buf = std::io::Cursor::new(Vec::new());

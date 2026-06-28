@@ -1,11 +1,10 @@
-use catchlight_core::media::DecodedImage;
 use catchlight_core::Result;
+use catchlight_core::media::DecodedImage;
 use image::imageops::FilterType;
 use std::path::Path;
 
 pub fn compute_dhash(path: &Path) -> Result<u64> {
-    let img = image::open(path)
-        .map_err(|e| catchlight_core::Error::Other(e.to_string()))?;
+    let img = image::open(path).map_err(|e| catchlight_core::Error::Other(e.to_string()))?;
 
     let gray = img.resize_exact(9, 8, FilterType::Lanczos3).to_luma8();
     let mut hash: u64 = 0;

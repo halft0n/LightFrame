@@ -43,7 +43,10 @@ fn add_watched_folder() {
     assert_eq!(folder.scan_status, "idle");
 
     let folder2 = db.add_watched_folder("/photos").unwrap();
-    assert_eq!(folder.id, folder2.id, "duplicate folder should return same id");
+    assert_eq!(
+        folder.id, folder2.id,
+        "duplicate folder should return same id"
+    );
 }
 
 #[test]
@@ -90,9 +93,12 @@ fn get_media_count() {
 
     assert_eq!(db.get_media_count().unwrap(), 0);
 
-    db.upsert_media(fid, &sample_media("/photos/a.jpg")).unwrap();
-    db.upsert_media(fid, &sample_media("/photos/b.png")).unwrap();
-    db.upsert_media(fid, &sample_media("/photos/c.webp")).unwrap();
+    db.upsert_media(fid, &sample_media("/photos/a.jpg"))
+        .unwrap();
+    db.upsert_media(fid, &sample_media("/photos/b.png"))
+        .unwrap();
+    db.upsert_media(fid, &sample_media("/photos/c.webp"))
+        .unwrap();
 
     assert_eq!(db.get_media_count().unwrap(), 3);
 }
@@ -150,7 +156,10 @@ fn get_watched_folder_by_id() {
     let db = create_test_db();
     let fid = insert_folder_id(&db, "/photos");
 
-    let folder = db.get_watched_folder(fid).unwrap().expect("folder should exist");
+    let folder = db
+        .get_watched_folder(fid)
+        .unwrap()
+        .expect("folder should exist");
     assert_eq!(folder.id, fid);
     assert_eq!(folder.path, "/photos");
     assert_eq!(folder.media_count, 0);
@@ -164,8 +173,10 @@ fn remove_watched_folder_deletes_folder_and_media() {
     let db = create_test_db();
     let fid = insert_folder_id(&db, "/photos");
 
-    db.upsert_media(fid, &sample_media("/photos/a.jpg")).unwrap();
-    db.upsert_media(fid, &sample_media("/photos/b.jpg")).unwrap();
+    db.upsert_media(fid, &sample_media("/photos/a.jpg"))
+        .unwrap();
+    db.upsert_media(fid, &sample_media("/photos/b.jpg"))
+        .unwrap();
     assert_eq!(db.get_media_count().unwrap(), 2);
 
     db.remove_watched_folder(fid).unwrap();
@@ -183,7 +194,10 @@ fn get_media_by_id() {
         .upsert_media(fid, &sample_media("/photos/sunset.jpg"))
         .unwrap();
 
-    let media = db.get_media_by_id(media_id).unwrap().expect("media should exist");
+    let media = db
+        .get_media_by_id(media_id)
+        .unwrap()
+        .expect("media should exist");
     assert_eq!(media.id, media_id);
     assert_eq!(media.filename, "sunset.jpg");
     assert_eq!(media.path, "/photos/sunset.jpg");
@@ -217,10 +231,15 @@ fn watched_folder_media_count() {
     let db = create_test_db();
     let fid = insert_folder_id(&db, "/photos");
 
-    db.upsert_media(fid, &sample_media("/photos/a.jpg")).unwrap();
-    db.upsert_media(fid, &sample_media("/photos/b.jpg")).unwrap();
+    db.upsert_media(fid, &sample_media("/photos/a.jpg"))
+        .unwrap();
+    db.upsert_media(fid, &sample_media("/photos/b.jpg"))
+        .unwrap();
 
-    let folder = db.get_watched_folder(fid).unwrap().expect("folder should exist");
+    let folder = db
+        .get_watched_folder(fid)
+        .unwrap()
+        .expect("folder should exist");
     assert_eq!(folder.media_count, 2);
 }
 
@@ -291,8 +310,7 @@ fn get_media_neighbors_returns_adjacent_ids() {
 
     for (i, date) in dates.iter().enumerate() {
         let mut media = sample_media(&format!("/photos/img_{i}.jpg"));
-        media.created_at =
-            Some(NaiveDateTime::parse_from_str(date, "%Y-%m-%d %H:%M:%S").unwrap());
+        media.created_at = Some(NaiveDateTime::parse_from_str(date, "%Y-%m-%d %H:%M:%S").unwrap());
         let id = db.upsert_media(folder_id, &media).unwrap();
         ids.push(id);
     }
@@ -382,7 +400,12 @@ fn test_find_exact_duplicates() {
     let member_ids: Vec<i64> = groups[0].members.iter().map(|m| m.media_id).collect();
     assert!(member_ids.contains(&id1));
     assert!(member_ids.contains(&id2));
-    assert!(groups[0].members.iter().all(|m| (m.similarity - 1.0).abs() < f64::EPSILON));
+    assert!(
+        groups[0]
+            .members
+            .iter()
+            .all(|m| (m.similarity - 1.0).abs() < f64::EPSILON)
+    );
 }
 
 #[test]
@@ -464,8 +487,12 @@ fn test_create_and_list_duplicate_groups() {
     let db = create_test_db();
     let fid = insert_folder_id(&db, "/photos");
 
-    let id1 = db.upsert_media(fid, &sample_media("/photos/a.jpg")).unwrap();
-    let id2 = db.upsert_media(fid, &sample_media("/photos/b.jpg")).unwrap();
+    let id1 = db
+        .upsert_media(fid, &sample_media("/photos/a.jpg"))
+        .unwrap();
+    let id2 = db
+        .upsert_media(fid, &sample_media("/photos/b.jpg"))
+        .unwrap();
 
     let group_id = db
         .create_duplicate_group("exact", &[id1, id2], &[1.0, 1.0])
@@ -489,8 +516,12 @@ fn test_resolve_duplicate() {
     let db = create_test_db();
     let fid = insert_folder_id(&db, "/photos");
 
-    let id1 = db.upsert_media(fid, &sample_media("/photos/keep.jpg")).unwrap();
-    let id2 = db.upsert_media(fid, &sample_media("/photos/remove.jpg")).unwrap();
+    let id1 = db
+        .upsert_media(fid, &sample_media("/photos/keep.jpg"))
+        .unwrap();
+    let id2 = db
+        .upsert_media(fid, &sample_media("/photos/remove.jpg"))
+        .unwrap();
     let group_id = db
         .create_duplicate_group("exact", &[id1, id2], &[1.0, 1.0])
         .unwrap();
@@ -510,8 +541,12 @@ fn test_dismiss_duplicate_group() {
     let db = create_test_db();
     let fid = insert_folder_id(&db, "/photos");
 
-    let id1 = db.upsert_media(fid, &sample_media("/photos/a.jpg")).unwrap();
-    let id2 = db.upsert_media(fid, &sample_media("/photos/b.jpg")).unwrap();
+    let id1 = db
+        .upsert_media(fid, &sample_media("/photos/a.jpg"))
+        .unwrap();
+    let id2 = db
+        .upsert_media(fid, &sample_media("/photos/b.jpg"))
+        .unwrap();
     let group_id = db
         .create_duplicate_group("exact", &[id1, id2], &[1.0, 1.0])
         .unwrap();
@@ -525,7 +560,9 @@ fn test_dismiss_duplicate_group() {
 fn test_toggle_favorite() {
     let db = create_test_db();
     let fid = insert_folder_id(&db, "/photos");
-    let media_id = db.upsert_media(fid, &sample_media("/photos/a.jpg")).unwrap();
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/a.jpg"))
+        .unwrap();
 
     let favorited = db.toggle_favorite(media_id).unwrap();
     assert!(favorited);
@@ -538,7 +575,9 @@ fn test_toggle_favorite() {
 fn test_soft_delete_and_cleanup() {
     let db = create_test_db();
     let fid = insert_folder_id(&db, "/photos");
-    let media_id = db.upsert_media(fid, &sample_media("/photos/a.jpg")).unwrap();
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/a.jpg"))
+        .unwrap();
 
     db.set_deleted(media_id, true).unwrap();
     let deleted = db.list_deleted_media().unwrap();
@@ -559,12 +598,16 @@ fn test_soft_delete_and_cleanup() {
     assert_eq!(cleaned, 1);
     assert!(db.get_media_by_id(media_id).unwrap().is_none());
 
-    let media_id2 = db.upsert_media(fid, &sample_media("/photos/b.jpg")).unwrap();
+    let media_id2 = db
+        .upsert_media(fid, &sample_media("/photos/b.jpg"))
+        .unwrap();
     db.set_deleted(media_id2, true).unwrap();
     db.set_deleted(media_id2, false).unwrap();
     assert!(db.list_deleted_media().unwrap().is_empty());
 
-    let media_id3 = db.upsert_media(fid, &sample_media("/photos/c.jpg")).unwrap();
+    let media_id3 = db
+        .upsert_media(fid, &sample_media("/photos/c.jpg"))
+        .unwrap();
     db.set_deleted(media_id3, true).unwrap();
     db.permanently_delete_media(media_id3).unwrap();
     assert!(db.get_media_by_id(media_id3).unwrap().is_none());

@@ -1,6 +1,6 @@
 use catchlight_core::Result;
 use notify::event::EventKind;
-use notify::{RecommendedWatcher, RecursiveMode, Watcher, Event};
+use notify::{Event, RecommendedWatcher, RecursiveMode, Watcher};
 use std::path::Path;
 use tokio::sync::mpsc;
 use tracing::debug;
@@ -70,9 +70,7 @@ mod tests {
     #[test]
     fn non_media_event_is_ignored() {
         let event = Event {
-            kind: EventKind::Modify(ModifyKind::Data(
-                notify::event::DataChange::Any,
-            )),
+            kind: EventKind::Modify(ModifyKind::Data(notify::event::DataChange::Any)),
             paths: vec![PathBuf::from("/photos/readme.txt")],
             attrs: notify::event::EventAttributes::default(),
         };

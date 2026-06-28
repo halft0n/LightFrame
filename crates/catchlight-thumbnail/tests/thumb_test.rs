@@ -16,8 +16,14 @@ fn thumb_path_structure() {
     let path = thumb_path(hash, ThumbnailSize::Small);
 
     let path_str = path.to_string_lossy();
-    assert!(path_str.contains("ab"), "should use first 2 chars as prefix");
-    assert!(path_str.contains("cd"), "should use chars 2-4 as sub-prefix");
+    assert!(
+        path_str.contains("ab"),
+        "should use first 2 chars as prefix"
+    );
+    assert!(
+        path_str.contains("cd"),
+        "should use chars 2-4 as sub-prefix"
+    );
     assert!(path_str.ends_with("_small.webp"));
 }
 

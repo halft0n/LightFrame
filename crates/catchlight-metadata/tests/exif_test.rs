@@ -1,4 +1,4 @@
-use catchlight_metadata::{extract, PhotoMetadata};
+use catchlight_metadata::{PhotoMetadata, extract};
 use std::io::Write;
 
 #[test]

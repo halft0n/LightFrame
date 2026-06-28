@@ -30,11 +30,7 @@ pub fn check_ai_status() -> AiStatus {
     let sidecar_available = python_installed && is_sidecar_module_available();
 
     let (clip_available, face_available, status_message) = if !python_installed {
-        (
-            false,
-            false,
-            "Python 3 is not installed".to_string(),
-        )
+        (false, false, "Python 3 is not installed".to_string())
     } else if !sidecar_available {
         (
             false,

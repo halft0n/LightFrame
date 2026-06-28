@@ -4,8 +4,8 @@ use catchlight_db::Database;
 use catchlight_indexer::{classify_extension, scan_folder as discover_files};
 use futures::stream::{self, StreamExt};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Emitter};
 use tracing::{error, warn};
 
@@ -94,11 +94,7 @@ pub async fn run_scan(
     Ok(())
 }
 
-async fn process_file(
-    db: &Database,
-    folder_id: i64,
-    path: &Path,
-) -> catchlight_core::Result<()> {
+async fn process_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_core::Result<()> {
     let path = path.to_path_buf();
     let media_type = classify_extension(&path);
 
@@ -199,8 +195,16 @@ async fn process_file(
                     let frame = temp_frame.clone();
                     let hash_clone = hash.clone();
                     let _ = tokio::task::spawn_blocking(move || {
-                        let _ = catchlight_thumbnail::generate(&frame, &hash_clone, ThumbnailSize::Micro);
-                        let _ = catchlight_thumbnail::generate(&frame, &hash_clone, ThumbnailSize::Small);
+                        let _ = catchlight_thumbnail::generate(
+                            &frame,
+                            &hash_clone,
+                            ThumbnailSize::Micro,
+                        );
+                        let _ = catchlight_thumbnail::generate(
+                            &frame,
+                            &hash_clone,
+                            ThumbnailSize::Small,
+                        );
                         let _ = std::fs::remove_file(&frame);
                     })
                     .await;

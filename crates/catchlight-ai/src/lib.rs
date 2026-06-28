@@ -5,4 +5,4 @@ pub mod status;
 
 pub use dispatcher::AiDispatcher;
 pub use screenshot::detect_screenshot;
-pub use status::{check_ai_status, AiStatus};
+pub use status::{AiStatus, check_ai_status};

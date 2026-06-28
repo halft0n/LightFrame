@@ -17,8 +17,8 @@ pub struct Database {
 
 impl Database {
     pub fn open(path: &Path) -> catchlight_core::Result<Self> {
-        let conn = Connection::open(path)
-            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        let conn =
+            Connection::open(path).map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 
         conn.execute_batch(
             "PRAGMA journal_mode = WAL;

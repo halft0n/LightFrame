@@ -1,4 +1,4 @@
-use http::{header, StatusCode};
+use http::{StatusCode, header};
 use std::path::Path;
 use tauri::http::Response;
 
@@ -62,10 +62,9 @@ fn percent_decode(s: &str) -> String {
     let mut i = 0;
     while i < bytes.len() {
         if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(val) = u8::from_str_radix(
-                std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""),
-                16,
-            ) {
+            if let Ok(val) =
+                u8::from_str_radix(std::str::from_utf8(&bytes[i + 1..i + 3]).unwrap_or(""), 16)
+            {
                 result.push(val);
                 i += 3;
                 continue;
@@ -93,8 +92,18 @@ mod tests {
     fn encode_uri_component(path: &str) -> String {
         path.bytes()
             .map(|b| match b {
-                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'!' | b'~'
-                | b'*' | b'\'' | b'(' | b')' => (b as char).to_string(),
+                b'A'..=b'Z'
+                | b'a'..=b'z'
+                | b'0'..=b'9'
+                | b'-'
+                | b'_'
+                | b'.'
+                | b'!'
+                | b'~'
+                | b'*'
+                | b'\''
+                | b'('
+                | b')' => (b as char).to_string(),
                 _ => format!("%{b:02X}"),
             })
             .collect()
@@ -111,7 +120,10 @@ mod tests {
 
     #[test]
     fn percent_decode_plain_path() {
-        assert_eq!(percent_decode("/home/user/photo.jpg"), "/home/user/photo.jpg");
+        assert_eq!(
+            percent_decode("/home/user/photo.jpg"),
+            "/home/user/photo.jpg"
+        );
     }
 
     #[test]
@@ -141,7 +153,10 @@ mod tests {
         assert_eq!(guess_mime(Path::new("a.mp4")), "video/mp4");
         assert_eq!(guess_mime(Path::new("a.mov")), "video/quicktime");
         assert_eq!(guess_mime(Path::new("a.heic")), "image/heif");
-        assert_eq!(guess_mime(Path::new("a.unknown")), "application/octet-stream");
+        assert_eq!(
+            guess_mime(Path::new("a.unknown")),
+            "application/octet-stream"
+        );
         assert_eq!(guess_mime(Path::new("noext")), "application/octet-stream");
     }
 
