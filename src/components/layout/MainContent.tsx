@@ -19,30 +19,18 @@ import { PeopleView } from "@/components/people/PeopleView";
 import { PersonDetailView } from "@/components/people/PersonDetailView";
 import { SearchResults } from "@/components/search/SearchResults";
 import { PhotoViewer } from "@/components/viewer/PhotoViewer";
-import { ViewerOverlay } from "@/components/viewer/ViewerOverlay";
 import { useAppStore } from "@/store/appStore";
-
-function ViewerLayer() {
-  const { viewingMediaId } = useAppStore();
-  if (viewingMediaId == null) return null;
-  return (
-    <ViewerOverlay>
-      <PhotoViewer mediaId={viewingMediaId} />
-    </ViewerOverlay>
-  );
-}
 
 export function MainContent() {
   const { t } = useTranslation();
-  const { currentView, watchedFolders, searchQuery } = useAppStore();
+  const { currentView, watchedFolders, searchQuery, viewingMediaId } = useAppStore();
+
+  if (viewingMediaId != null) {
+    return <PhotoViewer mediaId={viewingMediaId} />;
+  }
 
   if (searchQuery.trim()) {
-    return (
-      <>
-        <SearchResults />
-        <ViewerLayer />
-      </>
-    );
+    return <SearchResults />;
   }
 
   if (watchedFolders.length === 0 && currentView !== "settings") {
@@ -57,149 +45,37 @@ export function MainContent() {
 
   if (currentView === "settings") return <FolderManager />;
 
-  if (currentView === "duplicates") {
-    return (
-      <>
-        <DedupView />
-        <ViewerLayer />
-      </>
-    );
-  }
+  if (currentView === "duplicates") return <DedupView />;
 
-  if (currentView === "screenshots") {
-    return (
-      <>
-        <ScreenshotView />
-        <ViewerLayer />
-      </>
-    );
-  }
+  if (currentView === "screenshots") return <ScreenshotView />;
 
-  if (currentView === "all") {
-    return (
-      <>
-        <PhotoGrid />
-        <ViewerLayer />
-      </>
-    );
-  }
+  if (currentView === "all") return <PhotoGrid />;
 
-  if (currentView === "videos") {
-    return (
-      <>
-        <VideosView />
-        <ViewerLayer />
-      </>
-    );
-  }
+  if (currentView === "videos") return <VideosView />;
 
-  if (currentView === "timeline") {
-    return (
-      <>
-        <TimelineView />
-        <ViewerLayer />
-      </>
-    );
-  }
+  if (currentView === "timeline") return <TimelineView />;
 
-  if (currentView === "locations") {
-    return (
-      <>
-        <LocationView />
-        <ViewerLayer />
-      </>
-    );
-  }
+  if (currentView === "locations") return <LocationView />;
 
-  if (currentView === "albums") {
-    return (
-      <>
-        <AlbumListView />
-        <ViewerLayer />
-      </>
-    );
-  }
+  if (currentView === "albums") return <AlbumListView />;
 
-  if (currentView === "album-detail") {
-    return (
-      <>
-        <AlbumDetailView />
-        <ViewerLayer />
-      </>
-    );
-  }
+  if (currentView === "album-detail") return <AlbumDetailView />;
 
-  if (currentView === "smart-albums") {
-    return (
-      <>
-        <SmartAlbumListView />
-        <ViewerLayer />
-      </>
-    );
-  }
+  if (currentView === "smart-albums") return <SmartAlbumListView />;
 
-  if (currentView === "smart-album-detail") {
-    return (
-      <>
-        <SmartAlbumView />
-        <ViewerLayer />
-      </>
-    );
-  }
+  if (currentView === "smart-album-detail") return <SmartAlbumView />;
 
-  if (currentView === "memories") {
-    return (
-      <>
-        <MemoriesView />
-        <ViewerLayer />
-      </>
-    );
-  }
+  if (currentView === "memories") return <MemoriesView />;
 
-  if (currentView === "memory-detail") {
-    return (
-      <>
-        <MemoryDetailView />
-        <ViewerLayer />
-      </>
-    );
-  }
+  if (currentView === "memory-detail") return <MemoryDetailView />;
 
-  if (currentView === "people") {
-    return (
-      <>
-        <PeopleView />
-        <ViewerLayer />
-      </>
-    );
-  }
+  if (currentView === "people") return <PeopleView />;
 
-  if (currentView === "person-detail") {
-    return (
-      <>
-        <PersonDetailView />
-        <ViewerLayer />
-      </>
-    );
-  }
+  if (currentView === "person-detail") return <PersonDetailView />;
 
-  if (currentView === "favorites") {
-    return (
-      <>
-        <FavoritesView />
-        <ViewerLayer />
-      </>
-    );
-  }
+  if (currentView === "favorites") return <FavoritesView />;
 
-  if (currentView === "deleted") {
-    return (
-      <>
-        <DeletedView />
-        <ViewerLayer />
-      </>
-    );
-  }
+  if (currentView === "deleted") return <DeletedView />;
 
   return (
     <div className="flex flex-1 items-center justify-center text-neutral-500">

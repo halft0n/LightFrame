@@ -37,19 +37,19 @@ describe("PhotoViewer", () => {
       if (cmd === "get_media_list") return Promise.resolve([mockMedia]);
       if (cmd === "has_edits") return Promise.resolve(false);
       if (cmd === "get_edit") return Promise.resolve(null);
+      if (cmd === "toggle_favorite") return Promise.resolve(true);
       return Promise.resolve(null);
     });
   });
 
-  it("renders close button", () => {
+  it("renders back button", () => {
     render(<PhotoViewer mediaId={1} />);
-    const closeBtn = screen.getByLabelText(/关闭|Close/i);
-    expect(closeBtn).toBeInTheDocument();
+    const backBtn = screen.getByLabelText(/返回|Back/i);
+    expect(backBtn).toBeInTheDocument();
   });
 
-  it("renders zoom controls", () => {
+  it("renders zoom slider", () => {
     render(<PhotoViewer mediaId={1} />);
-    expect(screen.getByTitle(/放大|Zoom in/i)).toBeInTheDocument();
-    expect(screen.getByTitle(/缩小|Zoom out/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/缩放|Zoom/i)).toBeInTheDocument();
   });
 });

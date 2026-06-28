@@ -7,6 +7,7 @@ import {
   getThumbnailUrl,
   getEdit,
   hasEdits,
+  toggleFavorite,
   type MediaItem,
 } from "@/lib/tauri";
 import { buildClipPath, buildCssFilter, buildImageTransform, parseEditParams } from "@/lib/editParams";
@@ -57,6 +58,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   const [useOriginal, setUseOriginal] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [isFavorite, setIsFavorite] = useState(false);
   const [edited, setEdited] = useState(false);
   const [editParamsJson, setEditParamsJson] = useState<string | null>(null);
   const [previewKey, setPreviewKey] = useState(0);
@@ -71,6 +73,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
 
   useEffect(() => {
     resetView();
+    setIsFavorite(false);
     let cancelled = false;
 
     void (async () => {
@@ -168,6 +171,25 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
     setUseOriginal(true);
   }, []);
 
+  const handleShare = useCallback(async () => {
+    if (!media || !navigator.share) return;
+    try {
+      await navigator.share({ title: media.filename, text: media.filename });
+    } catch {
+      // User cancelled or share unavailable
+    }
+  }, [media]);
+
+  const handleToggleFavorite = useCallback(async () => {
+    const next = await toggleFavorite(mediaId);
+    setIsFavorite(next);
+  }, [mediaId]);
+
+  const handleZoomChange = useCallback((value: number) => {
+    setZoom(value);
+    if (value <= 1) setPan({ x: 0, y: 0 });
+  }, []);
+
   const handleEditorSaved = useCallback(async () => {
     const hasEdit = await hasEdits(mediaId);
     setEdited(hasEdit);
@@ -193,37 +215,72 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
     : "";
 
   return (
-    <div className="flex h-full flex-col bg-black/95 text-white">
-      <div className="flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => navigate(neighbors.prev_id)}
-            disabled={neighbors.prev_id == null}
-            className="rounded-lg px-3 py-1.5 text-sm text-neutral-300 transition hover:bg-white/10 disabled:opacity-30"
-            title={t("viewer.prev")}
-            aria-label={t("viewer.prev")}
-          >
-            ‹
-          </button>
-          <button
-            type="button"
-            onClick={() => navigate(neighbors.next_id)}
-            disabled={neighbors.next_id == null}
-            className="rounded-lg px-3 py-1.5 text-sm text-neutral-300 transition hover:bg-white/10 disabled:opacity-30"
-            title={t("viewer.next")}
-            aria-label={t("viewer.next")}
-          >
-            ›
-          </button>
-        </div>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-neutral-950 text-white">
+      <div className="flex shrink-0 items-center gap-3 border-b border-white/10 px-4 py-2">
+        <button
+          type="button"
+          onClick={closeViewer}
+          className="rounded-lg px-2 py-1.5 text-lg leading-none text-neutral-300 transition hover:bg-white/10"
+          title={t("viewer.back")}
+          aria-label={t("viewer.back")}
+        >
+          ‹
+        </button>
 
-        <div className="flex items-center gap-2">
+        {!isVideo && (
+          <input
+            type="range"
+            min={MIN_ZOOM}
+            max={MAX_ZOOM}
+            step={0.05}
+            value={zoom}
+            onChange={(e) => handleZoomChange(Number(e.target.value))}
+            className="h-1 w-24 shrink-0 cursor-pointer accent-blue-500"
+            aria-label={t("viewer.zoom")}
+          />
+        )}
+
+        <p className="min-w-0 flex-1 truncate text-center text-sm font-medium text-neutral-100">
+          {media ? formatMediaDate(media, locale) : "—"}
+        </p>
+
+        <div className="flex shrink-0 items-center gap-1">
           {edited && (
             <span className="rounded-full bg-blue-600/80 px-2 py-0.5 text-xs font-medium">
               {t("editor.hasEdits")}
             </span>
           )}
+          <button
+            type="button"
+            onClick={() => setShowInfo((v) => !v)}
+            className={`rounded-lg px-3 py-1.5 text-sm transition hover:bg-white/10 ${
+              showInfo ? "bg-white/10 text-white" : "text-neutral-300"
+            }`}
+            title={t("viewer.info")}
+          >
+            {t("viewer.info")}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleShare()}
+            disabled={!media || typeof navigator.share !== "function"}
+            className="rounded-lg px-3 py-1.5 text-sm text-neutral-300 transition hover:bg-white/10 disabled:opacity-30"
+            title={t("viewer.share")}
+            aria-label={t("viewer.share")}
+          >
+            ↗
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleToggleFavorite()}
+            className={`rounded-lg px-3 py-1.5 text-sm transition hover:bg-white/10 ${
+              isFavorite ? "text-red-400" : "text-neutral-300"
+            }`}
+            title={t("viewer.favorite")}
+            aria-label={t("viewer.favorite")}
+          >
+            {isFavorite ? "♥" : "♡"}
+          </button>
           {!isVideo && (
             <button
               type="button"
@@ -233,50 +290,6 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
               {t("viewer.edit")}
             </button>
           )}
-          {!isVideo && (
-            <>
-              <button
-                type="button"
-                onClick={() => setZoom((z) => Math.min(MAX_ZOOM, z + 0.25))}
-                className="rounded-lg px-3 py-1.5 text-sm text-neutral-300 transition hover:bg-white/10"
-                title={t("viewer.zoomIn")}
-              >
-                +
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setZoom((z) => {
-                    const next = Math.max(MIN_ZOOM, z - 0.25);
-                    if (next <= 1) setPan({ x: 0, y: 0 });
-                    return next;
-                  });
-                }}
-                className="rounded-lg px-3 py-1.5 text-sm text-neutral-300 transition hover:bg-white/10"
-                title={t("viewer.zoomOut")}
-              >
-                −
-              </button>
-            </>
-          )}
-          <button
-            type="button"
-            onClick={() => setShowInfo((v) => !v)}
-            className={`rounded-lg px-3 py-1.5 text-sm transition hover:bg-white/10 ${
-              showInfo ? "bg-white/10 text-white" : "text-neutral-300"
-            }`}
-          >
-            {t("viewer.info")}
-          </button>
-          <button
-            type="button"
-            onClick={closeViewer}
-            className="rounded-lg px-3 py-1.5 text-sm text-neutral-300 transition hover:bg-white/10"
-            title={t("viewer.close")}
-            aria-label={t("viewer.close")}
-          >
-            ✕
-          </button>
         </div>
       </div>
 
@@ -382,7 +395,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
       {!isVideo && (
         <div
           ref={filmstripRef}
-          className="flex gap-2 overflow-x-auto border-t border-white/10 px-4 py-3"
+          className="flex shrink-0 gap-2 overflow-x-auto border-t border-white/10 px-4 py-3"
         >
           {filmstrip.map((item) => (
             <button
@@ -403,6 +416,10 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
           ))}
         </div>
       )}
+
+      <div className="shrink-0 border-t border-white/10 px-4 py-1.5 text-center text-xs text-neutral-400">
+        <span className="truncate">{media?.filename ?? "—"}</span>
+      </div>
 
       {editorOpen && media && (
         <ImageEditor

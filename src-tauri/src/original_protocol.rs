@@ -84,3 +84,102 @@ fn error_response(status: StatusCode, message: &str) -> Response<Vec<u8>> {
         .body(message.as_bytes().to_vec())
         .unwrap()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use http::StatusCode;
+
+    fn encode_uri_component(path: &str) -> String {
+        path.bytes()
+            .map(|b| match b {
+                b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'!' | b'~'
+                | b'*' | b'\'' | b'(' | b')' => (b as char).to_string(),
+                _ => format!("%{b:02X}"),
+            })
+            .collect()
+    }
+
+    fn request_path_for_file(file: &Path) -> String {
+        format!("/{}", encode_uri_component(file.to_str().unwrap()))
+    }
+
+    #[test]
+    fn percent_decode_empty_string() {
+        assert_eq!(percent_decode(""), "");
+    }
+
+    #[test]
+    fn percent_decode_plain_path() {
+        assert_eq!(percent_decode("/home/user/photo.jpg"), "/home/user/photo.jpg");
+    }
+
+    #[test]
+    fn percent_decode_encoded_slashes_and_spaces() {
+        assert_eq!(
+            percent_decode("%2Fhome%2Fuser%2Fmy%20photo.jpg"),
+            "/home/user/my photo.jpg"
+        );
+    }
+
+    #[test]
+    fn percent_decode_only_percent_chars() {
+        assert_eq!(percent_decode("%%%"), "%%%");
+    }
+
+    #[test]
+    fn percent_decode_malformed_sequences() {
+        assert_eq!(percent_decode("%GG%2Z%"), "%GG%2Z%");
+        assert_eq!(percent_decode("%2"), "%2");
+    }
+
+    #[test]
+    fn guess_mime_common_formats() {
+        assert_eq!(guess_mime(Path::new("a.jpg")), "image/jpeg");
+        assert_eq!(guess_mime(Path::new("a.JPEG")), "image/jpeg");
+        assert_eq!(guess_mime(Path::new("a.png")), "image/png");
+        assert_eq!(guess_mime(Path::new("a.mp4")), "video/mp4");
+        assert_eq!(guess_mime(Path::new("a.mov")), "video/quicktime");
+        assert_eq!(guess_mime(Path::new("a.heic")), "image/heif");
+        assert_eq!(guess_mime(Path::new("a.unknown")), "application/octet-stream");
+        assert_eq!(guess_mime(Path::new("noext")), "application/octet-stream");
+    }
+
+    #[test]
+    fn handle_missing_file_returns_404() {
+        let resp = handle("/nonexistent/path/photo.jpg");
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn handle_serves_existing_file_with_mime() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("sample.png");
+        std::fs::write(&file, b"\x89PNG\r\n").unwrap();
+
+        let resp = handle(&request_path_for_file(&file));
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            resp.headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok()),
+            Some("image/png")
+        );
+        assert_eq!(*resp.body(), b"\x89PNG\r\n".to_vec());
+    }
+
+    #[test]
+    fn handle_strips_localhost_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("test.jpg");
+        std::fs::write(&file, b"jpeg-data").unwrap();
+
+        let encoded = encode_uri_component(file.to_str().unwrap());
+        let request_path = format!("/localhost/{encoded}");
+        let resp = handle(&request_path);
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(*resp.body(), b"jpeg-data".to_vec());
+    }
+}
