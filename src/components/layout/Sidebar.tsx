@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "@/i18n/useTranslation";
-import { setView, useAppStore, type AppView } from "@/store/appStore";
+import { navigate, useAppStore, type AppView } from "@/store/appStore";
 import { NavIcon, type NavIconName } from "./NavIcons";
 
 const LIBRARY_ITEMS: SidebarItem[] = [
@@ -24,6 +24,27 @@ interface SidebarItem {
   key: string;
   icon: NavIconName;
   view: AppView;
+}
+
+function folderDisplayName(path: string): string {
+  const normalized = path.replace(/\\/g, "/");
+  const parts = normalized.split("/").filter(Boolean);
+  return parts[parts.length - 1] ?? path;
+}
+
+function FolderIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      className={`h-4 w-4 shrink-0 ${className ?? ""}`}
+      aria-hidden="true"
+    >
+      <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+    </svg>
+  );
 }
 
 function isNavActive(currentView: AppView, itemView: AppView): boolean {
@@ -100,12 +121,13 @@ function NavItem({
 
 export function Sidebar() {
   const { t } = useTranslation();
-  const { currentView } = useAppStore();
+  const { currentView, watchedFolders, selectedFolderId } = useAppStore();
   const [libraryExpanded, setLibraryExpanded] = useState(true);
+  const [foldersExpanded, setFoldersExpanded] = useState(true);
   const [albumsExpanded, setAlbumsExpanded] = useState(true);
 
   const handleNav = (view: AppView) => {
-    setView(view);
+    navigate(view);
   };
 
   return (
@@ -139,6 +161,43 @@ export function Sidebar() {
             </ul>
           )}
         </div>
+
+        {watchedFolders.length > 0 && (
+          <div>
+            <TreeHeader
+              label={t("sidebar.folders")}
+              icon={<FolderIcon className="text-amber-500" />}
+              expanded={foldersExpanded}
+              onToggle={() => setFoldersExpanded((v) => !v)}
+            />
+            {foldersExpanded && (
+              <ul className="space-y-px">
+                {watchedFolders.map((folder) => {
+                  const active =
+                    currentView === "folder" && selectedFolderId === folder.id;
+                  return (
+                    <li key={folder.id}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          navigate("folder", {
+                            folderId: folder.id,
+                            folderPath: folder.path,
+                          })
+                        }
+                        className={navItemClass(active)}
+                        title={folder.path}
+                      >
+                        <FolderIcon className={active ? "opacity-100" : "opacity-60"} />
+                        <span className="truncate">{folderDisplayName(folder.path)}</span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        )}
 
         <div>
           <TreeHeader

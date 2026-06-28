@@ -54,7 +54,7 @@ beforeEach(() => {
   setMedia([], 0);
   vi.clearAllMocks();
   (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
-    if (cmd === "get_media_list") return Promise.resolve([]);
+    if (cmd === "get_media_page") return Promise.resolve([]);
     if (cmd === "get_media_count") return Promise.resolve(0);
     if (cmd === "list_albums") return Promise.resolve([]);
     return Promise.resolve(null);
@@ -92,7 +92,7 @@ describe("PhotoGrid", () => {
     setMedia(moreMedia, 120);
 
     (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
-      if (cmd === "get_media_list") return Promise.reject(new Error("network error"));
+      if (cmd === "get_media_page") return Promise.reject(new Error("network error"));
       if (cmd === "list_albums") return Promise.resolve([]);
       return Promise.resolve(null);
     });

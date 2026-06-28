@@ -48,6 +48,10 @@ pub fn run(conn: &Connection) -> catchlight_core::Result<()> {
         v8(conn)?;
     }
 
+    if current < 9 {
+        v9(conn)?;
+    }
+
     Ok(())
 }
 
@@ -346,6 +350,31 @@ fn v8(conn: &Connection) -> catchlight_core::Result<()> {
     conn.execute(
         "INSERT OR IGNORE INTO schema_version (version) VALUES (8)",
         [],
+    )
+    .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+fn v9(conn: &Connection) -> catchlight_core::Result<()> {
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_media_files_created_at ON media_files(created_at) WHERE is_deleted = 0;
+        CREATE INDEX IF NOT EXISTS idx_media_files_media_type ON media_files(media_type) WHERE is_deleted = 0;
+        CREATE INDEX IF NOT EXISTS idx_media_files_favorite ON media_files(is_favorite) WHERE is_deleted = 0 AND is_favorite = 1;
+        CREATE INDEX IF NOT EXISTS idx_media_files_deleted ON media_files(is_deleted, deleted_at) WHERE is_deleted = 1;
+        CREATE INDEX IF NOT EXISTS idx_media_files_country_city ON media_files(country, city) WHERE is_deleted = 0 AND country IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_media_files_blake3_hash ON media_files(blake3_hash) WHERE is_deleted = 0 AND blake3_hash IS NOT NULL;
+        CREATE INDEX IF NOT EXISTS idx_media_files_folder_id ON media_files(folder_id);
+        CREATE INDEX IF NOT EXISTS idx_media_files_path ON media_files(path);
+        CREATE INDEX IF NOT EXISTS idx_album_items_album_id ON album_items(album_id);
+        CREATE INDEX IF NOT EXISTS idx_album_items_media_id ON album_items(media_id);
+        CREATE INDEX IF NOT EXISTS idx_duplicate_members_group_id ON duplicate_members(group_id);
+        CREATE INDEX IF NOT EXISTS idx_duplicate_members_media_id ON duplicate_members(media_id);
+        CREATE INDEX IF NOT EXISTS idx_face_detections_person_id ON face_detections(person_id);
+        CREATE INDEX IF NOT EXISTS idx_face_detections_media_id ON face_detections(media_id);
+        CREATE INDEX IF NOT EXISTS idx_memory_items_memory_id ON memory_items(memory_id);
+
+        INSERT OR IGNORE INTO schema_version (version) VALUES (9);",
     )
     .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 

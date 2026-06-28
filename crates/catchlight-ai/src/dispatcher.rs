@@ -1,9 +1,11 @@
 use crate::python_sidecar::PythonSidecar;
 use catchlight_core::Result;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use tracing::info;
 
 pub struct AiDispatcher {
-    python: Option<PythonSidecar>,
+    python: Option<Arc<Mutex<PythonSidecar>>>,
 }
 
 impl AiDispatcher {
@@ -20,7 +22,7 @@ impl AiDispatcher {
             match PythonSidecar::spawn().await {
                 Ok(sidecar) => {
                     info!("Python AI sidecar started");
-                    self.python = Some(sidecar);
+                    self.python = Some(Arc::new(Mutex::new(sidecar)));
                 }
                 Err(e) => {
                     tracing::warn!("Python sidecar unavailable, AI features degraded: {e}");
@@ -28,6 +30,10 @@ impl AiDispatcher {
             }
         }
         Ok(())
+    }
+
+    pub fn python_sidecar(&self) -> Option<Arc<Mutex<PythonSidecar>>> {
+        self.python.clone()
     }
 }
 

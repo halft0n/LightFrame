@@ -1,5 +1,8 @@
 use crate::state::AppState;
-use catchlight_indexer::{FolderWatcher, is_media_change_event};
+use catchlight_db::Database;
+use catchlight_indexer::{
+    FolderWatcher, is_media_change_event, is_media_remove_event, is_media_rename_event,
+};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -73,8 +76,9 @@ pub fn start(app: &AppHandle, state: &AppState) -> catchlight_core::Result<()> {
     active.store(true, Ordering::SeqCst);
 
     let app = app.clone();
+    let db = Arc::clone(&state.db);
     let handle = tauri::async_runtime::spawn(async move {
-        watch_loop(app, watchers, active).await;
+        watch_loop(app, db, watchers, active).await;
     });
 
     *state
@@ -106,6 +110,7 @@ pub fn stop(state: &AppState) -> catchlight_core::Result<()> {
 
 async fn watch_loop(
     app: AppHandle,
+    db: Arc<Database>,
     mut watchers: Vec<(i64, FolderWatcher)>,
     active: Arc<AtomicBool>,
 ) {
@@ -114,7 +119,40 @@ async fn watch_loop(
     while active.load(Ordering::SeqCst) {
         for (folder_id, watcher) in &mut watchers {
             while let Some(event) = watcher.try_recv() {
-                if is_media_change_event(&event) {
+                if is_media_remove_event(&event) {
+                    for path in &event.paths {
+                        let path_str = path.to_string_lossy();
+                        match db.soft_delete_by_path(&path_str) {
+                            Ok(true) => {
+                                debug!(path = %path_str, "soft-deleted media after file removal")
+                            }
+                            Ok(false) => {}
+                            Err(e) => {
+                                warn!(path = %path_str, "failed to soft-delete removed file: {e}")
+                            }
+                        }
+                    }
+                } else if is_media_rename_event(&event) {
+                    if event.paths.len() >= 2 {
+                        let old_path = event.paths[0].to_string_lossy();
+                        let new_path = event.paths[1].to_string_lossy();
+                        match db.update_media_path(&old_path, &new_path) {
+                            Ok(true) => debug!(
+                                old = %old_path,
+                                new = %new_path,
+                                "updated media path after rename"
+                            ),
+                            Ok(false) => {
+                                pending.insert(*folder_id, Instant::now() + DEBOUNCE);
+                            }
+                            Err(e) => warn!(
+                                old = %old_path,
+                                new = %new_path,
+                                "failed to update media path after rename: {e}"
+                            ),
+                        }
+                    }
+                } else if is_media_change_event(&event) {
                     pending.insert(*folder_id, Instant::now() + DEBOUNCE);
                 }
             }

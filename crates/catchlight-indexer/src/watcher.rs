@@ -18,6 +18,21 @@ pub fn is_media_change_event(event: &Event) -> bool {
     )
 }
 
+pub fn is_media_remove_event(event: &Event) -> bool {
+    use crate::is_media_file;
+
+    matches!(event.kind, EventKind::Remove(_)) && event.paths.iter().any(|p| is_media_file(p))
+}
+
+pub fn is_media_rename_event(event: &Event) -> bool {
+    use crate::is_media_file;
+    use notify::event::ModifyKind;
+
+    matches!(event.kind, EventKind::Modify(ModifyKind::Name(_)))
+        && event.paths.len() >= 2
+        && event.paths.iter().any(|p| is_media_file(p))
+}
+
 pub struct FolderWatcher {
     _watcher: RecommendedWatcher,
     pub events: mpsc::UnboundedReceiver<Event>,
@@ -85,5 +100,23 @@ mod tests {
             attrs: notify::event::EventAttributes::default(),
         };
         assert!(is_media_change_event(&event));
+        assert!(is_media_remove_event(&event));
+        assert!(!is_media_rename_event(&event));
+    }
+
+    #[test]
+    fn media_rename_event_is_relevant() {
+        use notify::event::{ModifyKind, RenameMode};
+        let event = Event {
+            kind: EventKind::Modify(ModifyKind::Name(RenameMode::Both)),
+            paths: vec![
+                PathBuf::from("/photos/old.jpg"),
+                PathBuf::from("/photos/new.jpg"),
+            ],
+            attrs: notify::event::EventAttributes::default(),
+        };
+        assert!(is_media_rename_event(&event));
+        assert!(is_media_change_event(&event));
+        assert!(!is_media_remove_event(&event));
     }
 }

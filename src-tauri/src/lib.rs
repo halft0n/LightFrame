@@ -19,9 +19,15 @@ pub fn run() {
 
     let app_state = AppState::new().expect("failed to initialize application state");
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_process::init());
+
+    #[cfg(desktop)]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+
+    builder
         .manage(app_state)
         .setup(|app| {
             let handle = app.handle().clone();
@@ -38,7 +44,11 @@ pub fn run() {
             commands::remove_watched_folder,
             commands::list_watched_folders,
             commands::get_media_list,
+            commands::get_media_page,
             commands::get_media_count,
+            commands::get_media_by_folder,
+            commands::get_media_count_by_folder,
+            commands::batch_export,
             commands::get_media_by_id,
             commands::scan_folder,
             commands::get_scan_status,
@@ -98,8 +108,9 @@ pub fn run() {
             let state = ctx.app_handle().state::<AppState>();
             thumb_protocol::handle(&state, request.uri().path())
         })
-        .register_uri_scheme_protocol("original", |_ctx, request| {
-            original_protocol::handle(request.uri().path())
+        .register_uri_scheme_protocol("original", |ctx, request| {
+            let state = ctx.app_handle().state::<AppState>();
+            original_protocol::handle(&state, request.uri().path())
         })
         .run(tauri::generate_context!())
         .expect("error while running CatchLight");

@@ -204,6 +204,9 @@ fn get_media_by_id() {
 
     let missing = db.get_media_by_id(9999).unwrap();
     assert!(missing.is_none());
+
+    db.set_deleted(media_id, true).unwrap();
+    assert!(db.get_media_by_id(media_id).unwrap().is_none());
 }
 
 #[test]

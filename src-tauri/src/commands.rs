@@ -3,11 +3,12 @@ use crate::state::{AppState, ScanProgress};
 use crate::watcher;
 use catchlight_ai::AiStatus;
 use catchlight_core::config::AppConfig;
-use catchlight_core::media::MediaFile;
+use catchlight_core::media::{MediaFile, ThumbnailSize};
 use catchlight_db::{
     Album, DuplicateGroupDetail, LocationGroup, LocationStats, MediaNeighbors, Memory, Person,
     SmartAlbum, SmartAlbumRule, TimelineGroup, WatchedFolder,
 };
+use catchlight_thumbnail::thumb_path;
 use serde::Serialize;
 use tauri::{AppHandle, State};
 
@@ -82,8 +83,110 @@ pub fn get_media_list(
 }
 
 #[tauri::command]
+pub fn get_media_page(
+    state: State<'_, AppState>,
+    limit: i64,
+    cursor: Option<(String, i64)>,
+) -> Result<Vec<MediaFile>, String> {
+    let limit = limit.clamp(1, 500);
+    state
+        .db
+        .get_media_page(limit, cursor)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn get_media_count(state: State<'_, AppState>) -> Result<i64, String> {
     state.db.get_media_count().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_media_by_folder(
+    state: State<'_, AppState>,
+    folder_id: i64,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<MediaFile>, String> {
+    let limit = limit.clamp(1, 500);
+    let offset = offset.max(0);
+    state
+        .db
+        .get_media_by_folder(folder_id, limit, offset)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_media_count_by_folder(
+    state: State<'_, AppState>,
+    folder_id: i64,
+) -> Result<i64, String> {
+    state
+        .db
+        .get_media_count_by_folder(folder_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn batch_export(
+    state: State<'_, AppState>,
+    media_ids: Vec<i64>,
+    output_dir: String,
+) -> Result<usize, String> {
+    let output = std::path::Path::new(&output_dir);
+    if !output.is_dir() {
+        return Err(format!("not a directory: {output_dir}"));
+    }
+
+    let mut exported = 0usize;
+    for media_id in media_ids {
+        let Some(media) = state
+            .db
+            .get_media_by_id(media_id)
+            .map_err(|e| e.to_string())?
+        else {
+            continue;
+        };
+
+        let source = std::path::Path::new(&media.path);
+        if !source.is_file() {
+            tracing::warn!("batch export: source file not found: {}", media.path);
+            continue;
+        }
+
+        let dest = unique_export_path(output, &media.filename);
+        std::fs::copy(source, &dest)
+            .map_err(|e| format!("failed to copy {} to {}: {e}", media.path, dest.display()))?;
+        exported += 1;
+    }
+
+    Ok(exported)
+}
+
+fn unique_export_path(dir: &std::path::Path, filename: &str) -> std::path::PathBuf {
+    let mut dest = dir.join(filename);
+    if !dest.exists() {
+        return dest;
+    }
+
+    let path = std::path::Path::new(filename);
+    let stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(filename);
+    let ext = path.extension().and_then(|s| s.to_str());
+
+    for i in 1..1000 {
+        let candidate_name = match ext {
+            Some(ext) => format!("{stem}_{i}.{ext}"),
+            None => format!("{stem}_{i}"),
+        };
+        dest = dir.join(&candidate_name);
+        if !dest.exists() {
+            return dest;
+        }
+    }
+
+    dir.join(filename)
 }
 
 #[tauri::command]
@@ -387,10 +490,25 @@ pub fn restore_media(state: State<'_, AppState>, media_id: i64) -> Result<(), St
 
 #[tauri::command]
 pub fn permanently_delete(state: State<'_, AppState>, media_id: i64) -> Result<(), String> {
+    let Some((path, hash, deleted)) = state
+        .db
+        .get_media_deletion_info(media_id)
+        .map_err(|e| e.to_string())?
+    else {
+        return Err(format!("media {media_id} not found"));
+    };
+    if deleted == 0 {
+        return Err(format!(
+            "media {media_id} is not in trash; soft-delete before permanent delete"
+        ));
+    }
+
     state
         .db
         .permanently_delete_media(media_id)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    remove_media_from_disk(&path, hash.as_deref());
+    Ok(())
 }
 
 #[tauri::command]
@@ -444,10 +562,28 @@ pub fn batch_permanent_delete(
     state: State<'_, AppState>,
     media_ids: Vec<i64>,
 ) -> Result<usize, String> {
-    state
+    let mut to_remove = Vec::new();
+    for media_id in &media_ids {
+        if let Some((path, hash, deleted)) = state
+            .db
+            .get_media_deletion_info(*media_id)
+            .map_err(|e| e.to_string())?
+            && deleted != 0
+        {
+            to_remove.push((path, hash));
+        }
+    }
+
+    let affected = state
         .db
         .batch_permanent_delete(&media_ids)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    for (path, hash) in to_remove {
+        remove_media_from_disk(&path, hash.as_deref());
+    }
+
+    Ok(affected)
 }
 
 #[tauri::command]
@@ -635,4 +771,32 @@ pub fn export_edited(
         &params,
         quality,
     )
+}
+
+fn remove_media_from_disk(path: &str, hash: Option<&str>) {
+    match std::fs::remove_file(path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            tracing::warn!("permanent delete: file not found on disk: {path}");
+        }
+        Err(e) => tracing::warn!("permanent delete: failed to remove file {path}: {e}"),
+    }
+
+    if let Some(hash) = hash.filter(|h| h.len() >= 4) {
+        for size in [
+            ThumbnailSize::Micro,
+            ThumbnailSize::Small,
+            ThumbnailSize::Large,
+        ] {
+            let thumb = thumb_path(hash, size);
+            if thumb.exists()
+                && let Err(e) = std::fs::remove_file(&thumb)
+            {
+                tracing::warn!(
+                    "permanent delete: failed to remove thumbnail {}: {e}",
+                    thumb.display()
+                );
+            }
+        }
+    }
 }

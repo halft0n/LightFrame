@@ -3,16 +3,16 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { MainContent } from "@/components/layout/MainContent";
 import { useTranslation } from "@/i18n/useTranslation";
 import {
-  getMediaCount,
-  getMediaList,
   listWatchedFolders,
   onFolderChanged,
   onScanProgress,
   scanFolder,
 } from "@/lib/tauri";
 import {
+  addSearchHistory,
+  clearSearchHistory,
   getSnapshot,
-  setMedia,
+  loadMedia,
   setScanning,
   setSearchQuery,
   setWatchedFolders,
@@ -24,10 +24,13 @@ import { useTheme } from "@/hooks/useTheme";
 export default function App() {
   const { t } = useTranslation();
   useTheme();
-  const { totalCount, searchQuery } = useAppStore();
+  const { totalCount, searchQuery, searchHistory } = useAppStore();
   const [inputValue, setInputValue] = useState(searchQuery);
+  const [searchFocused, setSearchFocused] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastAutoRescanRef = useRef(0);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+  const lastHistoryQueryRef = useRef("");
 
   const RESCAN_COOLDOWN_MS = 30_000;
 
@@ -41,6 +44,14 @@ export default function App() {
     }
     debounceRef.current = setTimeout(() => {
       setSearchQuery(inputValue);
+      const trimmed = inputValue.trim();
+      if (trimmed && trimmed !== lastHistoryQueryRef.current) {
+        addSearchHistory(trimmed);
+        lastHistoryQueryRef.current = trimmed;
+      }
+      if (!trimmed) {
+        lastHistoryQueryRef.current = "";
+      }
     }, 300);
     return () => {
       if (debounceRef.current) {
@@ -48,6 +59,27 @@ export default function App() {
       }
     };
   }, [inputValue]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        searchContainerRef.current &&
+        !searchContainerRef.current.contains(event.target as Node)
+      ) {
+        setSearchFocused(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleHistorySelect = (query: string) => {
+    setInputValue(query);
+    setSearchQuery(query);
+    lastHistoryQueryRef.current = query;
+    addSearchHistory(query);
+    setSearchFocused(false);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -59,12 +91,7 @@ export default function App() {
         setWatchedFolders(folders);
 
         if (folders.length > 0) {
-          const [items, count] = await Promise.all([
-            getMediaList(0, 60),
-            getMediaCount(),
-          ]);
-          if (cancelled) return;
-          setMedia(items, count);
+          await loadMedia();
         }
       } catch {
         // Backend commands may be unavailable during web-only dev
@@ -85,12 +112,8 @@ export default function App() {
       if (progress.status === "complete") {
         void (async () => {
           try {
-            const [items, count, folders] = await Promise.all([
-              getMediaList(0, 60),
-              getMediaCount(),
-              listWatchedFolders(),
-            ]);
-            setMedia(items, count);
+            const folders = await listWatchedFolders();
+            await loadMedia();
             setWatchedFolders(folders);
           } catch {
             // ignore refresh errors
@@ -161,7 +184,7 @@ export default function App() {
       <Sidebar />
       <main className="flex flex-1 flex-col overflow-hidden">
         <header className="header-glass sticky top-0 z-10 flex h-[44px] shrink-0 items-center gap-3 border-b border-neutral-200/70 px-4 dark:border-neutral-800/70">
-          <div className="relative flex flex-1 max-w-2xl">
+          <div ref={searchContainerRef} className="relative flex flex-1 max-w-2xl">
             <svg
               className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
               viewBox="0 0 24 24"
@@ -177,9 +200,39 @@ export default function App() {
               type="search"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
+              onFocus={() => setSearchFocused(true)}
               placeholder={t("search.placeholder")}
               className="search-input w-full rounded-lg py-2 pl-9 pr-3 text-sm text-neutral-900 placeholder:text-neutral-400 dark:text-neutral-200 dark:placeholder:text-neutral-500"
             />
+            {searchFocused && searchHistory.length > 0 && (
+              <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+                <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2 dark:border-neutral-700">
+                  <span className="text-xs font-medium text-neutral-500">
+                    {t("search.recent")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => clearSearchHistory()}
+                    className="text-xs text-neutral-400 transition hover:text-neutral-600 dark:hover:text-neutral-300"
+                  >
+                    {t("search.clearHistory")}
+                  </button>
+                </div>
+                <ul>
+                  {searchHistory.map((query) => (
+                    <li key={query}>
+                      <button
+                        type="button"
+                        onClick={() => handleHistorySelect(query)}
+                        className="block w-full truncate px-3 py-2 text-left text-sm text-neutral-700 transition hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                      >
+                        {query}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
           {totalCount > 0 && !searchQuery.trim() && (
             <span className="shrink-0 text-[11px] tabular-nums text-neutral-400 dark:text-neutral-500">

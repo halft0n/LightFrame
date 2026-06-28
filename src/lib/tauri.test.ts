@@ -14,6 +14,7 @@ import {
   getThumbnailUrl,
   getFavoriteState,
   getMediaList,
+  getMediaPage,
   getMediaCount,
   getMediaById,
   toggleFavorite,
@@ -89,6 +90,22 @@ describe("async tauri functions", () => {
     mockInvoke.mockResolvedValue(items);
     await expect(getMediaList(10, 60)).resolves.toEqual(items);
     expect(mockInvoke).toHaveBeenCalledWith("get_media_list", { offset: 10, limit: 60 });
+  });
+
+  it("getMediaPage invokes with limit and cursor", async () => {
+    const items = [{ id: 1, filename: "a.jpg", created_at: "2024-01-01" }];
+    mockInvoke.mockResolvedValue(items);
+    await expect(getMediaPage(60, ["2024-01-01", 1])).resolves.toEqual(items);
+    expect(mockInvoke).toHaveBeenCalledWith("get_media_page", {
+      limit: 60,
+      cursor: ["2024-01-01", 1],
+    });
+  });
+
+  it("getMediaPage invokes with null cursor when omitted", async () => {
+    mockInvoke.mockResolvedValue([]);
+    await getMediaPage(60);
+    expect(mockInvoke).toHaveBeenCalledWith("get_media_page", { limit: 60, cursor: null });
   });
 
   it("getMediaCount invokes get_media_count", async () => {

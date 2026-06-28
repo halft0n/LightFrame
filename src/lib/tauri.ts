@@ -172,8 +172,31 @@ export async function getMediaList(offset: number, limit: number): Promise<Media
   return invoke<MediaItem[]>("get_media_list", { offset, limit });
 }
 
+export async function getMediaPage(limit: number, cursor?: [string, number]) {
+  return invoke<MediaItem[]>("get_media_page", { limit, cursor: cursor ?? null });
+}
+
 export async function getMediaCount(): Promise<number> {
   return invoke<number>("get_media_count");
+}
+
+export async function getMediaByFolder(
+  folderId: number,
+  offset: number,
+  limit: number,
+): Promise<MediaItem[]> {
+  return invoke<MediaItem[]>("get_media_by_folder", { folderId, offset, limit });
+}
+
+export async function getMediaCountByFolder(folderId: number): Promise<number> {
+  return invoke<number>("get_media_count_by_folder", { folderId });
+}
+
+export async function batchExport(
+  mediaIds: number[],
+  outputDir: string,
+): Promise<number> {
+  return invoke<number>("batch_export", { mediaIds, outputDir });
 }
 
 export async function getMediaByType(

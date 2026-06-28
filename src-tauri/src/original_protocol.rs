@@ -1,22 +1,36 @@
+use crate::state::AppState;
+use catchlight_db::WatchedFolder;
 use http::{StatusCode, header};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tauri::http::Response;
 
-pub fn handle(request_path: &str) -> Response<Vec<u8>> {
+pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
     let raw = request_path
         .trim_start_matches('/')
         .trim_start_matches("localhost/");
 
     let decoded = percent_decode(raw);
-    let file_path = Path::new(&decoded);
+    let file_path = PathBuf::from(&decoded);
+
+    let watched_folders = match state.db.list_watched_folders() {
+        Ok(folders) => folders,
+        Err(e) => {
+            tracing::error!("original protocol: failed to list watched folders: {e}");
+            return error_response(StatusCode::INTERNAL_SERVER_ERROR, "database error");
+        }
+    };
+
+    if !path_is_in_watched_folders(&file_path, &watched_folders) {
+        return error_response(StatusCode::FORBIDDEN, "path not allowed");
+    }
 
     if !file_path.exists() {
         return error_response(StatusCode::NOT_FOUND, "file not found");
     }
 
-    match std::fs::read(file_path) {
+    match std::fs::read(&file_path) {
         Ok(bytes) => {
-            let mime = guess_mime(file_path);
+            let mime = guess_mime(&file_path);
             Response::builder()
                 .status(StatusCode::OK)
                 .header(header::CONTENT_TYPE, mime)
@@ -29,6 +43,29 @@ pub fn handle(request_path: &str) -> Response<Vec<u8>> {
             error_response(StatusCode::INTERNAL_SERVER_ERROR, "read failed")
         }
     }
+}
+
+pub fn path_is_in_watched_folders(path: &Path, folders: &[WatchedFolder]) -> bool {
+    folders
+        .iter()
+        .any(|folder| path_is_under_folder(path, &folder.path))
+}
+
+fn path_is_under_folder(path: &Path, folder: &str) -> bool {
+    let root = Path::new(folder);
+    if path == root {
+        return true;
+    }
+
+    let mut root_components = root.components();
+    for component in path.components() {
+        match root_components.next() {
+            Some(expected) if expected == component => continue,
+            Some(_) => return false,
+            None => return true,
+        }
+    }
+    false
 }
 
 fn guess_mime(path: &Path) -> &'static str {
@@ -87,7 +124,25 @@ fn error_response(status: StatusCode, message: &str) -> Response<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use catchlight_core::config::AppConfig;
+    use catchlight_db::Database;
     use http::StatusCode;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+
+    fn test_state_with_watched_dir(dir: &Path) -> AppState {
+        let db = Arc::new(Database::open(Path::new(":memory:")).expect("in-memory db"));
+        db.add_watched_folder(dir.to_str().unwrap())
+            .expect("add watched folder");
+        AppState {
+            db,
+            config: AppConfig::default(),
+            scan_status: crate::state::ScanStatus::new(),
+            scan_concurrency: 2,
+            scanning: Arc::new(AtomicBool::new(false)),
+            watch_manager: crate::watcher::WatchManager::new(),
+        }
+    }
 
     fn encode_uri_component(path: &str) -> String {
         path.bytes()
@@ -161,18 +216,47 @@ mod tests {
     }
 
     #[test]
+    fn path_is_under_folder_rejects_prefix_collisions() {
+        assert!(path_is_under_folder(
+            Path::new("/photos/vacation.jpg"),
+            "/photos"
+        ));
+        assert!(!path_is_under_folder(
+            Path::new("/photos2/vacation.jpg"),
+            "/photos"
+        ));
+    }
+
+    #[test]
     fn handle_missing_file_returns_404() {
-        let resp = handle("/nonexistent/path/photo.jpg");
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(dir.path());
+        let missing = dir.path().join("missing.jpg");
+        let resp = handle(&state, &request_path_for_file(&missing));
         assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn handle_forbidden_outside_watched_folder() {
+        let watched = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(watched.path());
+
+        let outside = tempfile::tempdir().unwrap();
+        let file = outside.path().join("secret.png");
+        std::fs::write(&file, b"\x89PNG\r\n").unwrap();
+
+        let resp = handle(&state, &request_path_for_file(&file));
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
     }
 
     #[test]
     fn handle_serves_existing_file_with_mime() {
         let dir = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(dir.path());
         let file = dir.path().join("sample.png");
         std::fs::write(&file, b"\x89PNG\r\n").unwrap();
 
-        let resp = handle(&request_path_for_file(&file));
+        let resp = handle(&state, &request_path_for_file(&file));
 
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(
@@ -187,12 +271,13 @@ mod tests {
     #[test]
     fn handle_strips_localhost_prefix() {
         let dir = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(dir.path());
         let file = dir.path().join("test.jpg");
         std::fs::write(&file, b"jpeg-data").unwrap();
 
         let encoded = encode_uri_component(file.to_str().unwrap());
         let request_path = format!("/localhost/{encoded}");
-        let resp = handle(&request_path);
+        let resp = handle(&state, &request_path);
 
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(*resp.body(), b"jpeg-data".to_vec());

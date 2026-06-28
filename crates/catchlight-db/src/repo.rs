@@ -193,12 +193,41 @@ fn build_smart_album_filter(rule: &SmartAlbumRule) -> (String, Vec<Box<dyn rusql
 }
 
 fn smart_album_media_count(db: &Database, rule: &SmartAlbumRule) -> catchlight_core::Result<i64> {
-    let (where_clause, filter_params) = build_smart_album_filter(rule);
-    let sql = format!("SELECT COUNT(*) FROM media_files WHERE {where_clause}");
     let conn = db.conn();
-    let param_refs: Vec<&dyn rusqlite::ToSql> = filter_params.iter().map(|p| p.as_ref()).collect();
-    conn.query_row(&sql, param_refs.as_slice(), |row| row.get(0))
-        .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    batch_smart_album_media_counts(&conn, std::slice::from_ref(rule))?
+        .into_iter()
+        .next()
+        .ok_or_else(|| catchlight_core::Error::Other("batch count returned empty".to_string()))
+}
+
+fn batch_smart_album_media_counts(
+    conn: &Connection,
+    rules: &[SmartAlbumRule],
+) -> catchlight_core::Result<Vec<i64>> {
+    if rules.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut subqueries = Vec::with_capacity(rules.len());
+    let mut all_params: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+
+    for rule in rules {
+        let (where_clause, filter_params) = build_smart_album_filter(rule);
+        subqueries.push(format!(
+            "(SELECT COUNT(*) FROM media_files WHERE {where_clause})"
+        ));
+        all_params.extend(filter_params);
+    }
+
+    let sql = format!("SELECT {}", subqueries.join(", "));
+    let param_refs: Vec<&dyn rusqlite::ToSql> = all_params.iter().map(|p| p.as_ref()).collect();
+
+    conn.query_row(&sql, param_refs.as_slice(), |row| {
+        (0..rules.len())
+            .map(|i| row.get::<_, i64>(i))
+            .collect::<Result<Vec<_>, _>>()
+    })
+    .map_err(|e| catchlight_core::Error::Database(e.to_string()))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -352,6 +381,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
+        // Legacy OFFSET pagination — prefer `get_media_page` for large datasets.
         let conn = self.conn();
         let mut stmt = conn
             .prepare(
@@ -403,11 +433,93 @@ impl Database {
         Ok(results)
     }
 
+    pub fn get_media_page(
+        &self,
+        limit: i64,
+        cursor: Option<(String, i64)>,
+    ) -> catchlight_core::Result<Vec<MediaFile>> {
+        let conn = self.conn();
+        let (sql, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match cursor {
+            None => (
+                "SELECT id, path, filename, media_type, size_bytes, width, height,
+                        created_at, modified_at, blake3_hash, dhash, latitude, longitude
+                 FROM media_files
+                 WHERE is_deleted = 0
+                 ORDER BY created_at DESC, id DESC
+                 LIMIT ?1"
+                    .to_string(),
+                vec![Box::new(limit)],
+            ),
+            Some((created_at, id)) => (
+                "SELECT id, path, filename, media_type, size_bytes, width, height,
+                        created_at, modified_at, blake3_hash, dhash, latitude, longitude
+                 FROM media_files
+                 WHERE is_deleted = 0
+                   AND (created_at < ?1 OR (created_at = ?1 AND id < ?2))
+                 ORDER BY created_at DESC, id DESC
+                 LIMIT ?3"
+                    .to_string(),
+                vec![Box::new(created_at), Box::new(id), Box::new(limit)],
+            ),
+        };
+
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(param_refs.as_slice(), Self::map_media_row)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
     pub fn get_media_count(&self) -> catchlight_core::Result<i64> {
         let conn = self.conn();
         conn.query_row(
             "SELECT COUNT(*) FROM media_files WHERE is_deleted = 0",
             [],
+            |row| row.get(0),
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn get_media_by_folder(
+        &self,
+        folder_id: i64,
+        limit: i64,
+        offset: i64,
+    ) -> catchlight_core::Result<Vec<MediaFile>> {
+        let conn = self.conn();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, path, filename, media_type, size_bytes, width, height,
+                        created_at, modified_at, blake3_hash, dhash, latitude, longitude
+                 FROM media_files
+                 WHERE folder_id = ?1 AND is_deleted = 0
+                 ORDER BY COALESCE(created_at, modified_at) DESC
+                 LIMIT ?2 OFFSET ?3",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(params![folder_id, limit, offset], Self::map_media_row)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            results.push(row.map_err(|e| catchlight_core::Error::Database(e.to_string()))?);
+        }
+        Ok(results)
+    }
+
+    pub fn get_media_count_by_folder(&self, folder_id: i64) -> catchlight_core::Result<i64> {
+        let conn = self.conn();
+        conn.query_row(
+            "SELECT COUNT(*) FROM media_files WHERE folder_id = ?1 AND is_deleted = 0",
+            params![folder_id],
             |row| row.get(0),
         )
         .map_err(|e| catchlight_core::Error::Database(e.to_string()))
@@ -560,7 +672,7 @@ impl Database {
                         date(COALESCE(created_at, modified_at)) AS group_date
                  FROM media_files
                  WHERE is_deleted = 0
-                 ORDER BY COALESCE(created_at, modified_at) DESC
+                 ORDER BY COALESCE(created_at, modified_at) DESC, id DESC
                  LIMIT ?1 OFFSET ?2",
             )
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
@@ -634,12 +746,72 @@ impl Database {
         conn.query_row(
             "SELECT id, path, filename, media_type, size_bytes, width, height,
                     created_at, modified_at, blake3_hash, dhash, latitude, longitude
-             FROM media_files WHERE id = ?1",
+             FROM media_files WHERE id = ?1 AND is_deleted = 0",
             params![id],
             Self::map_media_row,
         )
         .optional()
         .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn get_media_by_path(&self, path: &str) -> catchlight_core::Result<Option<MediaFile>> {
+        let conn = self.conn();
+        conn.query_row(
+            "SELECT id, path, filename, media_type, size_bytes, width, height,
+                    created_at, modified_at, blake3_hash, dhash, latitude, longitude
+             FROM media_files WHERE path = ?1 AND is_deleted = 0",
+            params![path],
+            Self::map_media_row,
+        )
+        .optional()
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn get_media_deletion_info(
+        &self,
+        media_id: i64,
+    ) -> catchlight_core::Result<Option<(String, Option<String>, i64)>> {
+        let conn = self.conn();
+        conn.query_row(
+            "SELECT path, blake3_hash, is_deleted FROM media_files WHERE id = ?1",
+            params![media_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
+    pub fn update_media_path(
+        &self,
+        old_path: &str,
+        new_path: &str,
+    ) -> catchlight_core::Result<bool> {
+        let filename = std::path::Path::new(new_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(new_path);
+
+        let conn = self.conn();
+        let affected = conn
+            .execute(
+                "UPDATE media_files SET path = ?1, filename = ?2
+                 WHERE path = ?3 AND is_deleted = 0",
+                params![new_path, filename, old_path],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(affected > 0)
+    }
+
+    pub fn soft_delete_by_path(&self, path: &str) -> catchlight_core::Result<bool> {
+        let conn = self.conn();
+        let affected = conn
+            .execute(
+                "UPDATE media_files SET is_deleted = 1, deleted_at = datetime('now')
+                 WHERE path = ?1 AND is_deleted = 0",
+                params![path],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(affected > 0)
     }
 
     pub fn clear_duplicate_groups(&self) -> catchlight_core::Result<()> {
@@ -1111,23 +1283,21 @@ impl Database {
     }
 
     pub fn permanently_delete_media(&self, media_id: i64) -> catchlight_core::Result<()> {
-        let conn = self.conn();
-        let deleted: i64 = conn
-            .query_row(
-                "SELECT is_deleted FROM media_files WHERE id = ?1",
-                params![media_id],
-                |row| row.get(0),
-            )
-            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        let info = self
+            .get_media_deletion_info(media_id)?
+            .ok_or_else(|| catchlight_core::Error::Other(format!("media {media_id} not found")))?;
 
+        let (_path, _hash, deleted) = info;
         if deleted == 0 {
             return Err(catchlight_core::Error::Other(format!(
                 "media {media_id} is not in trash; soft-delete before permanent delete"
             )));
         }
 
+        let conn = self.conn();
         conn.execute("DELETE FROM media_files WHERE id = ?1", params![media_id])
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
         Ok(())
     }
 
@@ -1200,6 +1370,7 @@ impl Database {
         if media_ids.is_empty() {
             return Ok(0);
         }
+
         let conn = self.conn();
         let placeholders: Vec<String> = media_ids
             .iter()
@@ -1217,6 +1388,7 @@ impl Database {
         let affected = conn
             .execute(&sql, params.as_slice())
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
         Ok(affected)
     }
 
@@ -1531,14 +1703,21 @@ impl Database {
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 
-        for album in &mut albums {
-            let rule: SmartAlbumRule = serde_json::from_str(&album.rule_json).map_err(|e| {
-                catchlight_core::Error::Other(format!(
-                    "invalid rule_json for album {}: {e}",
-                    album.id
-                ))
-            })?;
-            album.media_count = smart_album_media_count(self, &rule)?;
+        let rules: Vec<SmartAlbumRule> = albums
+            .iter()
+            .map(|album| {
+                serde_json::from_str(&album.rule_json).map_err(|e| {
+                    catchlight_core::Error::Other(format!(
+                        "invalid rule_json for album {}: {e}",
+                        album.id
+                    ))
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let counts = batch_smart_album_media_counts(&conn, &rules)?;
+        for (album, count) in albums.iter_mut().zip(counts) {
+            album.media_count = count;
         }
 
         Ok(albums)

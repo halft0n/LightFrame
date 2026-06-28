@@ -10,6 +10,7 @@ import { addFolder, removeFolder, updateFolder, useAppStore, type Theme } from "
 import { changeTheme } from "@/hooks/useTheme";
 import { useTranslation } from "@/i18n/useTranslation";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { UpdateChecker } from "@/components/settings/UpdateChecker";
 
 function ScanIndicator({ status }: { status: ScanStatus }) {
   const { t } = useTranslation();
@@ -136,6 +137,8 @@ export function FolderManager() {
           ))}
         </div>
       </section>
+
+      <UpdateChecker />
 
       <section className="settings-section px-6 py-5">
         <div className="flex flex-wrap items-center justify-between gap-4">

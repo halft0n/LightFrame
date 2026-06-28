@@ -1,7 +1,9 @@
 pub mod scanner;
 pub mod watcher;
 
-pub use watcher::{FolderWatcher, is_media_change_event};
+pub use watcher::{
+    FolderWatcher, is_media_change_event, is_media_remove_event, is_media_rename_event,
+};
 
 use catchlight_core::Result;
 use std::path::{Path, PathBuf};

@@ -1,5 +1,10 @@
 import { useSyncExternalStore } from "react";
 import type { MediaItem, ScanProgress, WatchedFolder } from "@/lib/tauri";
+import { getMediaCount, getMediaPage } from "@/lib/tauri";
+
+export type MediaCursor = [string, number] | null;
+
+const MEDIA_PAGE_SIZE = 60;
 
 export type AppView =
   | "all"
@@ -18,9 +23,18 @@ export type AppView =
   | "memory-detail"
   | "favorites"
   | "deleted"
+  | "folder"
   | "settings";
 
 export type Theme = "light" | "dark" | "system";
+
+export type ThumbnailSize = "small" | "medium" | "large";
+
+export const THUMBNAIL_WIDTHS: Record<ThumbnailSize, number> = {
+  small: 120,
+  medium: 180,
+  large: 260,
+};
 
 export interface AppState {
   currentView: AppView;
@@ -28,14 +42,19 @@ export interface AppState {
   selectedSmartAlbumId: number | null;
   selectedMemoryId: number | null;
   selectedPersonId: number | null;
+  selectedFolderId: number | null;
+  selectedFolderPath: string | null;
   selectedMediaIds: number[];
   watchedFolders: WatchedFolder[];
   mediaItems: MediaItem[];
   totalCount: number;
+  mediaCursor: MediaCursor;
   isScanning: boolean;
   scanProgress: ScanProgress | null;
   viewingMediaId: number | null;
   searchQuery: string;
+  searchHistory: string[];
+  thumbnailSize: ThumbnailSize;
   theme: Theme;
 }
 
@@ -45,14 +64,19 @@ const initialState: AppState = {
   selectedSmartAlbumId: null,
   selectedMemoryId: null,
   selectedPersonId: null,
+  selectedFolderId: null,
+  selectedFolderPath: null,
   selectedMediaIds: [],
   watchedFolders: [],
   mediaItems: [],
   totalCount: 0,
+  mediaCursor: null,
   isScanning: false,
   scanProgress: null,
   viewingMediaId: null,
   searchQuery: "",
+  searchHistory: [],
+  thumbnailSize: "medium",
   theme: "dark",
 };
 
@@ -86,7 +110,30 @@ export function setView(view: AppView) {
     selectedSmartAlbumId: view === "smart-album-detail" ? state.selectedSmartAlbumId : null,
     selectedMemoryId: view === "memory-detail" ? state.selectedMemoryId : null,
     selectedPersonId: view === "person-detail" ? state.selectedPersonId : null,
+    selectedFolderId: view === "folder" ? state.selectedFolderId : null,
+    selectedFolderPath: view === "folder" ? state.selectedFolderPath : null,
   });
+}
+
+export interface NavigateParams {
+  folderId?: number;
+  folderPath?: string;
+}
+
+export function navigate(view: AppView, params?: NavigateParams) {
+  if (view === "folder") {
+    setState({
+      currentView: "folder",
+      selectedFolderId: params?.folderId ?? null,
+      selectedFolderPath: params?.folderPath ?? null,
+      selectedAlbumId: null,
+      selectedSmartAlbumId: null,
+      selectedMemoryId: null,
+      selectedPersonId: null,
+    });
+    return;
+  }
+  setView(view);
 }
 
 export function openAlbumDetail(albumId: number) {
@@ -144,12 +191,36 @@ export function updateFolder(id: number, update: Partial<WatchedFolder>) {
 }
 
 export function setMedia(items: MediaItem[], totalCount: number) {
-  setState({ mediaItems: items, totalCount });
+  setState({ mediaItems: items, totalCount, mediaCursor: mediaCursorFromItems(items) });
 }
 
 export function appendMedia(items: MediaItem[]) {
   if (items.length === 0) return;
-  setState({ mediaItems: [...state.mediaItems, ...items] });
+  const mediaItems = [...state.mediaItems, ...items];
+  setState({ mediaItems, mediaCursor: mediaCursorFromItems(mediaItems) });
+}
+
+function mediaCursorFromItems(items: MediaItem[]): MediaCursor {
+  if (items.length === 0) return null;
+  const last = items[items.length - 1];
+  if (!last.created_at) return null;
+  return [last.created_at, last.id];
+}
+
+export async function loadMedia() {
+  const [items, totalCount] = await Promise.all([
+    getMediaPage(MEDIA_PAGE_SIZE),
+    getMediaCount(),
+  ]);
+  setMedia(items, totalCount);
+}
+
+export async function loadMoreMedia() {
+  const { mediaItems, totalCount, mediaCursor } = state;
+  if (mediaItems.length >= totalCount) return;
+
+  const items = await getMediaPage(MEDIA_PAGE_SIZE, mediaCursor ?? undefined);
+  appendMedia(items);
 }
 
 export function setScanning(isScanning: boolean, progress: ScanProgress | null = null) {
@@ -203,6 +274,21 @@ export function closeViewer() {
 
 export function setSearchQuery(query: string) {
   setState({ searchQuery: query });
+}
+
+export function addSearchHistory(query: string) {
+  const trimmed = query.trim();
+  if (!trimmed) return;
+  const filtered = state.searchHistory.filter((q) => q !== trimmed);
+  setState({ searchHistory: [trimmed, ...filtered].slice(0, 10) });
+}
+
+export function clearSearchHistory() {
+  setState({ searchHistory: [] });
+}
+
+export function setThumbnailSize(size: ThumbnailSize) {
+  setState({ thumbnailSize: size });
 }
 
 export function useAppStore(): AppState {

@@ -216,7 +216,10 @@ async fn process_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_
 
     let media_type = if matches!(media_type, MediaType::Photo) {
         if let (Some(w), Some(h)) = (meta.width, meta.height) {
-            if catchlight_ai::detect_screenshot(&path, w, h).unwrap_or(false) {
+            if catchlight_ai::detect_screenshot(&path, w, h)
+                .map(|score| score.is_likely_screenshot())
+                .unwrap_or(false)
+            {
                 MediaType::Screenshot
             } else {
                 media_type

@@ -70,6 +70,7 @@ describe("appStore", () => {
     expect(state.watchedFolders).toEqual([]);
     expect(state.mediaItems).toEqual([]);
     expect(state.totalCount).toBe(0);
+    expect(state.mediaCursor).toBeNull();
     expect(state.isScanning).toBe(false);
     expect(state.scanProgress).toBeNull();
   });

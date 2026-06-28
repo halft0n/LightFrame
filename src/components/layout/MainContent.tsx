@@ -18,6 +18,7 @@ import { MemoryDetailView } from "@/components/memories/MemoryDetailView";
 import { PeopleView } from "@/components/people/PeopleView";
 import { PersonDetailView } from "@/components/people/PersonDetailView";
 import { SearchResults } from "@/components/search/SearchResults";
+import { FolderView } from "@/components/folders/FolderView";
 import { PhotoViewer } from "@/components/viewer/PhotoViewer";
 import { useAppStore } from "@/store/appStore";
 
@@ -76,6 +77,8 @@ export function MainContent() {
   if (currentView === "favorites") return <FavoritesView />;
 
   if (currentView === "deleted") return <DeletedView />;
+
+  if (currentView === "folder") return <FolderView />;
 
   return (
     <div className="flex flex-1 items-center justify-center text-neutral-500">

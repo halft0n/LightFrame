@@ -63,6 +63,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   const [edited, setEdited] = useState(false);
   const [editParamsJson, setEditParamsJson] = useState<string | null>(null);
   const [previewKey, setPreviewKey] = useState(0);
+  const [rotation, setRotation] = useState(0);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const filmstripRef = useRef<HTMLDivElement>(null);
 
@@ -70,6 +71,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
     setZoom(1);
     setPan({ x: 0, y: 0 });
     setUseOriginal(false);
+    setRotation(0);
   }, []);
 
   useEffect(() => {
@@ -120,6 +122,11 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
         return;
       }
       if (media?.media_type === "Video") return;
+      if (e.key === "r" || e.key === "R") {
+        e.preventDefault();
+        setRotation((r) => (e.shiftKey ? (r - 90 + 360) % 360 : (r + 90) % 360));
+        return;
+      }
       if (e.key === "ArrowLeft") {
         navigate(neighbors.prev_id);
       } else if (e.key === "ArrowRight") {
@@ -208,6 +215,12 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   const previewFilter = editPreview ? buildCssFilter(editPreview) : undefined;
   const previewTransform = editPreview ? buildImageTransform(editPreview) : undefined;
   const previewClip = editPreview ? buildClipPath(editPreview.crop) : undefined;
+  const imageTransform = [
+    previewTransform,
+    rotation !== 0 ? `rotate(${rotation}deg)` : undefined,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   const isVideo = media?.media_type === "Video";
   const imageSrc = media
@@ -240,6 +253,15 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
             className="h-1 w-24 shrink-0 cursor-pointer accent-blue-500"
             aria-label={t("viewer.zoom")}
           />
+        )}
+
+        {!isVideo && rotation !== 0 && (
+          <span
+            className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-xs font-medium text-neutral-300"
+            title={t("viewer.rotation")}
+          >
+            {rotation}°
+          </span>
         )}
 
         <p className="min-w-0 flex-1 truncate text-center text-sm font-medium text-neutral-100">
@@ -338,7 +360,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
                       alt={media.filename}
                       draggable={false}
                       style={{
-                        transform: previewTransform,
+                        transform: imageTransform || undefined,
                         maxHeight: "100%",
                         maxWidth: "100%",
                         objectFit: "contain",

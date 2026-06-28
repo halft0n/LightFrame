@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
   batchAddToAlbum,
   batchDeleteMedia,
+  batchExport,
   batchToggleFavorite,
-  getMediaCount,
-  getMediaList,
   listAlbums,
   type Album,
 } from "@/lib/tauri";
 import {
   clearMediaSelection,
-  setMedia,
+  loadMedia,
   useAppStore,
 } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
@@ -22,8 +22,10 @@ export function SelectionToolbar() {
   const [showAlbumPicker, setShowAlbumPicker] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
 
   const count = selectedMediaIds.length;
+  const isTauri = Boolean(window.__TAURI_INTERNALS__);
 
   useEffect(() => {
     if (count === 0) return;
@@ -32,8 +34,7 @@ export function SelectionToolbar() {
 
   const refreshMedia = useCallback(async () => {
     try {
-      const [items, total] = await Promise.all([getMediaList(0, 60), getMediaCount()]);
-      setMedia(items, total);
+      await loadMedia();
     } catch (err) {
       console.error("Failed to refresh media:", err);
     }
@@ -77,6 +78,39 @@ export function SelectionToolbar() {
       setBusy(false);
     }
   };
+
+  const handleExport = async () => {
+    if (!isTauri) {
+      alert(t("settings.tauriOnly"));
+      return;
+    }
+
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: t("batch.export"),
+    });
+
+    if (!selected || Array.isArray(selected)) return;
+
+    setBusy(true);
+    try {
+      const exported = await batchExport(selectedMediaIds, selected);
+      setExportMessage(t("batch.exportSuccess", { count: exported }));
+      clearMediaSelection();
+    } catch (err) {
+      console.error("Failed to export selected media:", err);
+      setExportMessage(t("batch.exportError"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!exportMessage) return;
+    const timer = setTimeout(() => setExportMessage(null), 3000);
+    return () => clearTimeout(timer);
+  }, [exportMessage]);
 
   if (count === 0) return null;
 
@@ -141,6 +175,15 @@ export function SelectionToolbar() {
           <button
             type="button"
             disabled={busy}
+            onClick={() => void handleExport()}
+            className="rounded-md px-3 py-1.5 text-sm text-neutral-200 transition hover:bg-neutral-800 disabled:opacity-50"
+          >
+            {t("batch.export")}
+          </button>
+
+          <button
+            type="button"
+            disabled={busy}
             onClick={clearMediaSelection}
             className="rounded-md px-3 py-1.5 text-sm text-neutral-400 transition hover:bg-neutral-800 disabled:opacity-50"
           >
@@ -173,6 +216,14 @@ export function SelectionToolbar() {
                 {t("batch.moveConfirm")}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {exportMessage && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-20 z-50 flex justify-center px-4">
+          <div className="pointer-events-auto rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm text-neutral-200 shadow-xl">
+            {exportMessage}
           </div>
         </div>
       )}

@@ -2,35 +2,106 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PhotoCard } from "./PhotoCard";
 import { SelectionToolbar } from "./SelectionToolbar";
-import { getMediaList } from "@/lib/tauri";
+import { type MediaItem } from "@/lib/tauri";
 import {
-  appendMedia,
   clearMediaSelection,
+  loadMoreMedia,
   openViewer,
   selectMediaRange,
   setSingleMediaSelection,
+  setThumbnailSize,
+  THUMBNAIL_WIDTHS,
   toggleMediaSelection,
   useAppStore,
+  type ThumbnailSize,
 } from "@/store/appStore";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { useTranslation } from "@/i18n/useTranslation";
 
-const MIN_COLUMN_WIDTH = 160;
 const GAP = 3;
-const ROW_HEIGHT = MIN_COLUMN_WIDTH + GAP;
-const PAGE_SIZE = 60;
 
-export function PhotoGrid() {
+export interface PhotoGridProps {
+  items?: MediaItem[];
+  totalCount?: number;
+  onLoadMore?: () => Promise<void>;
+  loadingMore?: boolean;
+  showSizeControl?: boolean;
+}
+
+function ThumbnailSizeControl({
+  size,
+  onChange,
+}: {
+  size: ThumbnailSize;
+  onChange: (size: ThumbnailSize) => void;
+}) {
   const { t } = useTranslation();
-  const { mediaItems, totalCount, selectedMediaIds } = useAppStore();
+  const levels: ThumbnailSize[] = ["small", "medium", "large"];
+
+  return (
+    <div
+      className="flex items-center gap-0.5 rounded-lg border border-neutral-200/80 bg-white/80 p-0.5 dark:border-neutral-700 dark:bg-neutral-900/80"
+      role="group"
+      aria-label={t("gallery.thumbnailSize")}
+    >
+      {levels.map((level) => (
+        <button
+          key={level}
+          type="button"
+          onClick={() => onChange(level)}
+          title={t(`gallery.thumbnailSize.${level}`)}
+          aria-label={t(`gallery.thumbnailSize.${level}`)}
+          aria-pressed={size === level}
+          className={`rounded-md px-2 py-1 transition ${
+            size === level
+              ? "bg-neutral-200 text-neutral-900 dark:bg-neutral-700 dark:text-neutral-100"
+              : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-300"
+          }`}
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill="currentColor"
+            className={
+              level === "small" ? "h-3 w-3" : level === "medium" ? "h-3.5 w-3.5" : "h-4 w-4"
+            }
+            aria-hidden="true"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+          </svg>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function PhotoGrid({
+  items: itemsProp,
+  totalCount: totalCountProp,
+  onLoadMore,
+  loadingMore: loadingMoreProp,
+  showSizeControl = true,
+}: PhotoGridProps = {}) {
+  const { t } = useTranslation();
+  const {
+    mediaItems: storeItems,
+    totalCount: storeTotalCount,
+    selectedMediaIds,
+    thumbnailSize,
+  } = useAppStore();
+  const mediaItems = itemsProp ?? storeItems;
+  const totalCount = totalCountProp ?? storeTotalCount;
   const parentRef = useRef<HTMLDivElement>(null);
   const lastSelectedRef = useRef<number | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
-  const [loadingMore, setLoadingMore] = useState(false);
+  const [internalLoadingMore, setInternalLoadingMore] = useState(false);
+
+  const loadingMore = loadingMoreProp ?? internalLoadingMore;
+  const columnWidth = THUMBNAIL_WIDTHS[thumbnailSize];
+  const rowHeight = columnWidth + GAP;
 
   const columnCount = Math.max(
     1,
-    Math.floor((containerWidth + GAP) / (MIN_COLUMN_WIDTH + GAP)),
+    Math.floor((containerWidth + GAP) / (columnWidth + GAP)),
   );
   const rowCount = Math.ceil(mediaItems.length / columnCount);
   const hasMore = mediaItems.length < totalCount;
@@ -53,21 +124,24 @@ export function PhotoGrid() {
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore) return;
-    setLoadingMore(true);
+    if (onLoadMore) {
+      await onLoadMore();
+      return;
+    }
+    setInternalLoadingMore(true);
     try {
-      const items = await getMediaList(mediaItems.length, PAGE_SIZE);
-      appendMedia(items);
+      await loadMoreMedia();
     } catch (err) {
       console.error("Failed to load more photos:", err);
     } finally {
-      setLoadingMore(false);
+      setInternalLoadingMore(false);
     }
-  }, [hasMore, loadingMore, mediaItems.length]);
+  }, [hasMore, loadingMore, onLoadMore]);
 
   const rowVirtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: () => rowHeight,
     overscan: 3,
   });
 
@@ -76,10 +150,10 @@ export function PhotoGrid() {
     if (!el || loadingMore || !hasMore) return;
 
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (distanceFromBottom < ROW_HEIGHT * 2) {
+    if (distanceFromBottom < rowHeight * 2) {
       void loadMore();
     }
-  }, [hasMore, loadMore, loadingMore]);
+  }, [hasMore, loadMore, loadingMore, rowHeight]);
 
   useEffect(() => {
     const el = parentRef.current;
@@ -94,7 +168,7 @@ export function PhotoGrid() {
   const handleSelect = useCallback(
     (id: number, event: React.MouseEvent) => {
       if (event.shiftKey && lastSelectedRef.current != null) {
-        selectMediaRange(lastSelectedRef.current, id);
+        selectMediaRange(lastSelectedRef.current, id, mediaItems);
       } else if (event.ctrlKey || event.metaKey) {
         toggleMediaSelection(id);
         lastSelectedRef.current = id;
@@ -103,7 +177,7 @@ export function PhotoGrid() {
         lastSelectedRef.current = id;
       }
     },
-    [],
+    [mediaItems],
   );
 
   useEffect(() => {
@@ -123,6 +197,11 @@ export function PhotoGrid() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
+      {showSizeControl && (
+        <div className="flex shrink-0 justify-end px-3 py-2">
+          <ThumbnailSizeControl size={thumbnailSize} onChange={setThumbnailSize} />
+        </div>
+      )}
       <div ref={parentRef} className="flex-1 overflow-y-auto px-1 py-1">
         <div
           style={{
