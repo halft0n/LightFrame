@@ -20,6 +20,10 @@ pub fn run(conn: &Connection) -> catchlight_core::Result<()> {
         v1(conn)?;
     }
 
+    if current < 2 {
+        v2(conn)?;
+    }
+
     Ok(())
 }
 
@@ -91,6 +95,32 @@ fn v1(conn: &Connection) -> catchlight_core::Result<()> {
         );
 
         INSERT OR IGNORE INTO schema_version (version) VALUES (1);",
+    )
+    .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+fn v2(conn: &Connection) -> catchlight_core::Result<()> {
+    let has_scan_status: bool = conn
+        .prepare("PRAGMA table_info(watched_folders)")
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?
+        .filter_map(|r| r.ok())
+        .any(|name| name == "scan_status");
+
+    if !has_scan_status {
+        conn.execute(
+            "ALTER TABLE watched_folders ADD COLUMN scan_status TEXT NOT NULL DEFAULT 'idle'",
+            [],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+    }
+
+    conn.execute(
+        "INSERT OR IGNORE INTO schema_version (version) VALUES (2)",
+        [],
     )
     .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
 

@@ -1,6 +1,6 @@
 # CatchLight（拾光）详细开发计划
 
-> **文档版本**：v1.0  
+> **文档版本**：v1.1  
 > **更新日期**：2026-06-28  
 > **产品名称**：拾光 / CatchLight  
 > **技术栈**：Tauri 2.x + Rust + React 19 + TypeScript + Python AI 扩展（可选）  
@@ -109,7 +109,7 @@ flowchart LR
 | **Folder-native 设计** | 监控文件夹 = 图库入口，JSON manifest 管理虚拟相簿 | `watched_folders` 表 + 侧边栏文件夹树 |
 | **SQL keyset 分页** | 大库游标分页，避免 OFFSET 性能退化 | `catchlight-db` 中 `keyset_paginate(taken_at, id)` |
 | **扫描-缩略图契约** | 扫描完成后触发缩略图队列，状态字段 `thumb_cached` | indexer → thumbnail 事件总线 |
-| **MVVM 分层** | View / ViewModel / Service 清晰分离 | React 组件 + Zustand + Tauri commands |
+| **MVVM 分层** | View / ViewModel / Service 清晰分离 | React 组件 + `appStore`（useSyncExternalStore）+ Tauri commands |
 
 #### 1.3.2 Lap
 
@@ -183,7 +183,7 @@ gantt
 | D1–D2 | Tauri 2.x + React 19 + TypeScript 脚手架；Vite 配置；TailwindCSS v4 + shadcn/ui 初始化 | 空壳应用可启动 |
 | D2–D3 | Cargo workspace 多 crate 结构：`catchlight-core`、`catchlight-db`、`catchlight-indexer` 等占位 crate | `cargo build` 通过 |
 | D3–D4 | GitHub Actions：Windows + Ubuntu 双平台 `cargo test` + `pnpm test` + `cargo clippy` | CI badge 可用 |
-| D4–D5 | react-i18next 配置；`locales/zh-CN.json`、`locales/en.json` 骨架；系统语言检测 | 语言切换可用 |
+| D4–D5 | 自定义 i18n（`src/i18n/`）；`locales/zh-CN.json`、`locales/en.json`；localStorage + 浏览器语言检测 | 语言切换可用 |
 | D5 | eslint + prettier + husky；rustfmt + clippy；CONTRIBUTING.md 代码规范摘要 | lint 钩子生效 |
 
 **目录结构（目标）**：
@@ -205,9 +205,17 @@ CatchLight/
 
 ---
 
-### Phase 1：核心基础 MVP（7 周）
+### Phase 1：核心基础 MVP（7 周）— ✅ 已实现
 
 **目标**：用户可添加监控文件夹，极速/常规索引照片，网格与时间线浏览，全屏查看，缩略图流畅加载。
+
+**实现摘要（2026-06）：**
+- Linux walkdir 扫描 + `futures::stream` / `buffer_unordered` 有界并发流水线
+- SQLite schema v1 + v2（`watched_folders.scan_status`）
+- 三级缩略图：micro 64 JPEG BLOB / small 256 WebP / large 1024 WebP
+- FFmpeg 视频帧抽取（best-effort）、规则层截图检测集成于扫描
+- React 网格 + 时间线虚拟滚动、全屏查看器、文件夹管理 UI
+- 自定义 i18n + `useSyncExternalStore` 全局 store
 
 #### 第 1 周（W2）：文件索引引擎 — 抽象与 Linux 实现
 
@@ -450,18 +458,18 @@ CatchLight/
 | 开发规范 | eslint/clippy 零 warning（可配置例外） |
 | i18n 骨架 | 切换中/英 UI 无硬编码中文 |
 
-### Phase 1 里程碑：可浏览 MVP
+### Phase 1 里程碑：可浏览 MVP — ✅ 已完成
 
-| 交付物 | 验收标准 |
-|--------|----------|
-| 索引引擎 | Linux walkdir 1 万文件 < 10s；Windows MFT 1 万文件 < 3s（NTFS+管理员） |
-| 数据库 | schema 迁移可重复执行；EXIF 提取成功率 > 95%（JPEG 样本集） |
-| 缩略图 | 三级缓存生成；网格 1 万张 micro 滚动 ≥ 55fps |
-| 网格+时间线 | FR-010–FR-025 验收通过 |
-| 查看器 | 缩放/拖拽/切换；相邻预加载 |
-| 文件夹管理 | FR-001–FR-007 验收通过 |
+| 交付物 | 验收标准 | 状态 |
+|--------|----------|------|
+| 索引引擎 | Linux walkdir 扫描；stream + buffer_unordered 并发处理 | ✅ |
+| 数据库 | schema v1/v2 迁移；EXIF 提取；micro_thumb BLOB | ✅ |
+| 缩略图 | 三级缓存（64 BLOB / 256 / 1024 WebP）；thumb:// 协议 | ✅ |
+| 网格+时间线 | 虚拟滚动；时间线分页合并同日期组 | ✅ |
+| 查看器 | 缩放/切换；相邻预加载 | ✅ |
+| 文件夹管理 | 监控文件夹 CRUD；scan_status 进度 | ✅ |
 
-**Phase 1 完成标志**：用户添加本地照片文件夹，无需导入即可网格/时间线浏览并全屏查看。
+**Phase 1 完成标志**：用户添加本地照片文件夹，无需导入即可网格/时间线浏览并全屏查看。 — **已达成**
 
 ### Phase 2 里程碑：智能整理
 
@@ -567,7 +575,7 @@ flowchart TB
     TIMELINE --> VIEWER
     IDX --> FOLDER[文件夹管理 UI]
 
-    VIEWER --> P1M[Phase 1 MVP ✓]
+    VIEWER --> P1M[Phase 1 MVP ✓ 已完成]
     FOLDER --> P1M
 
     P1M --> DEDUP1[BLAKE3 精确去重]

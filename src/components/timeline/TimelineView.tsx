@@ -104,9 +104,10 @@ export function TimelineView() {
     setLoading(true);
     void getTimelineGroups(PAGE_SIZE, 0).then((data) => {
       if (!cancelled) {
+        const itemCount = data.reduce((sum, g) => sum + g.media.length, 0);
         setGroups(data);
-        setHasMore(data.length >= PAGE_SIZE);
-        setOffset(data.length);
+        setHasMore(itemCount >= PAGE_SIZE);
+        setOffset(itemCount);
         setLoading(false);
       }
     });
@@ -120,9 +121,28 @@ export function TimelineView() {
     setLoadingMore(true);
     try {
       const data = await getTimelineGroups(PAGE_SIZE, offset);
-      setGroups((prev) => [...prev, ...data]);
-      setHasMore(data.length >= PAGE_SIZE);
-      setOffset((prev) => prev + data.length);
+      const itemCount = data.reduce((sum, g) => sum + g.media.length, 0);
+      setGroups((prev) => {
+        if (prev.length === 0) return data;
+        if (data.length === 0) return prev;
+
+        const lastGroup = prev[prev.length - 1];
+        const firstNew = data[0];
+
+        if (lastGroup.date === firstNew.date) {
+          const merged = [...prev];
+          merged[merged.length - 1] = {
+            ...lastGroup,
+            count: lastGroup.count + firstNew.count,
+            media: [...lastGroup.media, ...firstNew.media],
+          };
+          return [...merged, ...data.slice(1)];
+        }
+
+        return [...prev, ...data];
+      });
+      setHasMore(itemCount >= PAGE_SIZE);
+      setOffset((prev) => prev + itemCount);
     } finally {
       setLoadingMore(false);
     }

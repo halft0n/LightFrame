@@ -7,7 +7,6 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
-use tokio::sync::Semaphore;
 use tracing::{error, warn};
 
 fn emit_progress(app: &AppHandle, status: &ScanStatus) {
@@ -30,11 +29,11 @@ pub fn spawn_scan(app: AppHandle, state: &AppState, folder_id: i64) {
     let app = app.clone();
     let db = Arc::clone(&state.db);
     let scan_status = state.scan_status.clone();
-    let semaphore = Arc::clone(&state.scan_semaphore);
+    let concurrency = state.scan_concurrency;
     let scanning = Arc::clone(&state.scanning);
 
     tauri::async_runtime::spawn(async move {
-        let result = run_scan(&app, db, scan_status.clone(), semaphore, folder_id).await;
+        let result = run_scan(&app, db, scan_status.clone(), concurrency, folder_id).await;
         if let Err(e) = result {
             error!(folder_id, "scan failed: {e}");
             scan_status.set_status("error");
@@ -48,7 +47,7 @@ pub async fn run_scan(
     app: &AppHandle,
     db: Arc<Database>,
     scan_status: ScanStatus,
-    semaphore: Arc<Semaphore>,
+    concurrency: usize,
     folder_id: i64,
 ) -> catchlight_core::Result<()> {
     let folder = db
@@ -56,15 +55,17 @@ pub async fn run_scan(
         .ok_or_else(|| catchlight_core::Error::Other(format!("folder {folder_id} not found")))?;
 
     scan_status.reset(folder_id);
+    db.set_folder_scan_status(folder_id, "scanning")?;
     emit_progress(app, &scan_status);
 
     let root = PathBuf::from(&folder.path);
-    let files = discover_files(&root).await?;
+    let files = discover_files(&root).await.map_err(|e| {
+        let _ = db.set_folder_scan_status(folder_id, "error");
+        e
+    })?;
     scan_status.set_total(files.len() as i64);
     scan_status.set_status("scanning");
     emit_progress(app, &scan_status);
-
-    let concurrency = semaphore.available_permits().max(2);
 
     stream::iter(files.into_iter().map(|path| {
         let db = Arc::clone(&db);
@@ -82,7 +83,11 @@ pub async fn run_scan(
     .collect::<()>()
     .await;
 
-    db.update_last_scan_at(folder_id)?;
+    db.update_last_scan_at(folder_id).map_err(|e| {
+        let _ = db.set_folder_scan_status(folder_id, "error");
+        e
+    })?;
+    db.set_folder_scan_status(folder_id, "idle")?;
     scan_status.set_status("complete");
     emit_progress(app, &scan_status);
 
@@ -169,46 +174,29 @@ async fn process_file(
     if matches!(media_type, MediaType::Video) {
         let hash = blake3_hash.clone();
         let vid_path = path.clone();
-        let _ = tokio::task::spawn_blocking(move || -> catchlight_core::Result<()> {
-            if catchlight_video::find_ffmpeg().is_none() {
-                tracing::debug!("ffmpeg not found, skipping video thumbnail");
-                return Ok(());
-            }
+        let temp_frame = catchlight_thumbnail::thumb_path(&hash, ThumbnailSize::Small)
+            .with_extension("frame.jpg");
 
-            let temp_frame = catchlight_thumbnail::thumb_path(&hash, ThumbnailSize::Small)
-                .with_extension("frame.jpg");
+        if catchlight_video::find_ffmpeg().is_some() {
             if let Some(parent) = temp_frame.parent() {
-                std::fs::create_dir_all(parent)?;
+                let _ = std::fs::create_dir_all(parent);
             }
-
-            let status = std::process::Command::new("ffmpeg")
-                .args([
-                    "-y",
-                    "-ss",
-                    "1",
-                    "-i",
-                    &vid_path.to_string_lossy(),
-                    "-vframes",
-                    "1",
-                    "-q:v",
-                    "2",
-                    &temp_frame.to_string_lossy().to_string(),
-                ])
-                .output();
-
-            match status {
-                Ok(output) if output.status.success() && temp_frame.exists() => {
-                    let _ = catchlight_thumbnail::generate(&temp_frame, &hash, ThumbnailSize::Micro);
-                    let _ = catchlight_thumbnail::generate(&temp_frame, &hash, ThumbnailSize::Small);
-                    let _ = std::fs::remove_file(&temp_frame);
+            match catchlight_video::extract_frame(&vid_path, &temp_frame, 1.0).await {
+                Ok(()) if temp_frame.exists() => {
+                    let frame = temp_frame.clone();
+                    let hash_clone = hash.clone();
+                    let _ = tokio::task::spawn_blocking(move || {
+                        let _ = catchlight_thumbnail::generate(&frame, &hash_clone, ThumbnailSize::Micro);
+                        let _ = catchlight_thumbnail::generate(&frame, &hash_clone, ThumbnailSize::Small);
+                        let _ = std::fs::remove_file(&frame);
+                    })
+                    .await;
                 }
                 _ => {
                     tracing::debug!(path = %vid_path.display(), "video frame extraction failed");
                 }
             }
-            Ok(())
-        })
-        .await;
+        }
     }
 
     let media_type = if matches!(media_type, MediaType::Photo) {

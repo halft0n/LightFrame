@@ -3,7 +3,6 @@ use catchlight_db::Database;
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
-use tokio::sync::Semaphore;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ScanProgress {
@@ -74,7 +73,7 @@ pub struct AppState {
     pub db: Arc<Database>,
     pub config: AppConfig,
     pub scan_status: ScanStatus,
-    pub scan_semaphore: Arc<Semaphore>,
+    pub scan_concurrency: usize,
     pub scanning: Arc<AtomicBool>,
 }
 
@@ -92,7 +91,7 @@ impl AppState {
             db,
             config,
             scan_status: ScanStatus::new(),
-            scan_semaphore: Arc::new(Semaphore::new(concurrency)),
+            scan_concurrency: concurrency,
             scanning: Arc::new(AtomicBool::new(false)),
         })
     }

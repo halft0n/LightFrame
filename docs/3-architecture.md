@@ -1,8 +1,8 @@
 # CatchLight（拾光）架构设计文档
 
-> **版本：** 1.0  
+> **版本：** 1.1  
 > **日期：** 2026-06-28  
-> **状态：** 设计阶段  
+> **状态：** Phase 1 已实现（与代码同步）  
 > **技术栈：** Tauri 2.x + Rust + React 19 + Python AI 扩展（可选）
 
 ---
@@ -28,9 +28,9 @@ CatchLight 采用 **Tauri 2.x 桌面壳 + Rust 后端 + React WebView 前端 + P
 flowchart TB
     subgraph Frontend["前端 (React 19 + TypeScript)"]
         UI[页面 / 组件]
-        Store[Zustand / Jotai 状态]
+        Store[useSyncExternalStore 全局 store]
         Virtual[@tanstack/react-virtual]
-        I18n[i18next]
+        I18n[自定义 i18n 模块]
         Map[Leaflet / MapLibre]
     end
 
@@ -167,10 +167,10 @@ flowchart TB
 |------|------|
 | **状态** | 已采纳 |
 | **背景** | 全尺寸解码慢，网格滚动与全屏查看需求不同 |
-| **决策** | micro(64) / small(256) / preview(1024) / hq(原图或 4K 上限) 四级缓存 |
+| **决策** | micro(64) / small(256) / large(1024) 三级缓存；micro 存 DB BLOB，small/large 存磁盘 WebP |
 | **参考** | FlyPhotos Preview/HQ 双轨 + 滑动窗口预取 |
-| **理由** | 网格 60fps 滚动用 micro；查看器先显 preview 再升 HQ |
-| **后果** | 缓存目录需分层管理与 LRU 淘汰策略 |
+| **理由** | 网格 60fps 滚动用 micro BLOB；相簿/查看器用 small/large WebP |
+| **后果** | 缓存目录需分层管理与 LRU 淘汰策略；视频缩略图依赖 FFmpeg 抽帧（best-effort） |
 
 #### ADR-006：Tokio 异步 + 信号量限流
 
@@ -322,7 +322,15 @@ pub struct ThumbnailService {
 pub enum ThumbResult { Ready(PathBuf), Scheduled, Error(ThumbError) }
 ```
 
-**缓存路径：** `~/.catchlight/cache/thumbs/{library_id}/{size}/{blake3_prefix}.webp`
+**缓存路径：** `~/.catchlight/cache/thumbs/{size}/{blake3_prefix}.webp`；micro 级另存 `media_files.micro_thumb` BLOB（64×64 JPEG）。
+
+**三级规格（已实现）：**
+
+| 级别 | 尺寸 | 格式 | 存储 |
+|------|------|------|------|
+| micro | 64×64 | JPEG | SQLite BLOB |
+| small | 256×256 | WebP | 磁盘缓存 |
+| large | 1024×1024 | WebP | 磁盘缓存 |
 
 **依赖：** `catchlight-core`、`catchlight-metadata`、`image`、`webp`。
 
@@ -413,16 +421,15 @@ pub struct GeoResolver {
 
 ##### catchlight-video
 
-**职责：** FFmpeg sidecar 封装，视频缩略图、时长、编码信息。
+**职责：** FFmpeg 封装，视频缩略图（best-effort）、时长、编码信息。
+
+**Phase 1 实现：** 扫描流水线中若 PATH 存在 `ffmpeg`，抽取第 1 秒帧为临时 JPEG，再生成 micro/small 缩略图；未找到 FFmpeg 时跳过，视频仍可索引。
 
 **公开 API：**
 
 ```rust
-pub struct VideoProcessor {
-    pub fn probe(&self, path: &Path) -> Result<VideoInfo>;
-    pub async fn extract_frame(&self, path: &Path, timestamp_ms: u64) -> Result<Vec<u8>>;
-    pub fn ffmpeg_path(&self) -> &Path;
-}
+pub fn find_ffmpeg() -> Option<PathBuf>;
+pub fn probe_duration(path: &Path) -> Result<f64>;
 ```
 
 **依赖：** `catchlight-core`、`tokio::process`。
@@ -506,7 +513,7 @@ tauri::Builder::default()
 
 | 事件名 | 载荷 | 触发时机 |
 |--------|------|----------|
-| `scan:progress` | `{ job_id, phase, current, total, failed }` | 扫描进行中（节流 200ms） |
+| `scan-progress` | `ScanProgress`（见下） | 扫描进行中（每文件更新） |
 | `scan:complete` | `{ job_id, library_id, stats }` | 扫描完成 |
 | `thumb:ready` | `{ file_id, size, url }` | 缩略图生成完毕 |
 | `index:changed` | `{ library_id, change_type, paths[] }` | USN/inotify 增量变更 |
@@ -517,12 +524,32 @@ tauri::Builder::default()
 **ProgressTracker 模式（借鉴 Lap）：**
 
 ```rust
-struct ProgressTracker {
-    app_handle: AppHandle,
-    flush_interval: Duration,  // 200ms 节流
-    last_emit_at: Option<Instant>,
+// 当前实现：src-tauri/src/state.rs
+pub struct ScanProgress {
+    pub folder_id: i64,
+    pub scanned: i64,
+    pub total: i64,
+    pub status: String,  // idle | scanning | complete | error
 }
-// phase: discovering → extracting_exif → generating_thumbs → complete
+
+// 前端 tauri.ts 与后端 serde 字段对齐
+pub struct WatchedFolder {
+    pub id: i64,
+    pub path: String,
+    pub media_count: i64,
+    pub last_scan: Option<String>,
+    pub scan_status: String,  // idle | scanning | complete | error
+}
+```
+
+**扫描流水线（Phase 1 实现）：** `futures::stream` + `buffer_unordered(concurrency)` 有界并发，在信号量预算内并行处理每个文件（EXIF、哈希、缩略图、截图检测），而非 per-file `spawn` 无界任务。
+
+```rust
+// src-tauri/src/scan.rs
+stream::iter(files.into_iter().map(|path| async move { process_file(...).await }))
+    .buffer_unordered(concurrency)
+    .collect::<()>()
+    .await;
 ```
 
 #### 2.2.3 自定义 URI 协议
@@ -650,8 +677,8 @@ thumbnail_service.prefetch_visible_range(visible_start, visible_end, overscan: 5
 | 框架 | React 19 + TypeScript + Vite | UI 渲染与构建 |
 | 样式 | TailwindCSS v4 + shadcn/ui | macOS 照片风格组件 |
 | 虚拟滚动 | @tanstack/react-virtual | 10 万+ 照片网格 60fps |
-| 国际化 | i18next + react-i18next | 中/英，预留扩展 |
-| 状态管理 | Zustand（全局）+ Jotai（局部/派生） | 轻量，避免 Redux 样板 |
+| 国际化 | 自定义 `src/i18n/`（JSON + `useTranslation` hook） | 中/英，localStorage 持久化 |
+| 状态管理 | 自定义 `useSyncExternalStore` store（`appStore.ts`） | 轻量，无外部状态库依赖 |
 | 路由 | React Router v7 | 页面级导航 |
 | 地图 | Leaflet（轻量）/ MapLibre GL（矢量） | 地点浏览 |
 | Tauri API | @tauri-apps/api + plugin-os | IPC、系统 locale |
@@ -697,12 +724,8 @@ src/
 │   ├── album/
 │   ├── map/
 │   └── ui/                     # shadcn/ui 组件
-├── stores/
-│   ├── libraryStore.ts         # 当前图库、监控文件夹
-│   ├── mediaStore.ts           # 媒体列表、筛选条件
-│   ├── viewerStore.ts          # 查看器状态、当前索引
-│   ├── scanStore.ts            # 扫描进度
-│   └── settingsStore.ts        # 用户设置
+├── store/
+│   └── appStore.ts             # useSyncExternalStore 全局状态（文件夹、视图、扫描进度、查看器）
 ├── hooks/
 │   ├── useMediaPage.ts         # 分页加载 + 虚拟滚动数据
 │   ├── useThumbnail.ts         # thumb:// + thumb:ready 监听
@@ -713,7 +736,8 @@ src/
 │   ├── events.ts               # listen 封装
 │   └── utils.ts
 └── i18n/
-    ├── config.ts
+    ├── index.ts                # t() / setLocale / subscribe
+    ├── useTranslation.ts       # React hook（useSyncExternalStore）
     └── locales/
         ├── zh-CN.json
         └── en.json
@@ -782,11 +806,10 @@ flowchart TB
 
 | 状态类型 | 方案 | 示例 |
 |----------|------|------|
-| **全局持久** | Zustand + persist 中间件（设置类）或 SQLite（业务类经 IPC） | 主题、语言偏好 |
-| **全局会话** | Zustand | 当前图库 ID、侧边栏折叠 |
-| **列表数据** | Zustand + 分页缓存 Map | `mediaByPage: Map<string, MediaFile[]>` |
-| **派生/局部** | Jotai atoms | 当前筛选条件、选中项 Set |
-| **服务端状态** | 自定义 hooks + IPC | 扫描进度、缩略图状态 |
+| **全局持久** | localStorage（语言）+ SQLite 经 IPC（业务数据） | `catchlight-locale`、监控文件夹 |
+| **全局会话** | `appStore.ts`（`useSyncExternalStore`） | 当前视图、侧边栏、扫描进度 |
+| **列表数据** | 组件内 useState + IPC 分页 | `PhotoGrid`、`TimelineView` 按需加载 |
+| **服务端状态** | IPC + `listen()` 事件 | `scan-progress`、`thumb://` 协议 |
 | **组件局部** | useState | 对话框开关、hover 状态 |
 
 **原则：** 照片元数据权威来源是 SQLite（后端），前端仅缓存当前视图窗口数据，不做全量同步。
@@ -920,13 +943,10 @@ CREATE TABLE libraries (
 
 CREATE TABLE watched_folders (
     id              INTEGER PRIMARY KEY,
-    library_id      TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
-    folder_path     TEXT NOT NULL,
-    recursive       INTEGER NOT NULL DEFAULT 1,
-    is_excluded     INTEGER NOT NULL DEFAULT 0, -- 排除规则
-    last_scan_at    INTEGER,
-    file_count      INTEGER DEFAULT 0,
-    UNIQUE(library_id, folder_path)
+    path            TEXT NOT NULL UNIQUE,
+    added_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    last_scan_at    TEXT,
+    scan_status     TEXT NOT NULL DEFAULT 'idle'  -- v2 迁移新增：idle|scanning|complete|error
 );
 
 CREATE TABLE settings (
@@ -978,7 +998,7 @@ CREATE TABLE media_files (
     place_cluster_id    INTEGER,                -- DBSCAN 聚类 ID
 
     -- 分类
-    media_type          TEXT NOT NULL DEFAULT 'photo',  -- photo|video|raw|live_photo
+    media_type          TEXT NOT NULL DEFAULT 'Unknown',  -- Photo|Video|Screenshot|Raw|LivePhoto
     content_class       TEXT,                   -- screenshot|document|code|chat|camera
     content_confidence  REAL,
     is_favorite         INTEGER NOT NULL DEFAULT 0,
@@ -986,6 +1006,9 @@ CREATE TABLE media_files (
     is_deleted          INTEGER NOT NULL DEFAULT 0,   -- 软删除
     deleted_at          INTEGER,
     rating              INTEGER DEFAULT 0,
+
+    -- micro 缩略图（64×64 JPEG BLOB，网格占位，避免磁盘 I/O）
+    micro_thumb         BLOB,
 
     -- Live Photo 配对
     live_partner_id     INTEGER REFERENCES media_files(id),

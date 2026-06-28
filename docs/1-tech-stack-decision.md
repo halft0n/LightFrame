@@ -57,8 +57,8 @@
 │  │  动画: Framer Motion                      │    │
 │  │  虚拟滚动: @tanstack/react-virtual        │    │
 │  │  地图: Leaflet / MapLibre GL             │    │
-│  │  i18n: react-i18next                     │    │
-│  │  状态: Zustand                           │    │
+│  │  i18n: 自定义 src/i18n/                  │    │
+│  │  状态: useSyncExternalStore (appStore)   │    │
 │  └──────────────┬───────────────────────────┘    │
 │                 │ Tauri IPC (命令 + 事件)          │
 │  ┌──────────────┴───────────────────────────┐    │

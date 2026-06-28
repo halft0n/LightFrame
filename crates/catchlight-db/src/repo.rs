@@ -24,7 +24,7 @@ fn map_watched_folder_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<WatchedFo
         path: row.get(1)?,
         media_count: row.get(2)?,
         last_scan: row.get(3)?,
-        scan_status: default_scan_status(),
+        scan_status: row.get::<_, Option<String>>(4)?.unwrap_or_else(default_scan_status),
     })
 }
 
@@ -71,7 +71,11 @@ impl Database {
             "INSERT INTO media_files (folder_id, path, filename, media_type, size_bytes, width, height, created_at, modified_at, blake3_hash, dhash, latitude, longitude)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)
              ON CONFLICT(path) DO UPDATE SET
+                media_type = excluded.media_type,
                 size_bytes = excluded.size_bytes,
+                width = COALESCE(excluded.width, width),
+                height = COALESCE(excluded.height, height),
+                created_at = COALESCE(excluded.created_at, created_at),
                 modified_at = excluded.modified_at,
                 blake3_hash = COALESCE(excluded.blake3_hash, blake3_hash),
                 dhash = COALESCE(excluded.dhash, dhash)",
@@ -190,7 +194,7 @@ impl Database {
         let conn = self.conn();
         let mut stmt = conn
             .prepare(
-                "SELECT w.id, w.path, COALESCE(COUNT(m.id), 0) as media_count, w.last_scan_at as last_scan
+                "SELECT w.id, w.path, COALESCE(COUNT(m.id), 0) as media_count, w.last_scan_at as last_scan, w.scan_status
                  FROM watched_folders w
                  LEFT JOIN media_files m ON m.folder_id = w.id
                  GROUP BY w.id
@@ -209,7 +213,7 @@ impl Database {
     pub fn get_watched_folder(&self, id: i64) -> catchlight_core::Result<Option<WatchedFolder>> {
         let conn = self.conn();
         conn.query_row(
-            "SELECT w.id, w.path, COALESCE(COUNT(m.id), 0) as media_count, w.last_scan_at as last_scan
+            "SELECT w.id, w.path, COALESCE(COUNT(m.id), 0) as media_count, w.last_scan_at as last_scan, w.scan_status
              FROM watched_folders w
              LEFT JOIN media_files m ON m.folder_id = w.id
              WHERE w.id = ?1
@@ -230,6 +234,16 @@ impl Database {
         .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
         conn.execute("DELETE FROM watched_folders WHERE id = ?1", params![id])
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn set_folder_scan_status(&self, folder_id: i64, status: &str) -> catchlight_core::Result<()> {
+        let conn = self.conn();
+        conn.execute(
+            "UPDATE watched_folders SET scan_status = ?1 WHERE id = ?2",
+            params![status, folder_id],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
         Ok(())
     }
 

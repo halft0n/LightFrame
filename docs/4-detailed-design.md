@@ -1,10 +1,10 @@
 # CatchLight（拾光）详细方案设计
 
-> **文档版本**：v1.0  
+> **文档版本**：v1.1  
 > **更新日期**：2026-06-28  
 > **关联文档**：[需求规格说明书](./2-requirements.md) · [技术调研报告](./0-research-report.md) · [技术路线决策](./1-tech-stack-decision.md)  
 > **技术栈**：Tauri 2.x + Rust + React + Python AI 扩展（可选）  
-> **状态**：详细设计阶段
+> **状态**：Phase 1 已实现（本文档与代码同步）
 
 ---
 
@@ -70,7 +70,7 @@ flowchart LR
     C --> F[ThumbQueue]
     F --> G[磁盘缓存 + micro BLOB]
     C --> H[DedupQueue]
-    C --> I[ScreenshotQueue]
+    C --> I[ScreenshotDet 内联于 scan pipeline]
     G --> J[thumb:// 协议]
     J --> K[React Gallery]
     C --> K
@@ -556,28 +556,29 @@ impl GenericNotifyIndexer {
 
 ### 1.6 增量扫描策略
 
-#### 1.6.1 首次全量扫描流程
+#### 1.6.1 首次全量扫描流程（Phase 1 实现）
 
 ```mermaid
 sequenceDiagram
     participant UI as 前端
     participant App as Tauri App
-    participant Idx as FileIndexer
+    participant Scan as scan.rs
     participant DB as SQLite
-    participant MQ as MetadataQueue
 
-    UI->>App: add_watched_folder(path)
-    App->>DB: INSERT watched_folders
-    App->>Idx: full_scan([path])
-    loop 批次
-        Idx-->>App: ScanProgress
-        App-->>UI: event index:progress
-        Idx->>DB: UPSERT media_files (path,size,mtime,platform_id)
+    UI->>App: scan_folder(folder_id)
+    App->>Scan: spawn_scan → run_scan
+    Scan->>Scan: discover_files (walkdir)
+    Scan->>Scan: stream + buffer_unordered 并行 process_file
+    loop 每个文件
+        Scan->>Scan: EXIF / BLAKE3 / 缩略图 / 截图检测
+        Scan-->>UI: emit scan-progress
+        Scan->>DB: upsert_media + micro_thumb BLOB
     end
-    App->>DB: UPDATE watched_folders.last_scan
-    App->>MQ: enqueue_new_files(file_ids)
-    App->>Idx: watch_changes([path])
+    Scan->>DB: UPDATE watched_folders.last_scan_at, scan_status
+    Scan-->>UI: scan-progress (status=complete)
 ```
+
+**并发模型：** `futures::stream::iter(files).map(process_file).buffer_unordered(concurrency)`，并发度由 `ScanSemaphore` 预算控制，避免 per-file 无界 `spawn`。
 
 #### 1.6.2 增量判定条件
 
@@ -637,12 +638,11 @@ CREATE TABLE scan_state (
 
 CREATE TABLE watched_folders (
     id          INTEGER PRIMARY KEY,
-    folder_path TEXT NOT NULL UNIQUE,
-    recursive   INTEGER DEFAULT 1,
-    last_scan   INTEGER,
-    file_count  INTEGER DEFAULT 0,
-    is_slow_source INTEGER DEFAULT 0,        -- NAS/网络盘
-    poll_interval_secs INTEGER               -- 慢速源 1800
+    path        TEXT NOT NULL UNIQUE,
+    added_at    TEXT NOT NULL DEFAULT (datetime('now')),
+    last_scan_at TEXT,
+    scan_status TEXT NOT NULL DEFAULT 'idle',  -- v2 迁移
+    -- media_count 由 list 查询 JOIN 计算
 );
 ```
 
@@ -905,9 +905,11 @@ pub enum TimelineGroup {
 
 | 级别 | 尺寸 | 格式 | 存储位置 | 用途 |
 |------|------|------|---------|------|
-| micro | 64×64 | JPEG (quality 75) | SQLite `media_files.micro_thumb` BLOB | 网格快速滚动占位 |
+| micro | 64×64 | JPEG (quality 75) | SQLite `media_files.micro_thumb` BLOB | 网格快速滚动占位；`thumb://` micro 优先读 BLOB |
 | small | 256×256 | WebP (quality 80) | 磁盘缓存 | 相簿浏览 |
 | large | 1024×1024 | WebP (quality 80) | 磁盘缓存 | 预览/查看器 |
+
+**视频缩略图（best-effort）：** 扫描 `process_file` 中，若 `find_ffmpeg()` 可用，用 FFmpeg 抽取第 1 秒帧 → 生成 small/micro；失败或无 FFmpeg 时跳过，不影响索引。
 
 **内存 LRU**（运行时）：
 
@@ -1265,20 +1267,22 @@ fn dhash_bucket(dhash: u64) -> u16 {
 | L2 视觉 | < 10 ms | 提升 30% | ✅ |
 | L3 CLIP | ~100 ms | 最终分类 | 可选 AI 包 |
 
-### 5.2 三层检测策略
+### 5.2 三层检测策略（Phase 1：规则层已集成扫描流水线）
+
+扫描 `process_file` 在写入 DB 前调用 `catchlight_ai::detect_screenshot(path, width, height)`：对 Photo 类型按分辨率/扩展名规则判定，命中则设为 `MediaType::Screenshot`。L2/L3 视觉与 CLIP 分类为 Phase 2+ 扩展。
 
 ```mermaid
 flowchart TD
-    A[新文件入队] --> B[L1: 元数据快筛]
-    B --> C{score ≥ 40?}
-    C -->|否| D[media_type = photo]
-    C -->|是| E[L2: 视觉特征]
-    E --> F{score ≥ 70?}
-    F -->|否| D
-    F -->|是| G{AI 启用?}
-    G -->|否| H[media_type = screenshot]
-    G -->|是| I[L3: CLIP 分类]
-    I --> J[media_type + screenshot_subtype]
+    A[process_file] --> B[EXIF + 缩略图 + 哈希]
+    B --> C{media_type == Photo?}
+    C -->|是| D[detect_screenshot 规则层]
+    D --> E{命中?}
+    E -->|是| F[media_type = Screenshot]
+    E -->|否| G[保持 Photo]
+    C -->|否| H[保持原类型]
+    F --> I[upsert_media]
+    G --> I
+    H --> I
 ```
 
 #### 5.2.1 L1 元数据快筛（规则列表）
@@ -1719,51 +1723,42 @@ useEffect(() => {
 
 | 层级 | 方案 | 理由 |
 |------|------|------|
-| 前端 | react-i18next | Tauri 生态成熟（NFR-020） |
-| 后端 | **rust-i18n** | 宏编译期嵌入，比 fluent 轻量 |
+| 前端 | 自定义 `src/i18n/`（JSON 词典 + `t()` + `useTranslation`） | 零依赖；与 `useSyncExternalStore` 订阅模式一致 |
+| 后端 | **rust-i18n**（Phase 2+） | 宏编译期嵌入，比 fluent 轻量 |
 | 日期/数字 | Intl API | 标准本地化 |
 
 ### 8.2 前端 i18n 架构
 
-#### 8.2.1 目录结构
+#### 8.2.1 目录结构（当前实现）
 
 ```
-src/locales/
-├── zh-CN/
-│   ├── common.json
-│   ├── sidebar.json
-│   ├── gallery.json
-│   ├── viewer.json
-│   ├── settings.json
-│   └── errors.json
-└── en/
-    └── ... (same structure)
+src/i18n/
+├── index.ts              # t(), setLocale(), subscribe()
+├── useTranslation.ts     # React hook
+└── locales/
+    ├── zh-CN.json
+    └── en.json
 ```
 
 #### 8.2.2 初始化
 
 ```typescript
-// src/i18n/config.ts
-import i18n from 'i18next';
-import { initReactI18next } from 'react-i18next';
+// src/i18n/index.ts — 自定义实现，非 i18next
+import zhCN from "./locales/zh-CN.json";
+import en from "./locales/en.json";
 
-i18n.use(initReactI18next).init({
-  fallbackLng: 'en',
-  ns: ['common', 'sidebar', 'gallery', 'viewer', 'settings', 'errors'],
-  defaultNS: 'common',
-  interpolation: { escapeValue: false },
-});
+let currentLocale: Locale = detectLocale(); // localStorage → navigator.language
 
-// src/i18n/language-init.ts
-export async function initLanguage(): Promise<void> {
-  const saved = await invoke<string>('get_setting', { key: 'language' });
-  if (saved && saved !== 'auto') {
-    await i18n.changeLanguage(saved);
-    return;
-  }
-  const locale = await os.locale();  // @tauri-apps/plugin-os
-  const matched = matchLocale(locale, ['zh-CN', 'zh-TW', 'en', 'ja', 'ko']);
-  await i18n.changeLanguage(matched ?? 'en');
+export function t(key: string, params?: Record<string, string | number>): string {
+  let text = translations[currentLocale][key] ?? key;
+  // {count} 占位符替换
+  ...
+}
+
+export function setLocale(locale: Locale) {
+  currentLocale = locale;
+  localStorage.setItem("catchlight-locale", locale);
+  listeners.forEach((fn) => fn());
 }
 ```
 
@@ -1951,15 +1946,19 @@ pub fn load_config() -> Result<Config> {
 ### 9.6 Tauri IPC 接口汇总
 
 ```rust
-// 索引
-add_watched_folder(path, recursive) -> WatchedFolder
+// 索引（Phase 1 已实现）
+add_watched_folder(path) -> WatchedFolder
 remove_watched_folder(id) -> ()
-rebuild_index(folder_id?) -> ScanJobId
-get_scan_progress(job_id) -> ScanProgress
+list_watched_folders() -> Vec<WatchedFolder>
+scan_folder(folder_id) -> ()
+get_scan_status() -> ScanProgress
+// WatchedFolder: { id, path, media_count, last_scan?, scan_status }
+// ScanProgress:  { folder_id, scanned, total, status }
 
 // Gallery
-gallery_page(cursor, limit, filter) -> GalleryPage
-get_micro_thumb(file_id) -> Vec<u8>
+get_media_list(offset, limit) -> Vec<MediaItem>
+get_timeline_groups(limit, offset) -> Vec<TimelineGroup>
+get_micro_thumb(file_id) -> Vec<u8>  // thumb:// micro 读 BLOB
 
 // 相簿
 create_album(name) -> Album
@@ -1982,7 +1981,7 @@ clear_thumb_cache(level?) -> ()
 
 | 事件名 | 载荷 | 用途 |
 |--------|------|------|
-| `index:progress` | ScanProgress | 索引进度条 |
+| `scan-progress` | `ScanProgress` | 索引进度条 |
 | `index:complete` | { count, duration_ms } | 完成通知 |
 | `metadata:updated` | { file_ids } | 增量刷新网格 |
 | `thumb:ready` | { file_id, level } | 缩略图升级 |
