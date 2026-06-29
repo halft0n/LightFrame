@@ -320,4 +320,203 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         assert!(!resp.body().is_empty());
     }
+
+    fn insert_face_for_media_path(
+        state: &AppState,
+        watched_dir: &std::path::Path,
+        media_path: &std::path::Path,
+        bbox: [f32; 4],
+    ) -> i64 {
+        let canonical_dir =
+            strip_extended_prefix(std::fs::canonicalize(watched_dir).expect("canonicalize dir"));
+        let folder_id = state
+            .db
+            .add_watched_folder(canonical_dir.to_str().unwrap())
+            .expect("add folder")
+            .id;
+        let media = MediaFile {
+            id: 0,
+            path: media_path.to_string_lossy().to_string(),
+            filename: media_path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string(),
+            media_type: MediaType::Photo,
+            size_bytes: 4096,
+            width: Some(200),
+            height: Some(200),
+            created_at: None,
+            modified_at: chrono::NaiveDateTime::default(),
+            blake3_hash: Some("facehash".to_string()),
+            dhash: None,
+            phash: None,
+            latitude: None,
+            longitude: None,
+        };
+        let media_id = state
+            .db
+            .upsert_media(folder_id, &media)
+            .expect("upsert media");
+        state
+            .db
+            .store_face_detections(
+                media_id,
+                &[FaceDetectionInput {
+                    bbox,
+                    confidence: 0.99,
+                    embedding: vec![1.0, 0.0, 0.5],
+                }],
+            )
+            .expect("store face");
+        state.db.get_faces_for_media(media_id).expect("get faces")[0].id
+    }
+
+    #[test]
+    fn ok_and_error_responses_include_cors_header() {
+        let err = error_response(StatusCode::NOT_FOUND, "missing");
+        assert_eq!(
+            err.headers()
+                .get("Access-Control-Allow-Origin")
+                .and_then(|v| v.to_str().ok()),
+            Some("*")
+        );
+
+        let ok = ok_response(b"jpeg".to_vec());
+        assert_eq!(
+            ok.headers()
+                .get("Access-Control-Allow-Origin")
+                .and_then(|v| v.to_str().ok()),
+            Some("*")
+        );
+    }
+
+    #[test]
+    fn handle_path_traversal_in_url_returns_bad_request() {
+        let state = test_state();
+        let dir = tempfile::tempdir().unwrap();
+        let (face_id, _) = insert_face_media(&state, dir.path(), [10.0, 10.0, 50.0, 50.0]);
+
+        for path in [
+            "/../../etc/passwd",
+            &format!("/{face_id}/../../../etc/passwd"),
+            "/%2e%2e%2f%2e%2e%2fetc/passwd",
+            "/..%2f..%2f123",
+            "/123/extra/segments",
+        ] {
+            let resp = handle(&state, path);
+            assert_eq!(
+                resp.status(),
+                StatusCode::BAD_REQUEST,
+                "path {path:?} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn handle_null_byte_in_face_id_path_is_rejected() {
+        let state = test_state();
+        let dir = tempfile::tempdir().unwrap();
+        let (face_id, _) = insert_face_media(&state, dir.path(), [10.0, 10.0, 50.0, 50.0]);
+
+        let mut path = face_id.to_string();
+        path.insert(1, '\0');
+        let resp = handle(&state, &format!("/{path}"));
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn handle_malformed_and_overflow_face_ids_return_bad_request() {
+        let state = test_state();
+
+        for path in [
+            "/",
+            "",
+            "/not-a-number",
+            "/12.34",
+            "/0x10",
+            "/9223372036854775808",
+            &format!("/{}", "9".repeat(500)),
+            &format!("/{}", "1".repeat(100)),
+        ] {
+            let resp = handle(&state, path);
+            assert_eq!(
+                resp.status(),
+                StatusCode::BAD_REQUEST,
+                "path {path:?} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn handle_forbidden_outside_watched_folder() {
+        let state = test_state();
+        let watched = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let file = outside.path().join("secret.jpg");
+        write_test_jpeg(&file, 100, 100);
+
+        let face_id = insert_face_for_media_path(&state, watched.path(), &file, [0.0, 0.0, 50.0, 50.0]);
+
+        let resp = handle(&state, &format!("/{face_id}"));
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        assert_eq!(String::from_utf8_lossy(resp.body()), "path not allowed");
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn handle_symlink_escape_outside_watched_folder_returns_forbidden() {
+        let state = test_state();
+        let watched = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let secret = outside.path().join("outside.jpg");
+        write_test_jpeg(&secret, 100, 100);
+
+        let link = watched.path().join("link.jpg");
+        std::os::unix::fs::symlink(&secret, &link).unwrap();
+
+        let face_id =
+            insert_face_for_media_path(&state, watched.path(), &link, [0.0, 0.0, 50.0, 50.0]);
+
+        let resp = handle(&state, &format!("/{face_id}"));
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn handle_negative_bbox_is_clamped_to_valid_crop() {
+        let state = test_state();
+        let dir = tempfile::tempdir().unwrap();
+        let (face_id, _) = insert_face_media(&state, dir.path(), [-50.0, -30.0, 80.0, 90.0]);
+
+        let resp = handle(&state, &format!("/{face_id}"));
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(resp.body().starts_with(&[0xFF, 0xD8, 0xFF]));
+    }
+
+    #[test]
+    fn handle_zero_area_bbox_still_returns_jpeg() {
+        let state = test_state();
+        let dir = tempfile::tempdir().unwrap();
+        let (face_id, _) = insert_face_media(&state, dir.path(), [50.0, 50.0, 0.0, 0.0]);
+
+        let resp = handle(&state, &format!("/{face_id}"));
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(resp.body().starts_with(&[0xFF, 0xD8, 0xFF]));
+    }
+
+    #[test]
+    fn handle_valid_face_crop_includes_cors_header() {
+        let state = test_state();
+        let dir = tempfile::tempdir().unwrap();
+        let (face_id, _) = insert_face_media(&state, dir.path(), [20.0, 30.0, 80.0, 90.0]);
+
+        let resp = handle(&state, &format!("/{face_id}"));
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            resp.headers()
+                .get("Access-Control-Allow-Origin")
+                .and_then(|v| v.to_str().ok()),
+            Some("*")
+        );
+    }
 }

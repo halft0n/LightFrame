@@ -205,3 +205,296 @@ pub async fn regenerate_all_thumbnails(
 
     Ok(ThumbnailRegenResult { regenerated })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDateTime;
+    use image::{ImageBuffer, Rgb};
+    use lightframe_core::config::AppConfig;
+    use lightframe_core::media::{MediaFile, MediaType};
+    use lightframe_db::Database;
+    use lightframe_thumbnail::thumb_path;
+    use std::path::{Path, PathBuf};
+    use std::sync::atomic::AtomicBool;
+    use std::sync::{Arc, Mutex};
+    use tempfile::TempDir;
+
+    static DATA_DIR_LOCK: Mutex<()> = Mutex::new(());
+
+    struct EnvVarGuard {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn new(key: &'static str, value: &Path) -> Self {
+            let previous = std::env::var(key).ok();
+            // SAFETY: tests hold DATA_DIR_LOCK so env vars are not read concurrently.
+            unsafe {
+                std::env::set_var(key, value);
+            }
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            // SAFETY: tests hold DATA_DIR_LOCK so env vars are not read concurrently.
+            unsafe {
+                match &self.previous {
+                    Some(value) => std::env::set_var(self.key, value),
+                    None => std::env::remove_var(self.key),
+                }
+            }
+        }
+    }
+
+    struct TestHarness {
+        _data_dir: TempDir,
+        _data_dir_lock: std::sync::MutexGuard<'static, ()>,
+        _env_guard: EnvVarGuard,
+        pub state: AppState,
+        pub media_dir: PathBuf,
+    }
+
+    impl TestHarness {
+        fn new() -> Self {
+            let lock = DATA_DIR_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let data_dir = TempDir::new().expect("temp data dir");
+            let media_dir = data_dir.path().join("photos");
+            std::fs::create_dir_all(&media_dir).expect("create media dir");
+
+            #[cfg(windows)]
+            let env_key = "LOCALAPPDATA";
+            #[cfg(not(windows))]
+            let env_key = "XDG_DATA_HOME";
+
+            let env_guard = EnvVarGuard::new(env_key, data_dir.path());
+
+            let state = AppState {
+                db: Arc::new(Database::open(Path::new(":memory:")).expect("in-memory db")),
+                config: AppConfig::default(),
+                scan_status: crate::state::ScanStatus::new(),
+                scan_concurrency: 2,
+                scanning: Arc::new(AtomicBool::new(false)),
+                face_detecting: Arc::new(AtomicBool::new(false)),
+                watch_manager: crate::watcher::WatchManager::new(),
+                thumb_cache: crate::thumb_cache::ThumbCache::new(),
+                ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
+            };
+
+            Self {
+                _data_dir: data_dir,
+                _data_dir_lock: lock,
+                _env_guard: env_guard,
+                state,
+                media_dir,
+            }
+        }
+    }
+
+    fn write_test_png(path: &Path) {
+        let img: ImageBuffer<Rgb<u8>, Vec<u8>> =
+            ImageBuffer::from_fn(64, 64, |x, y| Rgb([(x % 256) as u8, (y % 256) as u8, 64]));
+        img.save(path).expect("write png");
+    }
+
+    fn write_thumb_file(hash: &str, size: ThumbnailSize, contents: &[u8]) {
+        let path = thumb_path(hash, size);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent).expect("create thumb parent");
+        }
+        std::fs::write(path, contents).expect("write thumb");
+    }
+
+    fn insert_media(
+        harness: &TestHarness,
+        filename: &str,
+        hash: Option<&str>,
+        path_override: Option<&Path>,
+    ) -> i64 {
+        let folder_id = harness
+            .state
+            .db
+            .add_watched_folder(harness.media_dir.to_str().unwrap())
+            .expect("add folder")
+            .id;
+        let file_path = path_override
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| harness.media_dir.join(filename));
+        if path_override.is_none() {
+            write_test_png(&file_path);
+        }
+        let media = MediaFile {
+            id: 0,
+            path: file_path.to_string_lossy().to_string(),
+            filename: filename.to_string(),
+            media_type: MediaType::Photo,
+            size_bytes: 64 * 64 * 3,
+            width: Some(64),
+            height: Some(64),
+            created_at: None,
+            modified_at: NaiveDateTime::default(),
+            blake3_hash: hash.map(str::to_string),
+            dhash: None,
+            phash: None,
+            latitude: None,
+            longitude: None,
+        };
+        harness
+            .state
+            .db
+            .upsert_media(folder_id, &media)
+            .expect("upsert media")
+    }
+
+    #[test]
+    fn media_needs_regeneration_when_micro_thumb_file_missing() {
+        let harness = TestHarness::new();
+        let hash = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        write_thumb_file(hash, ThumbnailSize::Small, b"small");
+        harness
+            .state
+            .db
+            .set_micro_thumb(1, b"jpeg")
+            .expect("set micro");
+
+        assert!(media_needs_thumbnail_regeneration(
+            &harness.state.db,
+            1,
+            hash
+        ));
+    }
+
+    #[test]
+    fn media_needs_regeneration_when_small_thumb_file_missing() {
+        let harness = TestHarness::new();
+        let hash = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+        write_thumb_file(hash, ThumbnailSize::Micro, b"micro");
+        harness
+            .state
+            .db
+            .set_micro_thumb(1, b"jpeg")
+            .expect("set micro");
+
+        assert!(media_needs_thumbnail_regeneration(
+            &harness.state.db,
+            1,
+            hash
+        ));
+    }
+
+    #[test]
+    fn media_needs_regeneration_when_db_micro_thumb_is_none() {
+        let harness = TestHarness::new();
+        let hash = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+        write_thumb_file(hash, ThumbnailSize::Micro, b"micro");
+        write_thumb_file(hash, ThumbnailSize::Small, b"small");
+
+        assert!(media_needs_thumbnail_regeneration(
+            &harness.state.db,
+            1,
+            hash
+        ));
+    }
+
+    #[test]
+    fn media_needs_regeneration_when_db_micro_thumb_is_empty() {
+        let harness = TestHarness::new();
+        let hash = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+        write_thumb_file(hash, ThumbnailSize::Micro, b"micro");
+        write_thumb_file(hash, ThumbnailSize::Small, b"small");
+        harness
+            .state
+            .db
+            .set_micro_thumb(1, &[])
+            .expect("set empty micro");
+
+        assert!(media_needs_thumbnail_regeneration(
+            &harness.state.db,
+            1,
+            hash
+        ));
+    }
+
+    #[test]
+    fn media_needs_regeneration_false_when_all_thumbnails_exist() {
+        let harness = TestHarness::new();
+        let hash = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+        write_thumb_file(hash, ThumbnailSize::Micro, b"micro");
+        write_thumb_file(hash, ThumbnailSize::Small, b"small");
+        let media_id = insert_media(&harness, "complete.png", Some(hash), None);
+        harness
+            .state
+            .db
+            .set_micro_thumb(media_id, b"jpeg-bytes")
+            .expect("set micro");
+
+        assert!(!media_needs_thumbnail_regeneration(
+            &harness.state.db,
+            media_id,
+            hash
+        ));
+    }
+
+    #[test]
+    fn regenerate_returns_error_for_nonexistent_media() {
+        let harness = TestHarness::new();
+        let result = regenerate_thumbnails_for_media(&harness.state, 999_999);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .contains("media 999999 not found")
+        );
+    }
+
+    #[test]
+    fn regenerate_returns_false_for_media_without_hash() {
+        let harness = TestHarness::new();
+        let media_id = insert_media(&harness, "no-hash.png", None, None);
+        let result = regenerate_thumbnails_for_media(&harness.state, media_id).unwrap();
+        assert!(!result);
+    }
+
+    #[test]
+    fn regenerate_returns_false_for_missing_source_file() {
+        let harness = TestHarness::new();
+        let hash = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+        let missing = harness.media_dir.join("gone.png");
+        let media_id = insert_media(&harness, "gone.png", Some(hash), Some(&missing));
+
+        assert!(media_needs_thumbnail_regeneration(
+            &harness.state.db,
+            media_id,
+            hash
+        ));
+        let result = regenerate_thumbnails_for_media(&harness.state, media_id).unwrap();
+        assert!(!result);
+    }
+
+    #[test]
+    fn thumbnail_regen_progress_serializes() {
+        let progress = ThumbnailRegenProgress {
+            processed: 10,
+            total: 100,
+            regenerated: 3,
+            status: "running".to_string(),
+        };
+        let json = serde_json::to_string(&progress).expect("serialize progress");
+        let value: serde_json::Value = serde_json::from_str(&json).expect("parse json");
+        assert_eq!(value["processed"], 10);
+        assert_eq!(value["total"], 100);
+        assert_eq!(value["regenerated"], 3);
+        assert_eq!(value["status"], "running");
+    }
+
+    #[test]
+    fn thumbnail_regen_result_serializes() {
+        let result = ThumbnailRegenResult { regenerated: 42 };
+        let json = serde_json::to_string(&result).expect("serialize result");
+        let value: serde_json::Value = serde_json::from_str(&json).expect("parse json");
+        assert_eq!(value["regenerated"], 42);
+    }
+}

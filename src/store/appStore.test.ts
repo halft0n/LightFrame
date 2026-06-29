@@ -28,8 +28,31 @@ import {
   navigate,
   addSearchHistory,
   clearSearchHistory,
+  loadMedia,
+  loadMoreMedia,
+  appendMedia,
+  startSlideshow,
+  closeSlideshow,
+  nextSlideshow,
+  prevSlideshow,
+  setSearchMode,
+  updateFolder,
+  setSingleMediaSelection,
+  setMediaScrollIndex,
 } from "@/store/appStore";
 import type { MediaItem, WatchedFolder } from "@/lib/tauri";
+
+const getMediaPage = vi.fn();
+const getMediaCount = vi.fn();
+
+vi.mock("@/lib/tauri", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/tauri")>();
+  return {
+    ...actual,
+    getMediaPage: (...args: unknown[]) => getMediaPage(...args),
+    getMediaCount: (...args: unknown[]) => getMediaCount(...args),
+  };
+});
 
 function resetStore() {
   setView("all");
@@ -38,7 +61,9 @@ function resetStore() {
   clearMediaSelection();
   setScanning(false, null);
   closeViewer();
+  closeSlideshow();
   setSearchQuery("");
+  setSearchMode("text");
   setTheme("dark");
   setThumbnailSize("medium");
   closeAlbumDetail();
@@ -47,6 +72,8 @@ function resetStore() {
   closePersonDetail();
   clearSearchHistory();
   setView("all");
+  getMediaPage.mockReset();
+  getMediaCount.mockReset();
 }
 
 const sampleFolder: WatchedFolder = {
@@ -399,6 +426,160 @@ describe("appStore", () => {
       addSearchHistory("beach");
       clearSearchHistory();
       expect(getSnapshot().searchHistory).toEqual([]);
+    });
+  });
+
+  describe("media loading", () => {
+    it("loadMedia fetches page and count", async () => {
+      const items = [sampleMedia, { ...sampleMedia, id: 2 }];
+      getMediaPage.mockResolvedValue(items);
+      getMediaCount.mockResolvedValue(100);
+
+      await loadMedia();
+
+      const state = getSnapshot();
+      expect(state.mediaItems).toEqual(items);
+      expect(state.totalCount).toBe(100);
+      expect(getMediaPage).toHaveBeenCalledWith(60);
+      expect(getMediaCount).toHaveBeenCalled();
+    });
+
+    it("loadMedia handles errors without throwing", async () => {
+      getMediaPage.mockRejectedValue(new Error("network"));
+      getMediaCount.mockRejectedValue(new Error("network"));
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      await loadMedia();
+
+      expect(getSnapshot().mediaItems).toEqual([]);
+      consoleSpy.mockRestore();
+    });
+
+    it("appendMedia adds items to existing media", () => {
+      setMedia([sampleMedia], 10);
+      appendMedia([{ ...sampleMedia, id: 2 }, { ...sampleMedia, id: 3 }]);
+
+      expect(getSnapshot().mediaItems).toHaveLength(3);
+      expect(getSnapshot().mediaItems.map((m) => m.id)).toEqual([1, 2, 3]);
+    });
+
+    it("appendMedia does nothing for empty array", () => {
+      setMedia([sampleMedia], 1);
+      appendMedia([]);
+      expect(getSnapshot().mediaItems).toHaveLength(1);
+    });
+
+    it("loadMoreMedia appends next page when more items exist", async () => {
+      const itemWithCursor = { ...sampleMedia, created_at: "2024-01-01T00:00:00" };
+      setMedia([itemWithCursor], 5);
+      getMediaPage.mockResolvedValue([
+        { ...sampleMedia, id: 2 },
+        { ...sampleMedia, id: 3 },
+      ]);
+
+      await loadMoreMedia();
+
+      expect(getMediaPage).toHaveBeenCalledWith(60, ["2024-01-01T00:00:00", 1]);
+      expect(getSnapshot().mediaItems).toHaveLength(3);
+    });
+
+    it("loadMoreMedia skips when all items loaded", async () => {
+      setMedia([sampleMedia], 1);
+      await loadMoreMedia();
+      expect(getMediaPage).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("slideshow", () => {
+    it("startSlideshow activates with media ids", () => {
+      openViewer(5);
+      startSlideshow([10, 20, 30], 20);
+
+      const state = getSnapshot();
+      expect(state.slideshowActive).toBe(true);
+      expect(state.slideshowMediaIds).toEqual([10, 20, 30]);
+      expect(state.slideshowIndex).toBe(1);
+      expect(state.viewingMediaId).toBeNull();
+    });
+
+    it("startSlideshow ignores empty media ids", () => {
+      startSlideshow([]);
+      expect(getSnapshot().slideshowActive).toBe(false);
+    });
+
+    it("closeSlideshow resets slideshow state", () => {
+      startSlideshow([1, 2]);
+      closeSlideshow();
+
+      const state = getSnapshot();
+      expect(state.slideshowActive).toBe(false);
+      expect(state.slideshowMediaIds).toEqual([]);
+      expect(state.slideshowIndex).toBe(0);
+    });
+
+    it("nextSlideshow wraps to start", () => {
+      startSlideshow([1, 2, 3]);
+      expect(getSnapshot().slideshowIndex).toBe(0);
+
+      nextSlideshow();
+      expect(getSnapshot().slideshowIndex).toBe(1);
+
+      nextSlideshow();
+      nextSlideshow();
+      expect(getSnapshot().slideshowIndex).toBe(0);
+    });
+
+    it("prevSlideshow wraps to end", () => {
+      startSlideshow([1, 2, 3]);
+
+      prevSlideshow();
+      expect(getSnapshot().slideshowIndex).toBe(2);
+
+      prevSlideshow();
+      expect(getSnapshot().slideshowIndex).toBe(1);
+    });
+  });
+
+  describe("search and folder helpers", () => {
+    it("setSearchMode updates search mode", () => {
+      setSearchMode("semantic");
+      expect(getSnapshot().searchMode).toBe("semantic");
+
+      setSearchMode("text");
+      expect(getSnapshot().searchMode).toBe("text");
+    });
+
+    it("updateFolder merges partial updates", () => {
+      addFolder(sampleFolder);
+      updateFolder(1, { media_count: 99, scan_status: "scanning" });
+
+      const folder = getSnapshot().watchedFolders[0];
+      expect(folder.media_count).toBe(99);
+      expect(folder.scan_status).toBe("scanning");
+      expect(folder.path).toBe("/photos");
+    });
+
+    it("setSingleMediaSelection replaces selection", () => {
+      toggleMediaSelection(1);
+      toggleMediaSelection(2);
+      setSingleMediaSelection(5);
+      expect(getSnapshot().selectedMediaIds).toEqual([5]);
+    });
+
+    it("setMediaScrollIndex updates scroll index", () => {
+      const items = Array.from({ length: 10 }, (_, i) => ({
+        ...sampleMedia,
+        id: i + 1,
+      }));
+      setMedia(items, 10);
+
+      setMediaScrollIndex(5);
+      expect(getSnapshot().mediaScrollIndex).toBe(5);
+    });
+
+    it("setMediaScrollIndex clamps negative values to zero", () => {
+      setMediaScrollIndex(-5);
+      expect(getSnapshot().mediaScrollIndex).toBe(0);
     });
   });
 });

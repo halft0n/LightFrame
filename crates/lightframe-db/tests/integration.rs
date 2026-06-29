@@ -7,6 +7,13 @@ fn create_test_db() -> Database {
     Database::open(Path::new(":memory:")).expect("in-memory DB should open")
 }
 
+fn create_file_test_db() -> (Database, tempfile::TempDir) {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let path = dir.path().join("test.db");
+    let db = Database::open(&path).expect("file DB should open");
+    (db, dir)
+}
+
 fn insert_folder_id(db: &Database, path: &str) -> i64 {
     db.add_watched_folder(path).unwrap().id
 }
@@ -1546,4 +1553,756 @@ fn get_timeline_groups_single_date_spans_pages() {
     for id in &page2_ids {
         assert!(!page1_ids.contains(id));
     }
+}
+
+fn sample_screenshot(path: &str) -> MediaFile {
+    let mut media = sample_media(path);
+    media.media_type = MediaType::Screenshot;
+    media
+}
+
+fn insert_photo_with_location(
+    db: &Database,
+    fid: i64,
+    path: &str,
+    created_at: Option<NaiveDateTime>,
+    city: Option<&str>,
+    country: &str,
+    latitude: Option<f64>,
+    longitude: Option<f64>,
+) -> i64 {
+    let mut media = sample_media(path);
+    media.created_at = created_at;
+    media.latitude = latitude;
+    media.longitude = longitude;
+    let id = db.upsert_media(fid, &media).unwrap();
+    if let Some(c) = city {
+        db.update_media_location(id, c, country).unwrap();
+    } else {
+        db.update_media_location(id, "", country).unwrap();
+        let conn = db.conn().unwrap();
+        conn.execute(
+            "UPDATE media_files SET city = NULL WHERE id = ?1",
+            rusqlite::params![id],
+        )
+        .unwrap();
+    }
+    id
+}
+
+#[test]
+fn location_groups_and_media_by_location() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let tokyo_id = insert_photo_with_location(
+        &db,
+        fid,
+        "/photos/tokyo.jpg",
+        None,
+        Some("东京"),
+        "日本",
+        Some(35.68),
+        Some(139.69),
+    );
+    insert_photo_with_location(
+        &db,
+        fid,
+        "/photos/tokyo2.jpg",
+        None,
+        Some("东京"),
+        "日本",
+        Some(35.69),
+        Some(139.70),
+    );
+    insert_photo_with_location(
+        &db,
+        fid,
+        "/photos/osaka.jpg",
+        None,
+        Some("大阪"),
+        "日本",
+        Some(34.69),
+        Some(135.50),
+    );
+    insert_photo_with_location(
+        &db,
+        fid,
+        "/photos/usa.jpg",
+        None,
+        None,
+        "USA",
+        Some(40.71),
+        Some(-74.01),
+    );
+
+    let groups = db.get_location_groups().unwrap();
+    assert_eq!(groups.len(), 3);
+    let tokyo_group = groups
+        .iter()
+        .find(|g| g.city.as_deref() == Some("东京"))
+        .expect("tokyo group");
+    assert_eq!(tokyo_group.country, "日本");
+    assert_eq!(tokyo_group.count, 2);
+    assert!(tokyo_group.sample_media_id == tokyo_id || tokyo_group.sample_media_id > 0);
+
+    let tokyo_media = db.get_media_by_location("日本", Some("东京"), 10, 0).unwrap();
+    assert_eq!(tokyo_media.len(), 2);
+
+    let usa_no_city = db.get_media_by_location("USA", None, 10, 0).unwrap();
+    assert_eq!(usa_no_city.len(), 1);
+
+    assert!(db.get_media_by_location("日本", Some("京都"), 10, 0).unwrap().is_empty());
+
+    db.update_media_location(tokyo_id, "横滨", "日本").unwrap();
+    let tokyo_after = db.get_media_by_location("日本", Some("东京"), 10, 0).unwrap();
+    assert_eq!(tokyo_after.len(), 1);
+    assert_eq!(
+        db.get_media_by_location("日本", Some("横滨"), 10, 0)
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
+#[test]
+fn location_groups_empty_database() {
+    let db = create_test_db();
+    assert!(db.get_location_groups().unwrap().is_empty());
+}
+
+#[test]
+fn location_stats_and_geo_queries() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let stats_empty = db.get_location_stats().unwrap();
+    assert_eq!(stats_empty.total_with_gps, 0);
+    assert_eq!(stats_empty.countries, 0);
+    assert_eq!(stats_empty.cities, 0);
+
+    insert_photo_with_location(
+        &db,
+        fid,
+        "/photos/gps1.jpg",
+        None,
+        Some("Paris"),
+        "France",
+        Some(48.8566),
+        Some(2.3522),
+    );
+    insert_photo_with_location(
+        &db,
+        fid,
+        "/photos/gps2.jpg",
+        None,
+        Some("Lyon"),
+        "France",
+        Some(45.7640),
+        Some(4.8357),
+    );
+    let no_gps_id = db
+        .upsert_media(fid, &sample_media("/photos/no_gps.jpg"))
+        .unwrap();
+    db.update_media_location(no_gps_id, "Berlin", "Germany").unwrap();
+
+    let stats = db.get_location_stats().unwrap();
+    assert_eq!(stats.total_with_gps, 2);
+    assert_eq!(stats.countries, 2);
+    assert_eq!(stats.cities, 3);
+
+    let geo_page = db.get_media_with_geo(1, 0).unwrap();
+    assert_eq!(geo_page.len(), 1);
+    assert!(geo_page[0].latitude.is_some());
+
+    let all_geo = db.get_media_with_geo(10, 0).unwrap();
+    assert_eq!(all_geo.len(), 2);
+
+    let clusters = db.get_geo_clusters(1.0).unwrap();
+    assert_eq!(clusters.len(), 2);
+    assert!(clusters.iter().all(|c| c.count >= 1));
+    assert!(!clusters[0].media_ids.is_empty());
+
+    let tight_clusters = db.get_geo_clusters(0.001).unwrap();
+    assert!(tight_clusters.len() >= 2);
+}
+
+#[test]
+fn generate_list_and_get_memory_media() {
+    let (db, _dir) = create_file_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let dt = NaiveDateTime::parse_from_str("2023-08-01 10:00:00", "%Y-%m-%d %H:%M:%S").unwrap();
+
+    assert!(db.list_memories().unwrap().is_empty());
+    assert!(db.generate_memories().unwrap().is_empty());
+
+    for i in 0..5 {
+        insert_photo_with_location(
+            &db,
+            fid,
+            &format!("/photos/mem_{i}.jpg"),
+            Some(dt + chrono::Duration::hours(i)),
+            Some("上海"),
+            "中国",
+            None,
+            None,
+        );
+    }
+
+    let memories = db.generate_memories().unwrap();
+    assert_eq!(memories.len(), 1);
+    assert_eq!(memories[0].media_count, 5);
+    assert!(memories[0].title.contains("2023"));
+    assert!(memories[0].title.contains("8"));
+    assert!(memories[0].cover_media_id > 0);
+
+    let listed = db.list_memories().unwrap();
+    assert_eq!(listed.len(), 1);
+
+    let memory_id = listed[0].id;
+    let media = db.get_memory_media(memory_id, 10, 0).unwrap();
+    assert_eq!(media.len(), 5);
+
+    let page = db.get_memory_media(memory_id, 2, 0).unwrap();
+    assert_eq!(page.len(), 2);
+
+    assert!(db.get_memory_media(9999, 10, 0).unwrap().is_empty());
+
+    insert_photo_with_location(
+        &db,
+        fid,
+        "/photos/extra.jpg",
+        Some(dt + chrono::Duration::days(1)),
+        Some("上海"),
+        "中国",
+        None,
+        None,
+    );
+    let regenerated = db.generate_memories().unwrap();
+    assert_eq!(regenerated.len(), 1);
+    assert_eq!(regenerated[0].media_count, 6);
+}
+
+#[test]
+fn generate_memories_requires_five_photos_per_group() {
+    let (db, _dir) = create_file_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let dt = NaiveDateTime::parse_from_str("2022-03-15 12:00:00", "%Y-%m-%d %H:%M:%S").unwrap();
+
+    for i in 0..4 {
+        insert_photo_with_location(
+            &db,
+            fid,
+            &format!("/photos/few_{i}.jpg"),
+            Some(dt + chrono::Duration::hours(i)),
+            Some("北京"),
+            "中国",
+            None,
+            None,
+        );
+    }
+
+    assert!(db.generate_memories().unwrap().is_empty());
+}
+
+#[test]
+fn screenshots_filter_by_type_and_count() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let id1 = db
+        .upsert_media(fid, &sample_screenshot("/photos/screen1.png"))
+        .unwrap();
+    let id2 = db
+        .upsert_media(fid, &sample_screenshot("/photos/screen2.png"))
+        .unwrap();
+    db.upsert_media(fid, &sample_media("/photos/photo.jpg"))
+        .unwrap();
+
+    db.set_screenshot_type(id1, "window").unwrap();
+    db.set_screenshot_type(id2, "full").unwrap();
+
+    assert_eq!(db.get_screenshot_count(None).unwrap(), 2);
+    assert_eq!(db.get_screenshot_count(Some("window")).unwrap(), 1);
+    assert_eq!(db.get_screenshot_count(Some("full")).unwrap(), 1);
+    assert_eq!(db.get_screenshot_count(Some("missing")).unwrap(), 0);
+
+    let all = db.get_screenshots(None, 10, 0).unwrap();
+    assert_eq!(all.len(), 2);
+
+    let windows = db.get_screenshots(Some("window"), 10, 0).unwrap();
+    assert_eq!(windows.len(), 1);
+    assert_eq!(windows[0].id, id1);
+
+    assert!(db.get_screenshots(None, 0, 0).unwrap().is_empty());
+}
+
+#[test]
+fn set_screenshot_type_on_nonexistent_media_is_no_op() {
+    let db = create_test_db();
+    db.set_screenshot_type(9999, "window").unwrap();
+}
+
+#[test]
+fn find_similar_media_ranks_by_embedding_similarity() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let target_id = db
+        .upsert_media(fid, &sample_media("/photos/target.jpg"))
+        .unwrap();
+    let similar_id = db
+        .upsert_media(fid, &sample_media("/photos/similar.jpg"))
+        .unwrap();
+    let dissimilar_id = db
+        .upsert_media(fid, &sample_media("/photos/different.jpg"))
+        .unwrap();
+
+    db.store_clip_embedding(target_id, &[1.0, 0.0, 0.0]).unwrap();
+    db.store_clip_embedding(similar_id, &[0.95, 0.05, 0.0])
+        .unwrap();
+    db.store_clip_embedding(dissimilar_id, &[0.0, 1.0, 0.0])
+        .unwrap();
+
+    let results = db.find_similar_media(target_id, 0.5, 10).unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].0, similar_id);
+    assert!(results[0].1 > 0.5);
+    assert!(!results.iter().any(|(id, _)| *id == target_id));
+
+    let strict = db.find_similar_media(target_id, 0.9999, 10).unwrap();
+    assert!(strict.is_empty());
+
+    let err = db.find_similar_media(9999, 0.5, 10).unwrap_err();
+    assert!(err.to_string().contains("no CLIP embedding"));
+}
+
+#[test]
+fn get_media_by_type_and_count() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    db.upsert_media(fid, &sample_media("/photos/a.jpg")).unwrap();
+    db.upsert_media(fid, &sample_media("/photos/b.jpg")).unwrap();
+    let mut video = sample_media("/photos/v.mp4");
+    video.media_type = MediaType::Video;
+    db.upsert_media(fid, &video).unwrap();
+
+    assert_eq!(db.get_media_count_by_type("Photo").unwrap(), 2);
+    assert_eq!(db.get_media_count_by_type("Video").unwrap(), 1);
+    assert_eq!(db.get_media_count_by_type("Screenshot").unwrap(), 0);
+
+    let photos = db.get_media_by_type("Photo", 10, 0).unwrap();
+    assert_eq!(photos.len(), 2);
+    assert!(photos.iter().all(|m| m.media_type == MediaType::Photo));
+
+    assert!(db.get_media_by_type("Photo", 0, 0).unwrap().is_empty());
+    assert!(db.get_media_by_type("Unknown", 10, 0).unwrap().is_empty());
+}
+
+#[test]
+fn get_media_by_ids_excludes_deleted_and_missing() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    assert!(db.get_media_by_ids(&[]).unwrap().is_empty());
+
+    let dates = [
+        "2024-01-01 10:00:00",
+        "2024-01-02 10:00:00",
+        "2024-01-03 10:00:00",
+        "2024-01-04 10:00:00",
+        "2024-01-05 10:00:00",
+    ];
+    let mut ids = Vec::new();
+    for (i, date) in dates.iter().enumerate() {
+        let mut media = sample_media(&format!("/photos/win_{i}.jpg"));
+        media.created_at = Some(NaiveDateTime::parse_from_str(date, "%Y-%m-%d %H:%M:%S").unwrap());
+        ids.push(db.upsert_media(fid, &media).unwrap());
+    }
+
+    let map = db.get_media_by_ids(&[ids[0], ids[2], 9999]).unwrap();
+    assert_eq!(map.len(), 2);
+    assert!(map.contains_key(&ids[0]));
+    assert!(map.contains_key(&ids[2]));
+
+    db.set_deleted(ids[1], true).unwrap();
+    let without_deleted = db.get_media_by_ids(&[ids[0], ids[1]]).unwrap();
+    assert_eq!(without_deleted.len(), 1);
+}
+
+#[test]
+fn get_media_window_navigation_via_neighbors() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let dates = [
+        "2024-01-01 10:00:00",
+        "2024-01-02 10:00:00",
+        "2024-01-03 10:00:00",
+        "2024-01-04 10:00:00",
+        "2024-01-05 10:00:00",
+    ];
+    let mut ids = Vec::new();
+    for (i, date) in dates.iter().enumerate() {
+        let mut media = sample_media(&format!("/photos/window_{i}.jpg"));
+        media.created_at = Some(NaiveDateTime::parse_from_str(date, "%Y-%m-%d %H:%M:%S").unwrap());
+        ids.push(db.upsert_media(fid, &media).unwrap());
+    }
+
+    let nb = db.get_media_neighbors(ids[2]).unwrap();
+    assert_eq!(nb.prev_id, Some(ids[3]));
+    assert_eq!(nb.next_id, Some(ids[1]));
+
+    let center = db.get_media_by_id(ids[2]).unwrap().unwrap();
+    assert_eq!(center.id, ids[2]);
+    assert_eq!(center.filename, "window_2.jpg");
+}
+
+#[test]
+fn get_media_deletion_info_includes_deleted_rows() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/del.jpg"))
+        .unwrap();
+
+    let active = db.get_media_deletion_info(media_id).unwrap();
+    assert!(active.is_some());
+    let (path, hash, deleted) = active.unwrap();
+    assert_eq!(path, "/photos/del.jpg");
+    assert_eq!(hash.as_deref(), Some("abcdef1234567890"));
+    assert_eq!(deleted, 0);
+
+    db.set_deleted(media_id, true).unwrap();
+    let deleted_info = db.get_media_deletion_info(media_id).unwrap();
+    assert_eq!(deleted_info.unwrap().2, 1);
+
+    assert!(db.get_media_deletion_info(9999).unwrap().is_none());
+}
+
+#[test]
+fn split_face_from_person_creates_new_person_and_updates_counts() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/faces.jpg"))
+        .unwrap();
+
+    db.store_face_detections(
+        media_id,
+        &[
+            FaceDetectionInput {
+                bbox: [0.0, 0.0, 10.0, 10.0],
+                confidence: 0.9,
+                embedding: vec![1.0, 0.0],
+            },
+            FaceDetectionInput {
+                bbox: [20.0, 20.0, 40.0, 40.0],
+                confidence: 0.85,
+                embedding: vec![0.0, 1.0],
+            },
+        ],
+    )
+    .unwrap();
+
+    let faces = db.get_faces_for_media(media_id).unwrap();
+    let person = db.create_person(Some("Group")).unwrap();
+    db.assign_face_to_person(faces[0].id, person).unwrap();
+    db.assign_face_to_person(faces[1].id, person).unwrap();
+
+    let new_person = db
+        .split_face_from_person(faces[0].id, Some("Split"))
+        .unwrap();
+    assert_ne!(new_person, person);
+    assert_eq!(db.get_person_face_count(new_person).unwrap(), 1);
+    assert_eq!(db.get_person_face_count(person).unwrap(), 1);
+
+    let split_err = db.split_face_from_person(9999, None).unwrap_err();
+    assert!(split_err.to_string().contains("face 9999 not found"));
+}
+
+#[test]
+fn split_face_from_person_deletes_empty_old_person() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/solo.jpg"))
+        .unwrap();
+
+    db.store_face_detections(
+        media_id,
+        &[FaceDetectionInput {
+            bbox: [0.0, 0.0, 10.0, 10.0],
+            confidence: 0.9,
+            embedding: vec![1.0, 0.0],
+        }],
+    )
+    .unwrap();
+
+    let face_id = db.get_faces_for_media(media_id).unwrap()[0].id;
+    let person = db.create_person(Some("Solo")).unwrap();
+    db.assign_face_to_person(face_id, person).unwrap();
+
+    let new_person = db.split_face_from_person(face_id, Some("New")).unwrap();
+    assert_eq!(db.get_persons_count().unwrap(), 1);
+    assert_eq!(db.get_person_face_count(new_person).unwrap(), 1);
+    assert!(db.list_persons().unwrap().iter().all(|p| p.id != person));
+}
+
+#[test]
+fn face_embedding_queries_and_unnamed_person_cleanup() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/embed.jpg"))
+        .unwrap();
+
+    db.store_face_detections(
+        media_id,
+        &[
+            FaceDetectionInput {
+                bbox: [0.0, 0.0, 10.0, 10.0],
+                confidence: 0.9,
+                embedding: vec![1.0, 0.0],
+            },
+            FaceDetectionInput {
+                bbox: [20.0, 20.0, 40.0, 40.0],
+                confidence: 0.85,
+                embedding: vec![0.0, 1.0],
+            },
+        ],
+    )
+    .unwrap();
+
+    let faces = db.get_faces_for_media(media_id).unwrap();
+    let named = db.create_person(Some("Alice")).unwrap();
+    let unnamed = db.create_person(None).unwrap();
+    db.assign_face_to_person(faces[0].id, named).unwrap();
+    db.assign_face_to_person(faces[1].id, unnamed).unwrap();
+
+    let all = db.get_all_face_embeddings().unwrap();
+    assert_eq!(all.len(), 2);
+
+    let unassigned = db.get_unassigned_face_embeddings().unwrap();
+    assert_eq!(unassigned.len(), 1);
+    assert_eq!(unassigned[0].0, faces[1].id);
+
+    db.unassign_faces_from_unnamed_persons().unwrap();
+    assert_eq!(db.get_person_face_count(unnamed).unwrap(), 0);
+    db.delete_empty_unnamed_persons().unwrap();
+    assert_eq!(db.get_persons_count().unwrap(), 1);
+
+    db.clear_person_clusters().unwrap();
+    assert_eq!(db.get_persons_count().unwrap(), 0);
+    assert!(db.get_all_face_embeddings().unwrap().len() == 2);
+    assert_eq!(db.get_unassigned_face_embeddings().unwrap().len(), 2);
+}
+
+#[test]
+fn get_person_media_and_list_persons() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let media_a = db
+        .upsert_media(fid, &sample_media("/photos/a.jpg"))
+        .unwrap();
+    let media_b = db
+        .upsert_media(fid, &sample_media("/photos/b.jpg"))
+        .unwrap();
+
+    db.store_face_detections(
+        media_a,
+        &[FaceDetectionInput {
+            bbox: [0.0, 0.0, 10.0, 10.0],
+            confidence: 0.9,
+            embedding: vec![1.0, 0.0],
+        }],
+    )
+    .unwrap();
+    db.store_face_detections(
+        media_b,
+        &[FaceDetectionInput {
+            bbox: [0.0, 0.0, 10.0, 10.0],
+            confidence: 0.9,
+            embedding: vec![0.9, 0.1],
+        }],
+    )
+    .unwrap();
+
+    let face_a = db.get_faces_for_media(media_a).unwrap()[0].id;
+    let face_b = db.get_faces_for_media(media_b).unwrap()[0].id;
+    let person = db.create_person(Some("Traveler")).unwrap();
+    db.assign_face_to_person(face_a, person).unwrap();
+    db.assign_face_to_person(face_b, person).unwrap();
+
+    assert_eq!(db.get_person_face_count(person).unwrap(), 2);
+    assert_eq!(db.get_persons_count().unwrap(), 1);
+
+    let persons = db.list_persons().unwrap();
+    assert_eq!(persons.len(), 1);
+    assert_eq!(persons[0].name.as_deref(), Some("Traveler"));
+    assert_eq!(persons[0].face_count, 2);
+    assert_eq!(persons[0].sample_media_ids.len(), 2);
+
+    let media = db.get_person_media(person, 10, 0).unwrap();
+    assert_eq!(media.len(), 2);
+    let paths: Vec<&str> = media.iter().map(|m| m.path.as_str()).collect();
+    assert!(paths.contains(&"/photos/a.jpg"));
+    assert!(paths.contains(&"/photos/b.jpg"));
+
+    assert!(db.get_person_media(9999, 10, 0).unwrap().is_empty());
+}
+
+#[test]
+fn list_media_without_clip_embedding_and_get_all_clip_embeddings() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let photo_id = db
+        .upsert_media(fid, &sample_media("/photos/no_clip.jpg"))
+        .unwrap();
+    let mut video = sample_media("/photos/no_clip.mp4");
+    video.media_type = MediaType::Video;
+    db.upsert_media(fid, &video).unwrap();
+    let shot_id = db
+        .upsert_media(fid, &sample_screenshot("/photos/no_clip.png"))
+        .unwrap();
+    let with_clip = db
+        .upsert_media(fid, &sample_media("/photos/has_clip.jpg"))
+        .unwrap();
+    db.store_clip_embedding(with_clip, &[1.0, 0.0]).unwrap();
+
+    let missing = db.list_media_without_clip_embedding(10).unwrap();
+    let missing_ids: Vec<i64> = missing.iter().map(|(id, _)| *id).collect();
+    assert!(missing_ids.contains(&photo_id));
+    assert!(missing_ids.contains(&shot_id));
+    assert!(!missing_ids.contains(&with_clip));
+
+    let limited = db.list_media_without_clip_embedding(1).unwrap();
+    assert_eq!(limited.len(), 1);
+
+    assert!(db.get_all_clip_embeddings().unwrap().len() == 1);
+
+    db.store_clip_embedding(photo_id, &[0.5, 0.5]).unwrap();
+    let all = db.get_all_clip_embeddings().unwrap();
+    assert_eq!(all.len(), 2);
+    assert!(all.iter().any(|(id, _)| *id == photo_id));
+}
+
+#[test]
+fn smart_album_media_query_and_delete() {
+    use lightframe_db::SmartAlbumRule;
+
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    db.upsert_media(fid, &sample_media("/photos/fav.jpg")).unwrap();
+    let fav_id = db.upsert_media(fid, &sample_media("/photos/fav2.jpg")).unwrap();
+    db.toggle_favorite(fav_id).unwrap();
+
+    let rule = SmartAlbumRule {
+        media_type: None,
+        date_from: None,
+        date_to: None,
+        country: None,
+        city: None,
+        is_favorite: Some(true),
+        min_size: None,
+        has_gps: None,
+    };
+    let album = db.create_smart_album("Favorites", None, &rule).unwrap();
+
+    let media = db.get_smart_album_media(album.id, 10, 0).unwrap();
+    assert_eq!(media.len(), 1);
+    assert_eq!(media[0].id, fav_id);
+
+    let listed = db.list_smart_albums().unwrap();
+    let favorites_album = listed
+        .iter()
+        .find(|a| a.name == "Favorites")
+        .expect("Favorites smart album");
+    assert_eq!(favorites_album.media_count, 1);
+
+    db.delete_smart_album(album.id).unwrap();
+    assert!(
+        !db.list_smart_albums()
+            .unwrap()
+            .iter()
+            .any(|a| a.name == "Favorites")
+    );
+    assert!(db.get_smart_album_media(album.id, 10, 0).is_err());
+}
+
+#[test]
+fn batch_add_to_album_toggle_favorite_and_restore() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let album = db.create_album("Batch Album", None).unwrap();
+
+    let id1 = db
+        .upsert_media(fid, &sample_media("/photos/b1.jpg"))
+        .unwrap();
+    let id2 = db
+        .upsert_media(fid, &sample_media("/photos/b2.jpg"))
+        .unwrap();
+    let id3 = db
+        .upsert_media(fid, &sample_media("/photos/b3.jpg"))
+        .unwrap();
+
+    db.add_to_album(album.id, &[id1, id2, id3]).unwrap();
+    let updated = db.get_album(album.id).unwrap().unwrap();
+    assert_eq!(updated.media_count, 3);
+
+    assert_eq!(db.batch_set_favorite(&[id1, id2], true).unwrap(), 2);
+    assert!(db.is_favorite(id1).unwrap());
+    assert!(db.is_favorite(id2).unwrap());
+    assert!(!db.is_favorite(id3).unwrap());
+
+    assert_eq!(db.batch_set_favorite(&[id1], false).unwrap(), 1);
+    assert!(!db.is_favorite(id1).unwrap());
+
+    db.batch_set_deleted(&[id2, id3], true).unwrap();
+    assert_eq!(db.get_media_count().unwrap(), 1);
+
+    assert_eq!(db.batch_set_deleted(&[id2, id3], false).unwrap(), 2);
+    assert_eq!(db.get_media_count().unwrap(), 3);
+
+    assert_eq!(db.batch_set_favorite(&[], true).unwrap(), 0);
+    assert_eq!(db.batch_set_deleted(&[], false).unwrap(), 0);
+}
+
+#[test]
+fn batch_favorite_skips_deleted_media() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/deleted.jpg"))
+        .unwrap();
+    db.set_deleted(media_id, true).unwrap();
+
+    assert_eq!(db.batch_set_favorite(&[media_id], true).unwrap(), 0);
+}
+
+#[test]
+fn get_duplicate_groups_count_empty_database() {
+    let db = create_test_db();
+    assert_eq!(db.get_duplicate_groups_count().unwrap(), 0);
+}
+
+#[test]
+fn set_folder_scan_status_updates_folder() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let before = db.get_watched_folder(fid).unwrap().unwrap();
+    assert_eq!(before.scan_status, "idle");
+
+    db.set_folder_scan_status(fid, "scanning").unwrap();
+    let scanning = db.get_watched_folder(fid).unwrap().unwrap();
+    assert_eq!(scanning.scan_status, "scanning");
+
+    db.set_folder_scan_status(fid, "complete").unwrap();
+    let complete = db.get_watched_folder(fid).unwrap().unwrap();
+    assert_eq!(complete.scan_status, "complete");
 }
