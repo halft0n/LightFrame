@@ -61,6 +61,14 @@ pub struct LocationStats {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeoCluster {
+    pub latitude: f64,
+    pub longitude: f64,
+    pub count: i64,
+    pub media_ids: Vec<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Album {
     pub id: i64,
     pub name: String,
@@ -2475,6 +2483,73 @@ impl Database {
         })
     }
 
+    pub fn get_media_with_geo(
+        &self,
+        limit: i64,
+        offset: i64,
+    ) -> lightframe_core::Result<Vec<MediaFile>> {
+        let conn = self.read_conn()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, path, filename, media_type, size_bytes, width, height,
+                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                 FROM media_files
+                 WHERE is_deleted = 0
+                   AND latitude IS NOT NULL
+                   AND longitude IS NOT NULL
+                 ORDER BY created_at DESC, id DESC
+                 LIMIT ?1 OFFSET ?2",
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(params![limit, offset], Self::map_media_row)
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))
+    }
+
+    pub fn get_geo_clusters(&self, grid_size: f64) -> lightframe_core::Result<Vec<GeoCluster>> {
+        let grid = grid_size.max(0.001);
+        let conn = self.read_conn()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT
+                    (CAST(latitude / ?1 AS INTEGER) * ?1 + ?1 / 2.0) AS center_lat,
+                    (CAST(longitude / ?1 AS INTEGER) * ?1 + ?1 / 2.0) AS center_lon,
+                    GROUP_CONCAT(id) AS ids,
+                    COUNT(*) AS cnt
+                 FROM media_files
+                 WHERE is_deleted = 0
+                   AND latitude IS NOT NULL
+                   AND longitude IS NOT NULL
+                 GROUP BY CAST(latitude / ?1 AS INTEGER), CAST(longitude / ?1 AS INTEGER)
+                 ORDER BY cnt DESC",
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(params![grid], |row| {
+                let lat: f64 = row.get(0)?;
+                let lon: f64 = row.get(1)?;
+                let ids_str: String = row.get(2)?;
+                let count: i64 = row.get(3)?;
+                let media_ids: Vec<i64> =
+                    ids_str.split(',').filter_map(|s| s.parse().ok()).collect();
+                Ok(GeoCluster {
+                    latitude: lat,
+                    longitude: lon,
+                    count,
+                    media_ids,
+                })
+            })
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))
+    }
+
     fn person_sample_media_ids(
         conn: &Connection,
         person_id: i64,
@@ -3090,7 +3165,12 @@ impl Database {
             .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
             .flatten();
 
-        let new_person_id = self.create_person(new_person_name)?;
+        conn.execute(
+            "INSERT INTO persons (name) VALUES (?1)",
+            params![new_person_name],
+        )
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        let new_person_id = conn.last_insert_rowid();
 
         let updated = conn
             .execute(

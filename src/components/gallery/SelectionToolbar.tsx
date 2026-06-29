@@ -12,6 +12,7 @@ import {
 import {
   clearMediaSelection,
   loadMedia,
+  startSlideshow,
   useAppStore,
 } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
@@ -195,6 +196,18 @@ export function SelectionToolbar({
               )}
             </div>
           )}
+
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              startSlideshow(selectedMediaIds);
+              clearMediaSelection();
+            }}
+            className="rounded-md px-3 py-1.5 text-sm text-neutral-200 transition hover:bg-neutral-800 disabled:opacity-50"
+          >
+            {t("slideshow.start")}
+          </button>
 
           <button
             type="button"

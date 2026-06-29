@@ -14,6 +14,7 @@ import {
   setMediaSelection,
   setSingleMediaSelection,
   setThumbnailSize,
+  startSlideshow,
   THUMBNAIL_WIDTHS,
   toggleMediaSelection,
   useAppStoreSelector,
@@ -251,7 +252,20 @@ export function PhotoGrid({
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       {showSizeControl && (
-        <div className="flex shrink-0 justify-end px-3 py-2">
+        <div className="flex shrink-0 items-center justify-end gap-2 px-3 py-2">
+          <button
+            type="button"
+            onClick={() => {
+              const ids = mediaItems
+                .filter((m) => m.media_type !== "Video")
+                .map((m) => m.id);
+              if (ids.length > 0) startSlideshow(ids);
+            }}
+            className="rounded-lg border border-neutral-200/80 px-3 py-1.5 text-xs font-medium text-neutral-600 transition hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            title={t("slideshow.startAll")}
+          >
+            ▶ {t("slideshow.start")}
+          </button>
           <ThumbnailSizeControl size={thumbnailSize} onChange={setThumbnailSize} />
         </div>
       )}

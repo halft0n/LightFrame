@@ -14,6 +14,7 @@ import {
 } from "@/lib/tauri";
 import { openPersonDetail } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
+import { localizeError } from "@/lib/errors";
 
 const CARD_PAGE_SIZE = 20;
 
@@ -132,21 +133,25 @@ export function PeopleView() {
   const [detecting, setDetecting] = useState(false);
   const [detectionProgress, setDetectionProgress] = useState<FaceDetectionProgress | null>(null);
   const [detectionResult, setDetectionResult] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [merging, setMerging] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [visibleCount, setVisibleCount] = useState(CARD_PAGE_SIZE);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const [people, status] = await Promise.all([listPersons(), getAiStatus()]);
       setPersons(people);
       setAiStatus(status);
       setVisibleCount(CARD_PAGE_SIZE);
+    } catch (e) {
+      setError(localizeError(e, t));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
@@ -174,15 +179,16 @@ export function PeopleView() {
       setPersons((prev) =>
         prev.map((p) => (p.id === personId ? { ...p, name } : p)),
       );
-    } catch {
-      // ignore
+    } catch (e) {
+      setError(localizeError(e, t));
     }
-  }, []);
+  }, [t]);
 
   const handleDetectFaces = useCallback(async () => {
     setDetecting(true);
     setDetectionResult(null);
     setDetectionProgress(null);
+    setError(null);
     try {
       const result = await detectFacesBatch();
       setDetectionResult(
@@ -191,8 +197,8 @@ export function PeopleView() {
       await clusterFaces();
       setSelectedIds(new Set());
       await load();
-    } catch {
-      // ignore
+    } catch (e) {
+      setError(localizeError(e, t));
     } finally {
       setDetecting(false);
       setDetectionProgress(null);
@@ -216,30 +222,32 @@ export function PeopleView() {
 
   const handleCluster = useCallback(async () => {
     setClustering(true);
+    setError(null);
     try {
       await clusterFaces();
       setSelectedIds(new Set());
       await load();
-    } catch {
-      // ignore
+    } catch (e) {
+      setError(localizeError(e, t));
     } finally {
       setClustering(false);
     }
-  }, [load]);
+  }, [load, t]);
 
   const handleMerge = useCallback(async () => {
     if (selectedIds.size < 2) return;
     setMerging(true);
+    setError(null);
     try {
       await mergePersons([...selectedIds]);
       setSelectedIds(new Set());
       await load();
-    } catch {
-      // ignore
+    } catch (e) {
+      setError(localizeError(e, t));
     } finally {
       setMerging(false);
     }
-  }, [load, selectedIds]);
+  }, [load, selectedIds, t]);
 
   const visiblePersons = useMemo(
     () => persons.slice(0, visibleCount),
@@ -308,6 +316,12 @@ export function PeopleView() {
           )}
         </div>
       </div>
+
+      {error && (
+        <div className="border-b border-red-900/50 bg-red-950/30 px-4 py-2">
+          <p className="text-sm text-red-400">{error}</p>
+        </div>
+      )}
 
       {persons.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-neutral-500">

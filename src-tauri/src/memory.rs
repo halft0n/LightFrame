@@ -66,3 +66,47 @@ fn read_sysinfo() -> Option<MemorySnapshot> {
 fn parse_kb(raw: &str) -> Option<u64> {
     raw.split_whitespace().next().and_then(|s| s.parse().ok())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_kb_extracts_first_integer() {
+        assert_eq!(parse_kb(" 12345 kB"), Some(12345));
+        assert_eq!(parse_kb("\t999999 kB"), Some(999999));
+        assert_eq!(parse_kb("0 kB"), Some(0));
+    }
+
+    #[test]
+    fn parse_kb_returns_none_for_invalid_input() {
+        assert_eq!(parse_kb(""), None);
+        assert_eq!(parse_kb("   "), None);
+        assert_eq!(parse_kb("not-a-number kB"), None);
+        assert_eq!(parse_kb("kB"), None);
+    }
+
+    #[test]
+    fn current_memory_returns_some_on_linux() {
+        #[cfg(target_os = "linux")]
+        {
+            let mem = current_memory();
+            assert!(mem.is_some(), "expected /proc/self/status memory on Linux");
+            let snap = mem.unwrap();
+            assert!(snap.rss_kb > 0 || snap.vm_size_kb > 0);
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            let mem = current_memory();
+            assert!(mem.is_some());
+        }
+    }
+
+    #[test]
+    fn log_memory_does_not_panic() {
+        log_memory("unit_test");
+        log_memory("");
+        log_memory("scan_start");
+    }
+}

@@ -11,6 +11,7 @@ const LIBRARY_ITEMS: SidebarItem[] = [
   { key: "sidebar.timeline", icon: "timeline", view: "timeline" },
   { key: "sidebar.favorites", icon: "favorites", view: "favorites" },
   { key: "sidebar.locations", icon: "locations", view: "locations" },
+  { key: "sidebar.map", icon: "map", view: "map" },
   { key: "sidebar.people", icon: "people", view: "people" },
 ];
 

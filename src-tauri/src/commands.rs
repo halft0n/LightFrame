@@ -5,8 +5,8 @@ use lightframe_ai::AiStatus;
 use lightframe_core::config::AppConfig;
 use lightframe_core::media::{MediaFile, ThumbnailSize};
 use lightframe_db::{
-    Album, DuplicateGroupDetail, LocationGroup, LocationStats, MediaNeighbors, Memory, Person,
-    SmartAlbum, SmartAlbumRule, TimelineGroup, WatchedFolder,
+    Album, DuplicateGroupDetail, GeoCluster, LocationGroup, LocationStats, MediaNeighbors, Memory,
+    Person, SmartAlbum, SmartAlbumRule, TimelineGroup, WatchedFolder,
 };
 use lightframe_thumbnail::thumb_path;
 use serde::Serialize;
@@ -965,6 +965,7 @@ pub struct SemanticSearchResponse {
 }
 
 const SEMANTIC_SEARCH_THRESHOLD: f32 = 0.15;
+const MAX_SEMANTIC_QUERY_LEN: usize = 512;
 
 /// CLIP vector search when text embedding is available; otherwise FTS5 keyword fallback.
 #[tauri::command]
@@ -974,6 +975,11 @@ pub async fn semantic_search(
     limit: Option<usize>,
 ) -> Result<SemanticSearchResponse, String> {
     let limit = limit.unwrap_or(50).clamp(1, 500);
+    let query_text = if query_text.len() > MAX_SEMANTIC_QUERY_LEN {
+        query_text[..MAX_SEMANTIC_QUERY_LEN].to_string()
+    } else {
+        query_text
+    };
     let trimmed = query_text.trim();
     if trimmed.is_empty() {
         return Ok(SemanticSearchResponse {
@@ -1370,6 +1376,24 @@ pub async fn detect_faces_batch(
     app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<FaceDetectionBatchResult, String> {
+    use std::sync::atomic::Ordering;
+
+    if state
+        .face_detecting
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Err("face detection already in progress".to_string());
+    }
+
+    struct FaceDetectingGuard(std::sync::Arc<std::sync::atomic::AtomicBool>);
+    impl Drop for FaceDetectingGuard {
+        fn drop(&mut self) {
+            self.0.store(false, Ordering::SeqCst);
+        }
+    }
+    let _guard = FaceDetectingGuard(std::sync::Arc::clone(&state.face_detecting));
+
     let media_ids = state
         .db
         .get_media_ids_without_faces()
@@ -1644,6 +1668,47 @@ pub fn export_edited(
         &params,
         quality,
     )
+}
+
+#[tauri::command]
+pub async fn regenerate_thumbnails(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<crate::thumb_regen::ThumbnailRegenResult, String> {
+    crate::thumb_regen::regenerate_all_thumbnails(app, &state).await
+}
+
+#[tauri::command]
+pub fn regenerate_thumbnail_single(
+    state: State<'_, AppState>,
+    media_id: i64,
+) -> Result<bool, String> {
+    crate::thumb_regen::regenerate_thumbnails_for_media(&state, media_id)
+}
+
+#[tauri::command]
+pub fn get_media_with_geo(
+    state: State<'_, AppState>,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<MediaFile>, String> {
+    let limit = limit.clamp(1, 5000);
+    let offset = offset.max(0);
+    state
+        .db
+        .get_media_with_geo(limit, offset)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_geo_clusters(
+    state: State<'_, AppState>,
+    grid_size: f64,
+) -> Result<Vec<GeoCluster>, String> {
+    state
+        .db
+        .get_geo_clusters(grid_size)
+        .map_err(|e| e.to_string())
 }
 
 fn remove_media_from_disk(path: &str, hash: Option<&str>) {

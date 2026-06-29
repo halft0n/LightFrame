@@ -17,6 +17,7 @@ _shutdown_requested = False
 _CLIP_AVAILABLE = False
 _FACE_AVAILABLE = False
 _clip_cache: tuple[Any, Any, Any] | None = None
+_face_cache: Any | None = None
 
 try:
     import open_clip  # type: ignore[import-not-found]
@@ -55,6 +56,18 @@ def _get_clip_model() -> tuple[Any, Any, Any]:
         model.eval()
         _clip_cache = (model, preprocess, tokenizer)
     return _clip_cache
+
+
+def _get_face_analyzer() -> Any:
+    """Lazy-load insightface FaceAnalysis model."""
+    global _face_cache
+    if not _FACE_AVAILABLE:
+        raise RuntimeError("insightface is not installed")
+    if _face_cache is None:
+        app = insightface.app.FaceAnalysis(providers=["CPUExecutionProvider"])  # type: ignore[attr-defined]
+        app.prepare(ctx_id=0, det_size=(640, 640))
+        _face_cache = app
+    return _face_cache
 
 
 @_register("ping")
@@ -130,8 +143,7 @@ def _detect_faces(params: dict[str, Any]) -> dict[str, Any]:
     if not _FACE_AVAILABLE:
         return {"faces": []}
 
-    app = insightface.app.FaceAnalysis(providers=["CPUExecutionProvider"])  # type: ignore[attr-defined]
-    app.prepare(ctx_id=0, det_size=(640, 640))
+    app = _get_face_analyzer()
     detections = app.get(image_path)
 
     faces = []

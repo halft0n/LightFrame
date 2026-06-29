@@ -27,14 +27,13 @@ export function PersonDetailView() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [splittingId, setSplittingId] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
 
   const columnCount = Math.max(
     1,
     Math.floor((containerWidth + GAP) / (MIN_COLUMN_WIDTH + GAP)),
   );
-  const hasMore =
-    person != null && faces.length < person.face_count && faces.length % PAGE_SIZE === 0;
 
   const loadInitial = useCallback(async () => {
     if (selectedPersonId == null) return;
@@ -48,7 +47,9 @@ export function PersonDetailView() {
       setPerson(found);
       setName(found?.name ?? "");
       setFaces(faceList);
+      setHasMore(faceList.length === PAGE_SIZE);
     } catch {
+      setHasMore(false);
       // ignore
     } finally {
       setLoading(false);
@@ -84,6 +85,7 @@ export function PersonDetailView() {
     try {
       const items = await getPersonFaces(selectedPersonId, faces.length, PAGE_SIZE);
       setFaces((prev) => [...prev, ...items]);
+      setHasMore(items.length === PAGE_SIZE);
     } catch {
       // ignore
     } finally {

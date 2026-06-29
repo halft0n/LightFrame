@@ -4,7 +4,10 @@ import {
   addWatchedFolder,
   removeWatchedFolder,
   scanFolder,
+  regenerateThumbnails,
+  onThumbnailRegenProgress,
   type ScanStatus,
+  type ThumbnailRegenProgress,
 } from "@/lib/tauri";
 import { addFolder, removeFolder, updateFolder, useAppStore, type Theme } from "@/store/appStore";
 import { changeTheme } from "@/hooks/useTheme";
@@ -46,11 +49,43 @@ function formatLastScan(value: string | null | undefined, notAvailable: string):
   }
 }
 
+function ThumbnailRegenProgressBar({ progress }: { progress: ThumbnailRegenProgress }) {
+  const { t } = useTranslation();
+  const pct = progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0;
+
+  return (
+    <div className="mt-3 space-y-2">
+      <div className="flex items-center justify-between text-xs text-neutral-500">
+        <span>
+          {progress.status === "complete"
+            ? t("settings.thumbRegenComplete", { count: progress.regenerated })
+            : t("settings.thumbRegenProgress", {
+                processed: progress.processed,
+                total: progress.total,
+                regenerated: progress.regenerated,
+              })}
+        </span>
+        <span>{pct}%</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-300"
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function FolderManager() {
   const { t } = useTranslation();
   const { watchedFolders, theme } = useAppStore();
   const [adding, setAdding] = useState(false);
   const [rescanningAll, setRescanningAll] = useState(false);
+  const [regeneratingThumbs, setRegeneratingThumbs] = useState(false);
+  const [thumbRegenProgress, setThumbRegenProgress] = useState<ThumbnailRegenProgress | null>(
+    null,
+  );
 
   const themeOptions: { value: Theme; labelKey: string }[] = [
     { value: "light", labelKey: "theme.light" },
@@ -115,6 +150,27 @@ export function FolderManager() {
     }
   };
 
+  const handleRegenerateThumbnails = async () => {
+    if (!isTauri) {
+      alert(t("settings.tauriOnly"));
+      return;
+    }
+
+    setRegeneratingThumbs(true);
+    setThumbRegenProgress({ processed: 0, total: 0, regenerated: 0, status: "running" });
+
+    let unlisten: (() => void) | undefined;
+    try {
+      unlisten = await onThumbnailRegenProgress(setThumbRegenProgress);
+      await regenerateThumbnails();
+    } catch (err) {
+      console.error("Failed to regenerate thumbnails:", err);
+    } finally {
+      unlisten?.();
+      setRegeneratingThumbs(false);
+    }
+  };
+
   return (
     <div className="page-enter flex flex-1 flex-col overflow-hidden">
       <section className="settings-section px-6 py-5">
@@ -145,6 +201,28 @@ export function FolderManager() {
       <AiSettings />
 
       <LogSettings />
+
+      <section className="settings-section px-6 py-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+              {t("settings.thumbnails")}
+            </h2>
+            <p className="mt-1 text-sm text-neutral-500">{t("settings.thumbnailsHint")}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleRegenerateThumbnails()}
+            disabled={regeneratingThumbs || watchedFolders.length === 0}
+            className="rounded-lg border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+          >
+            {regeneratingThumbs ? t("settings.thumbRegenerating") : t("settings.regenerateThumbnails")}
+          </button>
+        </div>
+        {thumbRegenProgress && (regeneratingThumbs || thumbRegenProgress.status === "complete") && (
+          <ThumbnailRegenProgressBar progress={thumbRegenProgress} />
+        )}
+      </section>
 
       <section className="settings-section px-6 py-5">
         <div className="flex flex-wrap items-center justify-between gap-4">

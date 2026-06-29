@@ -24,3 +24,4 @@ ndarray = { version = "0.16", optional = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }
+tempfile = "3"

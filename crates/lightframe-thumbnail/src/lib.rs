@@ -27,7 +27,7 @@ pub fn thumb_path(blake3_hash: &str, size: ThumbnailSize) -> PathBuf {
 pub fn generate(src: &Path, hash: &str, size: ThumbnailSize) -> Result<PathBuf> {
     let out = thumb_path(hash, size);
 
-    if out.exists() {
+    if out.exists() && !thumb_file_needs_regeneration(&out) {
         return Ok(out);
     }
 
@@ -61,13 +61,21 @@ pub fn generate_micro_blob(src: &Path) -> Result<Vec<u8>> {
     Ok(buf.into_inner())
 }
 
+/// Returns true when the cached thumbnail file is missing or empty (corrupt).
+pub fn thumb_file_needs_regeneration(path: &Path) -> bool {
+    match path.metadata() {
+        Ok(meta) => meta.len() == 0,
+        Err(_) => true,
+    }
+}
+
 pub fn generate_from_decoded(
     decoded: &DecodedImage,
     hash: &str,
     size: ThumbnailSize,
 ) -> Result<PathBuf> {
     let out = thumb_path(hash, size);
-    if out.exists() {
+    if out.exists() && !thumb_file_needs_regeneration(&out) {
         return Ok(out);
     }
     if let Some(parent) = out.parent() {
@@ -80,6 +88,48 @@ pub fn generate_from_decoded(
         .save(&out)
         .map_err(|e| lightframe_core::Error::Thumbnail(e.to_string()))?;
     debug!(path = %out.display(), size = pixels, "thumbnail generated");
+    Ok(out)
+}
+
+/// Force-regenerates a thumbnail from a decoded image, overwriting any existing file.
+pub fn regenerate_from_decoded(
+    decoded: &DecodedImage,
+    hash: &str,
+    size: ThumbnailSize,
+) -> Result<PathBuf> {
+    let out = thumb_path(hash, size);
+    if out.exists() {
+        let _ = std::fs::remove_file(&out);
+    }
+    if let Some(parent) = out.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let img = decoded.to_dynamic_image();
+    let pixels = size.pixels();
+    let thumb = img.thumbnail(pixels, pixels);
+    thumb
+        .save(&out)
+        .map_err(|e| lightframe_core::Error::Thumbnail(e.to_string()))?;
+    debug!(path = %out.display(), size = pixels, "thumbnail regenerated");
+    Ok(out)
+}
+
+/// Force-regenerates a thumbnail from a source file, overwriting any existing file.
+pub fn regenerate(src: &Path, hash: &str, size: ThumbnailSize) -> Result<PathBuf> {
+    let out = thumb_path(hash, size);
+    if out.exists() {
+        let _ = std::fs::remove_file(&out);
+    }
+    if let Some(parent) = out.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let img = image::open(src).map_err(|e| lightframe_core::Error::Thumbnail(e.to_string()))?;
+    let pixels = size.pixels();
+    let thumb = img.thumbnail(pixels, pixels);
+    thumb
+        .save(&out)
+        .map_err(|e| lightframe_core::Error::Thumbnail(e.to_string()))?;
+    debug!(path = %out.display(), size = pixels, "thumbnail regenerated");
     Ok(out)
 }
 

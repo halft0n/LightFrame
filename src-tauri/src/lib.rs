@@ -8,6 +8,7 @@ mod scan;
 mod state;
 mod thumb_cache;
 mod thumb_protocol;
+mod thumb_regen;
 mod watcher;
 
 #[doc(hidden)]
@@ -131,6 +132,10 @@ pub fn run() {
             commands::cleanup_logs,
             commands::get_log_config,
             commands::set_log_config,
+            commands::regenerate_thumbnails,
+            commands::regenerate_thumbnail_single,
+            commands::get_media_with_geo,
+            commands::get_geo_clusters,
         ])
         .register_uri_scheme_protocol("thumb", |ctx, request| {
             let state = ctx.app_handle().state::<AppState>();

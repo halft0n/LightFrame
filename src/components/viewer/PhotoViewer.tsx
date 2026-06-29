@@ -14,7 +14,7 @@ import {
 } from "@/lib/tauri";
 import { buildClipPath, buildCssFilter, buildImageTransform, parseEditParams } from "@/lib/editParams";
 import { isTypingTarget } from "@/lib/keyboard";
-import { closeViewer, loadMedia, openViewer, useAppStore } from "@/store/appStore";
+import { closeViewer, loadMedia, openViewer, startSlideshow, useAppStore } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 import { VideoPlayer } from "./VideoPlayer";
 import { ImageEditor } from "@/components/editor/ImageEditor";
@@ -208,6 +208,17 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   const navigate = useCallback((id: number | null) => {
     if (id != null) openViewer(id);
   }, []);
+
+  const handleStartSlideshow = useCallback(() => {
+    const ids = (filmstrip.length > 0 ? filmstrip : contextItems)
+      .filter((m) => m.media_type !== "Video")
+      .map((m) => m.id);
+    if (ids.length === 0 && media) {
+      startSlideshow([mediaId], mediaId);
+      return;
+    }
+    startSlideshow(ids.length > 0 ? ids : [mediaId], mediaId);
+  }, [filmstrip, contextItems, media, mediaId]);
 
   const handleToggleFavorite = useCallback(async () => {
     const next = await toggleFavorite(mediaId);
@@ -418,6 +429,17 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
             <span className="rounded-full bg-blue-600/80 px-2 py-0.5 text-xs font-medium">
               {t("editor.hasEdits")}
             </span>
+          )}
+          {!isVideo && (
+            <button
+              type="button"
+              onClick={handleStartSlideshow}
+              className="rounded-lg px-3 py-1.5 text-sm text-neutral-300 transition hover:bg-white/10"
+              title={t("slideshow.start")}
+              aria-label={t("slideshow.start")}
+            >
+              ▶
+            </button>
           )}
           {!isVideo && (
             <button

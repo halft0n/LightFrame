@@ -329,4 +329,208 @@ mod tests {
         assert!(verify_file_sha256(&path, "deadbeef").is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    #[test]
+    fn models_dir_is_under_data_dir() {
+        let dir = models_dir();
+        assert_eq!(dir.file_name().and_then(|n| n.to_str()), Some("models"));
+        assert!(dir.starts_with(config::data_dir()));
+    }
+
+    #[test]
+    fn all_model_definitions_have_consistent_formats() {
+        for model in all_models() {
+            assert!(model.filename.ends_with(".onnx"), "{}", model.filename);
+            assert!(
+                model.url.starts_with("https://huggingface.co/"),
+                "{}",
+                model.url
+            );
+            assert!(model.url.ends_with(model.filename), "{}", model.url);
+            assert!(!model.name.is_empty());
+            assert!(!model.description.is_empty());
+            assert!(model.size_mb > 0);
+            assert!(model_by_filename(model.filename).is_some());
+        }
+    }
+
+    #[test]
+    fn model_file_status_reports_installed_file() {
+        ensure_models_dir().unwrap();
+        let filename = format!("lf-status-test-{}.onnx", std::process::id());
+        let filename_leaked: &'static str = Box::leak(filename.clone().into_boxed_str());
+        let path = models_dir().join(&filename);
+        std::fs::write(&path, b"installed-model-bytes").unwrap();
+
+        let info = ModelInfo {
+            name: "Status Test Model",
+            filename: filename_leaked,
+            url: "https://example.com/status-test.onnx",
+            size_mb: 1,
+            sha256: "",
+            description: "test",
+        };
+        let status = model_file_status(&info);
+        assert!(status.installed);
+        assert_eq!(status.file_size_bytes, Some(21));
+        assert!(status.sha256_verified.is_none());
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn model_file_status_sha256_verified_when_hash_matches() {
+        use sha2::{Digest, Sha256};
+        ensure_models_dir().unwrap();
+        let filename = format!("lf-sha-status-{}.onnx", std::process::id());
+        let path = models_dir().join(&filename);
+        let content = b"sha256 status verification payload";
+        std::fs::write(&path, content).unwrap();
+        let hash = Sha256::digest(content)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
+        let hash_leaked: &'static str = Box::leak(hash.into_boxed_str());
+        let filename_leaked: &'static str = Box::leak(filename.into_boxed_str());
+
+        let info = ModelInfo {
+            name: "SHA Status Test",
+            filename: filename_leaked,
+            url: "https://example.com/sha-status.onnx",
+            size_mb: 1,
+            sha256: hash_leaked,
+            description: "test",
+        };
+        let status = model_file_status(&info);
+        assert!(status.installed);
+        assert_eq!(status.sha256_verified, Some(true));
+
+        let bad_info = ModelInfo {
+            sha256: "0000000000000000000000000000000000000000000000000000000000000000",
+            ..info
+        };
+        let bad_status = model_file_status(&bad_info);
+        assert_eq!(bad_status.sha256_verified, Some(false));
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    fn start_test_http_server(body: Vec<u8>) -> (String, std::thread::JoinHandle<()>) {
+        use std::io::{Read, Write};
+        use std::net::TcpListener;
+        use std::thread;
+        use std::time::{Duration, Instant};
+
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind test server");
+        listener.set_nonblocking(true).expect("set nonblocking");
+        let port = listener.local_addr().expect("local addr").port();
+        let handle = thread::spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while Instant::now() < deadline {
+                if let Ok((mut stream, _)) = listener.accept() {
+                    let mut buf = [0_u8; 1024];
+                    let _ = stream.read(&mut buf);
+                    let header = format!(
+                        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                        body.len()
+                    );
+                    let _ = stream.write_all(header.as_bytes());
+                    let _ = stream.write_all(&body);
+                    return;
+                }
+                thread::sleep(Duration::from_millis(5));
+            }
+            panic!("test HTTP server timed out waiting for connection");
+        });
+        (format!("http://127.0.0.1:{port}/model.onnx"), handle)
+    }
+
+    fn leaked_test_filename(prefix: &str) -> &'static str {
+        Box::leak(format!("{prefix}-{}.onnx", std::process::id()).into_boxed_str())
+    }
+
+    #[test]
+    fn download_model_reports_progress_and_saves_file() {
+        let body = vec![0xAB_u8; 250 * 1024];
+        let (url, server) = start_test_http_server(body.clone());
+        let url_leaked: &'static str = Box::leak(url.into_boxed_str());
+        let filename = leaked_test_filename("lf-dl-progress");
+        let dest = models_dir().join(filename);
+        let _ = std::fs::remove_file(&dest);
+
+        let info = ModelInfo {
+            name: "Download Progress Test",
+            filename,
+            url: url_leaked,
+            size_mb: 1,
+            sha256: "",
+            description: "test",
+        };
+
+        let progress = std::sync::Arc::new(std::sync::Mutex::new(Vec::<(u64, u64)>::new()));
+        let progress_clone = progress.clone();
+        let result = download_model(&info, move |downloaded, total| {
+            progress_clone.lock().unwrap().push((downloaded, total));
+        });
+        server.join().expect("server thread");
+
+        assert!(result.is_ok());
+        assert!(dest.is_file());
+        assert_eq!(std::fs::read(&dest).unwrap(), body);
+
+        let calls = progress.lock().unwrap();
+        assert!(calls.len() >= 2, "expected multiple progress callbacks");
+        assert_eq!(calls.first().map(|c| c.0), Some(0));
+        assert_eq!(calls.last().map(|c| c.0), Some(body.len() as u64));
+        assert_eq!(calls.last().map(|c| c.1), Some(body.len() as u64));
+
+        let _ = std::fs::remove_file(&dest);
+    }
+
+    #[test]
+    fn download_model_rejects_incorrect_sha256() {
+        use sha2::{Digest, Sha256};
+        let body = b"download sha256 mismatch payload".to_vec();
+        let (url, server) = start_test_http_server(body);
+        let url_leaked: &'static str = Box::leak(url.into_boxed_str());
+        let filename = leaked_test_filename("lf-dl-bad-sha");
+        let dest = models_dir().join(filename);
+        let part = dest.with_extension("onnx.part");
+        let _ = std::fs::remove_file(&dest);
+        let _ = std::fs::remove_file(&part);
+
+        let info = ModelInfo {
+            name: "Download SHA Test",
+            filename,
+            url: url_leaked,
+            size_mb: 1,
+            sha256: "0000000000000000000000000000000000000000000000000000000000000000",
+            description: "test",
+        };
+
+        let result = download_model(&info, |_, _| {});
+        server.join().expect("server thread");
+
+        assert!(result.is_err());
+        assert!(!dest.exists());
+        // Temp part file may remain after verification failure; ensure final dest was not installed.
+        let _ = std::fs::remove_file(&part);
+
+        let correct = Sha256::digest(b"download sha256 mismatch payload")
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
+        let (url2, server2) = start_test_http_server(b"download sha256 mismatch payload".to_vec());
+        let url2_leaked: &'static str = Box::leak(url2.into_boxed_str());
+        let hash_leaked: &'static str = Box::leak(correct.into_boxed_str());
+        let good_info = ModelInfo {
+            sha256: hash_leaked,
+            url: url2_leaked,
+            ..info
+        };
+        let good = download_model(&good_info, |_, _| {});
+        server2.join().expect("server thread");
+        assert!(good.is_ok());
+        let _ = std::fs::remove_file(&dest);
+    }
 }

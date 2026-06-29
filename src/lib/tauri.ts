@@ -727,3 +727,48 @@ export async function exportEdited(
 ): Promise<void> {
   return invoke("export_edited", { mediaId, outputPath, quality });
 }
+
+export interface ThumbnailRegenProgress {
+  processed: number;
+  total: number;
+  regenerated: number;
+  status: string;
+}
+
+export interface ThumbnailRegenResult {
+  regenerated: number;
+}
+
+export async function regenerateThumbnails(): Promise<ThumbnailRegenResult> {
+  return invoke<ThumbnailRegenResult>("regenerate_thumbnails");
+}
+
+export async function regenerateThumbnailSingle(mediaId: number): Promise<boolean> {
+  return invoke<boolean>("regenerate_thumbnail_single", { mediaId });
+}
+
+export async function onThumbnailRegenProgress(
+  callback: (progress: ThumbnailRegenProgress) => void,
+): Promise<() => void> {
+  return listen<ThumbnailRegenProgress>("thumbnail-regen-progress", (event) => {
+    callback(event.payload);
+  });
+}
+
+export interface GeoCluster {
+  latitude: number;
+  longitude: number;
+  count: number;
+  media_ids: number[];
+}
+
+export async function getMediaWithGeo(
+  limit = 5000,
+  offset = 0,
+): Promise<MediaItem[]> {
+  return invoke<MediaItem[]>("get_media_with_geo", { limit, offset });
+}
+
+export async function getGeoClusters(gridSize = 0.5): Promise<GeoCluster[]> {
+  return invoke<GeoCluster[]>("get_geo_clusters", { gridSize });
+}

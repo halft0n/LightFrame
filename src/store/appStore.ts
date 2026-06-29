@@ -13,6 +13,7 @@ export type AppView =
   | "videos"
   | "timeline"
   | "locations"
+  | "map"
   | "people"
   | "person-detail"
   | "duplicates"
@@ -31,6 +32,8 @@ export type AppView =
 export type Theme = "light" | "dark" | "system";
 
 export type ThumbnailSize = "small" | "medium" | "large";
+
+export type SlideshowSpeed = 3 | 5 | 10;
 
 export const THUMBNAIL_WIDTHS: Record<ThumbnailSize, number> = {
   small: 120,
@@ -62,6 +65,10 @@ export interface AppState {
   searchHistory: string[];
   thumbnailSize: ThumbnailSize;
   theme: Theme;
+  slideshowActive: boolean;
+  slideshowMediaIds: number[];
+  slideshowIndex: number;
+  slideshowSpeed: SlideshowSpeed;
 }
 
 const initialState: AppState = {
@@ -86,6 +93,10 @@ const initialState: AppState = {
   searchHistory: [],
   thumbnailSize: "medium",
   theme: "dark",
+  slideshowActive: false,
+  slideshowMediaIds: [],
+  slideshowIndex: 0,
+  slideshowSpeed: 5,
 };
 
 let state: AppState = { ...initialState };
@@ -311,6 +322,50 @@ export function openViewer(id: number) {
 
 export function closeViewer() {
   setState({ viewingMediaId: null });
+}
+
+export function startSlideshow(mediaIds: number[], startAtId?: number) {
+  if (mediaIds.length === 0) return;
+  const startIndex = startAtId != null ? Math.max(0, mediaIds.indexOf(startAtId)) : 0;
+  setState({
+    slideshowActive: true,
+    slideshowMediaIds: mediaIds,
+    slideshowIndex: startIndex === -1 ? 0 : startIndex,
+    viewingMediaId: null,
+  });
+}
+
+export function closeSlideshow() {
+  setState({
+    slideshowActive: false,
+    slideshowMediaIds: [],
+    slideshowIndex: 0,
+  });
+}
+
+export function setSlideshowIndex(index: number) {
+  const { slideshowMediaIds } = state;
+  if (slideshowMediaIds.length === 0) return;
+  const clamped = Math.max(0, Math.min(index, slideshowMediaIds.length - 1));
+  setState({ slideshowIndex: clamped });
+}
+
+export function nextSlideshow() {
+  const { slideshowMediaIds, slideshowIndex } = state;
+  if (slideshowMediaIds.length === 0) return;
+  const next = slideshowIndex >= slideshowMediaIds.length - 1 ? 0 : slideshowIndex + 1;
+  setState({ slideshowIndex: next });
+}
+
+export function prevSlideshow() {
+  const { slideshowMediaIds, slideshowIndex } = state;
+  if (slideshowMediaIds.length === 0) return;
+  const prev = slideshowIndex <= 0 ? slideshowMediaIds.length - 1 : slideshowIndex - 1;
+  setState({ slideshowIndex: prev });
+}
+
+export function setSlideshowSpeed(speed: SlideshowSpeed) {
+  setState({ slideshowSpeed: speed });
 }
 
 export function setSearchQuery(query: string) {

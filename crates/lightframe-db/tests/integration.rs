@@ -29,7 +29,6 @@ fn sample_media(path: &str) -> MediaFile {
         longitude: None,
     }
 }
-
 #[test]
 fn open_and_migrate() {
     let _db = create_test_db();
@@ -1287,4 +1286,264 @@ fn timeline_groups_spanning_years() {
     assert_eq!(groups.len(), 3);
     assert_eq!(groups[0].date, "2024-12-31");
     assert_eq!(groups[2].date, "2022-01-01");
+}
+
+#[test]
+fn semantic_search_by_embedding_empty_database() {
+    let db = create_test_db();
+    let results = db
+        .semantic_search_by_embedding(&[1.0, 0.0, 0.0], 0.5, 10)
+        .unwrap();
+    assert!(results.is_empty());
+}
+
+#[test]
+fn semantic_search_by_embedding_filters_below_threshold() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let id = db
+        .upsert_media(fid, &sample_media("/photos/dissimilar.jpg"))
+        .unwrap();
+    db.store_clip_embedding(id, &[0.0, 1.0, 0.0]).unwrap();
+
+    let results = db
+        .semantic_search_by_embedding(&[1.0, 0.0, 0.0], 0.9, 10)
+        .unwrap();
+    assert!(results.is_empty());
+}
+
+#[test]
+fn semantic_search_by_embedding_respects_limit() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    for i in 0..5 {
+        let id = db
+            .upsert_media(fid, &sample_media(&format!("/photos/limit_{i}.jpg")))
+            .unwrap();
+        db.store_clip_embedding(id, &[1.0, 0.0, 0.0]).unwrap();
+    }
+
+    let results = db
+        .semantic_search_by_embedding(&[1.0, 0.0, 0.0], 0.5, 2)
+        .unwrap();
+    assert_eq!(results.len(), 2);
+}
+
+#[test]
+fn semantic_search_by_embedding_sorted_by_score_descending() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let id_exact = db
+        .upsert_media(fid, &sample_media("/photos/exact.jpg"))
+        .unwrap();
+    let id_close = db
+        .upsert_media(fid, &sample_media("/photos/close.jpg"))
+        .unwrap();
+    let id_far = db
+        .upsert_media(fid, &sample_media("/photos/far.jpg"))
+        .unwrap();
+
+    db.store_clip_embedding(id_exact, &[1.0, 0.0, 0.0]).unwrap();
+    db.store_clip_embedding(id_close, &[0.8, 0.2, 0.0]).unwrap();
+    db.store_clip_embedding(id_far, &[0.5, 0.5, 0.0]).unwrap();
+
+    let results = db
+        .semantic_search_by_embedding(&[1.0, 0.0, 0.0], 0.4, 10)
+        .unwrap();
+
+    assert_eq!(results.len(), 3);
+    assert!(results[0].1 >= results[1].1);
+    assert!(results[1].1 >= results[2].1);
+    assert_eq!(results[0].0.id, id_exact);
+}
+
+#[test]
+fn get_media_ids_without_faces_excludes_media_with_detections() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let with_face = db
+        .upsert_media(fid, &sample_media("/photos/with_face.jpg"))
+        .unwrap();
+    let without_face = db
+        .upsert_media(fid, &sample_media("/photos/without_face.jpg"))
+        .unwrap();
+
+    db.store_face_detections(
+        with_face,
+        &[FaceDetectionInput {
+            bbox: [0.0, 0.0, 10.0, 10.0],
+            confidence: 0.99,
+            embedding: vec![1.0, 0.0],
+        }],
+    )
+    .unwrap();
+
+    let ids = db.get_media_ids_without_faces().unwrap();
+    assert!(ids.contains(&without_face));
+    assert!(!ids.contains(&with_face));
+}
+
+#[test]
+fn get_faces_for_person_returns_assigned_faces() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/person_faces.jpg"))
+        .unwrap();
+
+    db.store_face_detections(
+        media_id,
+        &[
+            FaceDetectionInput {
+                bbox: [0.0, 0.0, 10.0, 10.0],
+                confidence: 0.95,
+                embedding: vec![1.0, 0.0],
+            },
+            FaceDetectionInput {
+                bbox: [20.0, 20.0, 40.0, 40.0],
+                confidence: 0.90,
+                embedding: vec![0.0, 1.0],
+            },
+        ],
+    )
+    .unwrap();
+
+    let faces = db.get_faces_for_media(media_id).unwrap();
+    let person_a = db.create_person(Some("Alice")).unwrap();
+    let person_b = db.create_person(Some("Bob")).unwrap();
+    db.assign_face_to_person(faces[0].id, person_a).unwrap();
+    db.assign_face_to_person(faces[1].id, person_b).unwrap();
+
+    let alice_faces = db.get_faces_for_person(person_a, 10, 0).unwrap();
+    assert_eq!(alice_faces.len(), 1);
+    assert_eq!(alice_faces[0].id, faces[0].id);
+    assert_eq!(alice_faces[0].person_id, Some(person_a));
+
+    let paged = db.get_faces_for_person(person_a, 1, 0).unwrap();
+    assert_eq!(paged.len(), 1);
+}
+
+#[test]
+fn get_face_by_id_returns_record_or_none() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/face_lookup.jpg"))
+        .unwrap();
+
+    db.store_face_detections(
+        media_id,
+        &[FaceDetectionInput {
+            bbox: [5.0, 5.0, 25.0, 25.0],
+            confidence: 0.88,
+            embedding: vec![0.5, 0.5],
+        }],
+    )
+    .unwrap();
+    let face_id = db.get_faces_for_media(media_id).unwrap()[0].id;
+
+    let found = db.get_face_by_id(face_id).unwrap();
+    assert!(found.is_some());
+    let face = found.unwrap();
+    assert_eq!(face.media_id, media_id);
+    assert!((face.confidence - 0.88).abs() < f32::EPSILON);
+
+    assert!(db.get_face_by_id(999_999).unwrap().is_none());
+}
+
+#[test]
+fn get_timeline_groups_first_page_without_cursor() {
+    let db = create_test_db();
+    let folder_id = db.add_watched_folder("/photos").unwrap().id;
+
+    for i in 0..3 {
+        let mut media = sample_media(&format!("/photos/page1_{i}.jpg"));
+        media.created_at = Some(
+            NaiveDateTime::parse_from_str(
+                &format!("2024-07-{:02} 12:00:00", 10 - i),
+                "%Y-%m-%d %H:%M:%S",
+            )
+            .unwrap(),
+        );
+        db.upsert_media(folder_id, &media).unwrap();
+    }
+
+    let page1 = db.get_timeline_groups(2, None).unwrap();
+    assert_eq!(page1.iter().map(|g| g.count).sum::<i64>(), 2);
+}
+
+#[test]
+fn get_timeline_groups_second_page_with_cursor() {
+    let db = create_test_db();
+    let folder_id = db.add_watched_folder("/photos").unwrap().id;
+    let dates: Vec<String> = (0..6)
+        .map(|i| format!("2024-06-{:02} 10:00:00", 10 + i))
+        .collect();
+
+    for (i, date) in dates.iter().enumerate() {
+        let mut media = sample_media(&format!("/photos/page2_{i}.jpg"));
+        media.created_at = Some(NaiveDateTime::parse_from_str(date, "%Y-%m-%d %H:%M:%S").unwrap());
+        db.upsert_media(folder_id, &media).unwrap();
+    }
+
+    let page1 = db.get_timeline_groups(3, None).unwrap();
+    assert_eq!(page1.iter().map(|g| g.count).sum::<i64>(), 3);
+
+    let page1_ids: Vec<i64> = page1
+        .iter()
+        .flat_map(|g| g.media.iter().map(|m| m.id))
+        .collect();
+    let last_id = *page1_ids.last().expect("page1 item");
+    let cursor_ts = dates[3].clone();
+
+    let page2 = db
+        .get_timeline_groups(3, Some((cursor_ts, last_id)))
+        .unwrap();
+    let page2_ids: Vec<i64> = page2
+        .iter()
+        .flat_map(|g| g.media.iter().map(|m| m.id))
+        .collect();
+
+    assert_eq!(page2.iter().map(|g| g.count).sum::<i64>(), 3);
+    for id in &page2_ids {
+        assert!(!page1_ids.contains(id));
+    }
+    assert_eq!(page1_ids.len() + page2_ids.len(), 6);
+}
+
+#[test]
+fn get_timeline_groups_single_date_spans_pages() {
+    let db = create_test_db();
+    let folder_id = db.add_watched_folder("/photos").unwrap().id;
+    let same_time = "2024-09-15 10:00:00".to_string();
+    let parsed = NaiveDateTime::parse_from_str(&same_time, "%Y-%m-%d %H:%M:%S").unwrap();
+
+    for i in 0..8 {
+        let mut media = sample_media(&format!("/photos/same_day_{i}.jpg"));
+        media.created_at = Some(parsed);
+        db.upsert_media(folder_id, &media).unwrap();
+    }
+
+    let page1 = db.get_timeline_groups(3, None).unwrap();
+    assert_eq!(page1.len(), 1);
+    assert_eq!(page1[0].date, "2024-09-15");
+    assert_eq!(page1[0].count, 3);
+
+    let last_id = page1[0].media.last().expect("media").id;
+    let page2 = db
+        .get_timeline_groups(3, Some((same_time.clone(), last_id)))
+        .unwrap();
+
+    assert_eq!(page2.len(), 1);
+    assert_eq!(page2[0].date, "2024-09-15");
+    assert_eq!(page2[0].count, 3);
+
+    let page1_ids: Vec<i64> = page1[0].media.iter().map(|m| m.id).collect();
+    let page2_ids: Vec<i64> = page2[0].media.iter().map(|m| m.id).collect();
+    for id in &page2_ids {
+        assert!(!page1_ids.contains(id));
+    }
 }

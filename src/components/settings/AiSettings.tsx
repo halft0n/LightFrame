@@ -9,6 +9,7 @@ import {
   type ModelStatus,
 } from "@/lib/tauri";
 import { useTranslation } from "@/i18n/useTranslation";
+import { localizeError } from "@/lib/errors";
 
 function StatusBadge({ available }: { available: boolean }) {
   const { t } = useTranslation();
@@ -128,6 +129,7 @@ export function AiSettings() {
   const [opening, setOpening] = useState(false);
   const [downloadingFile, setDownloadingFile] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgressState | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const speedSampleRef = useRef<{ downloaded: number; at: number } | null>(null);
 
   const loadStatus = useCallback(async () => {
@@ -199,12 +201,13 @@ export function AiSettings() {
 
     setDownloadingFile(filename);
     setDownloadProgress({ downloaded: 0, total: 0, speedBps: 0 });
+    setDownloadError(null);
     speedSampleRef.current = null;
     try {
       await downloadModel(filename);
       await loadStatus();
     } catch (err) {
-      console.error("Failed to download model:", err);
+      setDownloadError(localizeError(err, t));
     } finally {
       setDownloadingFile(null);
       setDownloadProgress(null);
@@ -236,6 +239,10 @@ export function AiSettings() {
               />
             ))}
           </ul>
+
+          {downloadError && (
+            <p className="text-sm text-red-600 dark:text-red-400">{downloadError}</p>
+          )}
 
           <div className="rounded-lg bg-neutral-100 px-3 py-2 dark:bg-neutral-800/80">
             <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">

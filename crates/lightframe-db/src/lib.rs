@@ -3,8 +3,8 @@ pub mod repo;
 
 pub use repo::{
     Album, DuplicateGroup, DuplicateGroupDetail, DuplicateMember, FaceDetectionInput,
-    FaceDetectionRecord, LocationGroup, LocationStats, MediaNeighbors, Memory, Person, SmartAlbum,
-    SmartAlbumRule, TimelineGroup, WatchedFolder,
+    FaceDetectionRecord, GeoCluster, LocationGroup, LocationStats, MediaNeighbors, Memory, Person,
+    SmartAlbum, SmartAlbumRule, TimelineGroup, WatchedFolder,
 };
 
 use lightframe_core::config;

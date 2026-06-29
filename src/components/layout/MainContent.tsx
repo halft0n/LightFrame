@@ -19,12 +19,18 @@ import { PeopleView } from "@/components/people/PeopleView";
 import { PersonDetailView } from "@/components/people/PersonDetailView";
 import { SearchResultsView } from "@/components/search/SearchResultsView";
 import { FolderView } from "@/components/folders/FolderView";
+import { MapView } from "@/components/map/MapView";
+import { SlideshowView } from "@/components/viewer/SlideshowView";
 import { PhotoViewer } from "@/components/viewer/PhotoViewer";
 import { useAppStore } from "@/store/appStore";
 
 export function MainContent() {
   const { t } = useTranslation();
-  const { currentView, watchedFolders, searchQuery, viewingMediaId } = useAppStore();
+  const { currentView, watchedFolders, searchQuery, viewingMediaId, slideshowActive } = useAppStore();
+
+  if (slideshowActive) {
+    return <SlideshowView />;
+  }
 
   if (viewingMediaId != null) {
     return <PhotoViewer mediaId={viewingMediaId} />;
@@ -57,6 +63,8 @@ export function MainContent() {
   if (currentView === "timeline") return <TimelineView />;
 
   if (currentView === "locations") return <LocationView />;
+
+  if (currentView === "map") return <MapView />;
 
   if (currentView === "albums") return <AlbumListView />;
 

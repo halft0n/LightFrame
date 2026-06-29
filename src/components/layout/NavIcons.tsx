@@ -124,11 +124,21 @@ export function NavIconSettings({ className, ...rest }: IconProps) {
   );
 }
 
+export function NavIconMap({ className, ...rest }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" className={cn(ICON_SIZE, className)} {...rest}>
+      <path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2V6z" strokeLinejoin="round" />
+      <path d="M9 4v14M15 6v14" />
+    </svg>
+  );
+}
+
 export type NavIconName =
   | "all"
   | "videos"
   | "timeline"
   | "locations"
+  | "map"
   | "favorites"
   | "albums"
   | "smart-albums"
@@ -144,6 +154,7 @@ const NAV_ICONS: Record<NavIconName, (props: IconProps) => ReactElement> = {
   videos: NavIconVideos,
   timeline: NavIconTimeline,
   locations: NavIconLocations,
+  map: NavIconMap,
   favorites: NavIconFavorites,
   albums: NavIconAlbums,
   "smart-albums": NavIconSmartAlbums,
