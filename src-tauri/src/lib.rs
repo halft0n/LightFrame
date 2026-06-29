@@ -15,9 +15,8 @@ use state::AppState;
 use tauri::Manager;
 
 pub fn run() {
-    let _guard = logging::init_logging();
-
     let app_state = AppState::new().expect("failed to initialize application state");
+    let _guard = logging::init_logging(&app_state.config.log);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -124,6 +123,8 @@ pub fn run() {
             commands::get_log_directory,
             commands::get_log_files,
             commands::cleanup_logs,
+            commands::get_log_config,
+            commands::set_log_config,
         ])
         .register_uri_scheme_protocol("thumb", |ctx, request| {
             let state = ctx.app_handle().state::<AppState>();

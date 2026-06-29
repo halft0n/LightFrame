@@ -303,5 +303,16 @@
   "errors.forbidden": "Access denied",
   "errors.tooLarge": "File too large",
   "errors.batchTooLarge": "Batch operation exceeds limit",
-  "errors.generic": "Operation failed, please try again"
+  "errors.generic": "Operation failed, please try again",
+  "settings.logTitle": "Log Settings",
+  "settings.logDescription": "Configure log level, retention policy and storage limits",
+  "settings.logLevel": "Log Level",
+  "settings.logRetention": "Retention",
+  "settings.logDays": "days",
+  "settings.logMaxSize": "Max Size",
+  "settings.logSave": "Save",
+  "settings.logSaved": "Saved ✓",
+  "settings.logCleanup": "Clean Up Now",
+  "settings.logCount": "Log files",
+  "settings.logTotalSize": "Total size"
 }

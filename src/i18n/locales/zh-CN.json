@@ -303,5 +303,16 @@
   "errors.forbidden": "没有访问权限",
   "errors.tooLarge": "文件过大",
   "errors.batchTooLarge": "批量操作数量超出限制",
-  "errors.generic": "操作失败，请重试"
+  "errors.generic": "操作失败，请重试",
+  "settings.logTitle": "日志设置",
+  "settings.logDescription": "配置应用日志级别、保留策略和存储限制",
+  "settings.logLevel": "日志级别",
+  "settings.logRetention": "保留天数",
+  "settings.logDays": "天",
+  "settings.logMaxSize": "最大体积",
+  "settings.logSave": "保存",
+  "settings.logSaved": "已保存 ✓",
+  "settings.logCleanup": "立即清理",
+  "settings.logCount": "日志文件数",
+  "settings.logTotalSize": "总大小"
 }

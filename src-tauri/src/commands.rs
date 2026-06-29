@@ -56,6 +56,17 @@ pub fn cleanup_logs() -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn get_log_config() -> catchlight_core::config::LogConfig {
+    crate::logging::get_log_config()
+}
+
+#[tauri::command]
+pub fn set_log_config(config: catchlight_core::config::LogConfig) -> Result<(), String> {
+    crate::logging::set_log_config(config);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn get_app_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }

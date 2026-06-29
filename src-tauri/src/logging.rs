@@ -1,30 +1,63 @@
+use catchlight_core::config::LogConfig;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::RwLock;
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
-const MAX_LOG_AGE_DAYS: u64 = 7;
-const MAX_LOG_SIZE_BYTES: u64 = 100 * 1024 * 1024; // 100MB
+static LOG_CONFIG: RwLock<Option<LogConfig>> = RwLock::new(None);
+
+fn default_log_config() -> LogConfig {
+    LOG_CONFIG
+        .read()
+        .ok()
+        .and_then(|g| g.clone())
+        .unwrap_or_default()
+}
+
+pub fn set_log_config(config: LogConfig) {
+    if let Ok(mut guard) = LOG_CONFIG.write() {
+        *guard = Some(config);
+    }
+}
+
+pub fn get_log_config() -> LogConfig {
+    default_log_config()
+}
+
+fn parse_log_level(level: &str) -> tracing::Level {
+    match level.to_ascii_lowercase().as_str() {
+        "trace" => tracing::Level::TRACE,
+        "debug" => tracing::Level::DEBUG,
+        "warn" | "warning" => tracing::Level::WARN,
+        "error" => tracing::Level::ERROR,
+        _ => tracing::Level::INFO,
+    }
+}
 
 /// Initialize logging with both console and file output.
 /// Returns a guard that must be held for the lifetime of the application.
-pub fn init_logging() -> tracing_appender::non_blocking::WorkerGuard {
+pub fn init_logging(config: &LogConfig) -> tracing_appender::non_blocking::WorkerGuard {
+    set_log_config(config.clone());
+
     let log_dir = log_directory();
     fs::create_dir_all(&log_dir).ok();
 
+    let max_files = config.retention_days.max(1) as usize;
     let file_appender = RollingFileAppender::builder()
         .rotation(Rotation::DAILY)
         .filename_prefix("lightframe")
         .filename_suffix("log")
-        .max_log_files(7) // tracing-appender built-in rotation
+        .max_log_files(max_files)
         .build(&log_dir)
         .expect("failed to create log appender");
 
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
+    let level = parse_log_level(&config.level);
     tracing_subscriber::registry()
-        .with(EnvFilter::from_default_env().add_directive(tracing::Level::INFO.into()))
-        .with(fmt::layer().with_ansi(true)) // console with colors
+        .with(EnvFilter::from_default_env().add_directive(level.into()))
+        .with(fmt::layer().with_ansi(true))
         .with(
             fmt::layer()
                 .with_ansi(false)
@@ -34,10 +67,11 @@ pub fn init_logging() -> tracing_appender::non_blocking::WorkerGuard {
         )
         .init();
 
-    // Background cleanup on startup
     let cleanup_dir = log_dir.clone();
+    let days = config.retention_days;
+    let max_mb = config.max_size_mb;
     std::thread::spawn(move || {
-        cleanup_logs(&cleanup_dir);
+        cleanup_logs_with_limits(&cleanup_dir, days as u64, max_mb as u64 * 1024 * 1024);
     });
 
     guard
@@ -54,11 +88,14 @@ pub fn log_directory() -> PathBuf {
     base.join("com.lightframe.app").join("logs")
 }
 
-/// Clean up old log files:
-/// 1. Delete files older than MAX_LOG_AGE_DAYS
-/// 2. If total size > MAX_LOG_SIZE_BYTES, delete oldest files until under limit
+/// Clean up old log files using current configuration.
 pub fn cleanup_logs(log_dir: &Path) {
-    cleanup_logs_with_limits(log_dir, MAX_LOG_AGE_DAYS, MAX_LOG_SIZE_BYTES);
+    let config = default_log_config();
+    cleanup_logs_with_limits(
+        log_dir,
+        config.retention_days as u64,
+        config.max_size_mb as u64 * 1024 * 1024,
+    );
 }
 
 fn cleanup_logs_with_limits(log_dir: &Path, max_age_days: u64, max_size_bytes: u64) {
@@ -211,7 +248,7 @@ mod tests {
         let recent_path = dir.path().join("recent.log");
         fs::write(&recent_path, "recent log content").unwrap();
 
-        cleanup_logs_with_limits(dir.path(), 7, MAX_LOG_SIZE_BYTES);
+        cleanup_logs_with_limits(dir.path(), 7, 100 * 1024 * 1024);
 
         assert!(!old_path.exists());
         assert!(recent_path.exists());
@@ -230,7 +267,7 @@ mod tests {
             set_file_modified(&path, modified);
         }
 
-        cleanup_logs_with_limits(dir.path(), MAX_LOG_AGE_DAYS, max_size);
+        cleanup_logs_with_limits(dir.path(), 7, max_size);
 
         let remaining: Vec<_> = fs::read_dir(dir.path())
             .unwrap()

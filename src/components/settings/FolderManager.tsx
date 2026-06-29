@@ -12,6 +12,7 @@ import { useTranslation } from "@/i18n/useTranslation";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { UpdateChecker } from "@/components/settings/UpdateChecker";
 import { AiSettings } from "@/components/settings/AiSettings";
+import { LogSettings } from "@/components/settings/LogSettings";
 
 function ScanIndicator({ status }: { status: ScanStatus }) {
   const { t } = useTranslation();
@@ -142,6 +143,8 @@ export function FolderManager() {
       <UpdateChecker />
 
       <AiSettings />
+
+      <LogSettings />
 
       <section className="settings-section px-6 py-5">
         <div className="flex flex-wrap items-center justify-between gap-4">

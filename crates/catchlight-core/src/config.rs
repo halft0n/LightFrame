@@ -8,6 +8,25 @@ pub struct AppConfig {
     pub thumbnail_quality: u8,
     pub ai_enabled: bool,
     pub python_path: Option<PathBuf>,
+    #[serde(default)]
+    pub log: LogConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LogConfig {
+    pub level: String,
+    pub retention_days: u32,
+    pub max_size_mb: u32,
+}
+
+impl Default for LogConfig {
+    fn default() -> Self {
+        Self {
+            level: "info".to_string(),
+            retention_days: 7,
+            max_size_mb: 100,
+        }
+    }
 }
 
 impl Default for AppConfig {
@@ -18,6 +37,7 @@ impl Default for AppConfig {
             thumbnail_quality: 85,
             ai_enabled: false,
             python_path: None,
+            log: LogConfig::default(),
         }
     }
 }
@@ -55,6 +75,14 @@ mod tests {
     }
 
     #[test]
+    fn default_config_has_log_defaults() {
+        let cfg = AppConfig::default();
+        assert_eq!(cfg.log.level, "info");
+        assert_eq!(cfg.log.retention_days, 7);
+        assert_eq!(cfg.log.max_size_mb, 100);
+    }
+
+    #[test]
     fn config_serde_roundtrip() {
         let cfg = AppConfig {
             watched_folders: vec![PathBuf::from("/photos"), PathBuf::from("/videos")],
@@ -62,6 +90,11 @@ mod tests {
             thumbnail_quality: 90,
             ai_enabled: true,
             python_path: Some(PathBuf::from("/usr/bin/python3")),
+            log: LogConfig {
+                level: "debug".to_string(),
+                retention_days: 14,
+                max_size_mb: 200,
+            },
         };
 
         let json = serde_json::to_string(&cfg).unwrap();
@@ -69,6 +102,16 @@ mod tests {
         assert_eq!(back.watched_folders.len(), 2);
         assert_eq!(back.locale, "en");
         assert!(back.ai_enabled);
+        assert_eq!(back.log.level, "debug");
+        assert_eq!(back.log.retention_days, 14);
+    }
+
+    #[test]
+    fn config_serde_backward_compat() {
+        let json = r#"{"watched_folders":[],"locale":"zh-CN","thumbnail_quality":85,"ai_enabled":false,"python_path":null}"#;
+        let cfg: AppConfig = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.log.level, "info");
+        assert_eq!(cfg.log.retention_days, 7);
     }
 
     #[test]
