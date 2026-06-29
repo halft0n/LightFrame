@@ -7,10 +7,6 @@ pub struct MftScanner {
 
 pub struct MftEntry {
     pub path: PathBuf,
-    pub size: u64,
-    pub created: Option<std::time::SystemTime>,
-    pub modified: Option<std::time::SystemTime>,
-    pub is_directory: bool,
 }
 
 impl MftScanner {
