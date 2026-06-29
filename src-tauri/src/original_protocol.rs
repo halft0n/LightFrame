@@ -101,9 +101,10 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
                 );
             }
             Err(e) => {
-                tracing::debug!(
+                tracing::warn!(
                     path = %canonical.display(),
-                    "RAW preview extraction failed, serving raw bytes: {e}"
+                    error = %e,
+                    "RAW preview extraction failed, serving raw bytes"
                 );
             }
         }
@@ -250,6 +251,10 @@ fn normalize_file_path(decoded: &str) -> PathBuf {
 }
 
 fn guess_mime(path: &Path) -> &'static str {
+    if lightframe_core::decode::is_raw_path(path) {
+        return "application/x-raw";
+    }
+
     match path
         .extension()
         .and_then(|e| e.to_str())
@@ -267,10 +272,6 @@ fn guess_mime(path: &Path) -> &'static str {
         Some("svg") => "image/svg+xml",
         Some("heic" | "heif") => "image/heif",
         Some("avif") => "image/avif",
-        Some(
-            "cr2" | "cr3" | "nef" | "nrw" | "arw" | "dng" | "orf" | "rw2" | "pef" | "raf" | "rwl"
-            | "3fr" | "srw" | "raw",
-        ) => "application/x-raw",
         Some("mp4") => "video/mp4",
         Some("mov") => "video/quicktime",
         Some("avi") => "video/x-msvideo",

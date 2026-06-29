@@ -11,6 +11,8 @@ import {
 } from "@/lib/tauri";
 import { openViewer, setSearchMode, useAppStore, type SearchMode } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 
 const MIN_COLUMN_WIDTH = 160;
 const GAP = 3;
@@ -74,6 +76,7 @@ export function SearchResultsView() {
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
@@ -170,11 +173,13 @@ export function SearchResultsView() {
     const trimmed = searchQuery.trim();
     if (loadingMore || !hasMore || !trimmed || searchMode !== "text") return;
     setLoadingMore(true);
+    setLoadMoreError(false);
     try {
       const items = await searchMedia(trimmed, PAGE_SIZE, media.length);
       setMedia((prev) => [...prev, ...items]);
     } catch (err) {
       console.error("Failed to load more search results:", err);
+      setLoadMoreError(true);
     } finally {
       setLoadingMore(false);
     }
@@ -201,8 +206,8 @@ export function SearchResultsView() {
 
   if (loading) {
     return (
-      <div className="flex flex-1 items-center justify-center text-neutral-500">
-        <p>{t("gallery.loading")}</p>
+      <div className="flex flex-1 items-center justify-center">
+        <LoadingIndicator label={t("a11y.searching")} />
       </div>
     );
   }
@@ -267,16 +272,10 @@ export function SearchResultsView() {
       )}
 
       {error && (
-        <div className="flex items-center justify-between gap-3 border-b border-red-200/80 bg-red-50 px-4 py-2 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
-          <p>{error}</p>
-          <button
-            type="button"
-            onClick={() => void loadInitial(searchQuery, searchMode)}
-            className="shrink-0 rounded-md bg-red-600 px-3 py-1 text-xs font-medium text-white transition hover:bg-red-500"
-          >
-            {t("search.retry")}
-          </button>
-        </div>
+        <ErrorBanner
+          message={error}
+          onRetry={() => void loadInitial(searchQuery, searchMode)}
+        />
       )}
 
       {media.length === 0 ? (
@@ -318,7 +317,16 @@ export function SearchResultsView() {
             })}
           </div>
           {loadingMore && (
-            <div className="py-4 text-center text-sm text-neutral-500">{t("gallery.loading")}</div>
+            <LoadingIndicator className="py-4" size="sm" label={t("a11y.searching")} />
+          )}
+          {loadMoreError && !loadingMore && (
+            <div className="px-3 py-4">
+              <ErrorBanner
+                message={t("gallery.loadError")}
+                onRetry={() => void loadMore()}
+                className="rounded-lg border"
+              />
+            </div>
           )}
         </div>
       )}

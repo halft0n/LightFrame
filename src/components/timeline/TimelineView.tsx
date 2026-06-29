@@ -4,6 +4,8 @@ import { PhotoCard } from "@/components/gallery/PhotoCard";
 import { getTimelineGroups, type MediaItem, type TimelineGroup } from "@/lib/tauri";
 import { openViewer } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 
 const MIN_COLUMN_WIDTH = 160;
 const GAP = 3;
@@ -133,40 +135,31 @@ export function TimelineView() {
   const [cursor, setCursor] = useState<ReturnType<typeof timelineCursorFromGroups>>(null);
   const [containerWidth, setContainerWidth] = useState(0);
 
+  const loadInitial = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await getTimelineGroups(PAGE_SIZE);
+      const itemCount = data.reduce((sum, g) => sum + g.media.length, 0);
+      setGroups(data);
+      setHasMore(itemCount >= PAGE_SIZE);
+      setCursor(timelineCursorFromGroups(data));
+    } catch (err) {
+      console.error("Failed to load timeline groups:", err);
+      setError(t("errors.generic"));
+    } finally {
+      setLoading(false);
+    }
+  }, [t]);
+
+  useEffect(() => {
+    void loadInitial();
+  }, [loadInitial]);
+
   const columnCount = Math.max(
     1,
     Math.floor((containerWidth + GAP) / (MIN_COLUMN_WIDTH + GAP)),
   );
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadInitial() {
-      setLoading(true);
-      setError(null);
-      try {
-        const data = await getTimelineGroups(PAGE_SIZE);
-        if (!cancelled) {
-          const itemCount = data.reduce((sum, g) => sum + g.media.length, 0);
-          setGroups(data);
-          setHasMore(itemCount >= PAGE_SIZE);
-          setCursor(timelineCursorFromGroups(data));
-        }
-      } catch (err) {
-        console.error("Failed to load timeline groups:", err);
-        if (!cancelled) {
-          setError(t("errors.generic"));
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    void loadInitial();
-    return () => {
-      cancelled = true;
-    };
-  }, [t]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore || !cursor) return;
@@ -244,16 +237,25 @@ export function TimelineView() {
 
   if (loading) {
     return (
-      <div className="flex flex-1 items-center justify-center text-neutral-500">
-        <p>{t("gallery.loading")}</p>
+      <div className="flex flex-1 items-center justify-center">
+        <LoadingIndicator label={t("a11y.loadingPhotos")} />
       </div>
     );
   }
 
-  if (error) {
+  if (error && groups.length === 0) {
     return (
-      <div className="flex flex-1 items-center justify-center text-red-600 dark:text-red-400">
-        <p>{error}</p>
+      <div className="flex flex-1 flex-col items-center justify-center gap-4 px-6">
+        <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+          {error}
+        </p>
+        <button
+          type="button"
+          onClick={() => void loadInitial()}
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-500 active:bg-blue-700"
+        >
+          {t("search.retry")}
+        </button>
       </div>
     );
   }
@@ -272,8 +274,14 @@ export function TimelineView() {
         {t("timeline.title")} · {t("gallery.count", { count: totalPhotos })}
       </div>
 
+      {error && groups.length > 0 && (
+        <ErrorBanner message={error} onRetry={() => void loadMore()} />
+      )}
+
       <div ref={parentRef} className="flex-1 overflow-y-auto px-1 py-1">
         <div
+          role="grid"
+          aria-label={t("gallery.gridLabel")}
           style={{
             height: `${rowVirtualizer.getTotalSize()}px`,
             width: "100%",
@@ -345,6 +353,10 @@ export function TimelineView() {
             );
           })}
         </div>
+
+        {loadingMore && (
+          <LoadingIndicator className="py-4" size="sm" label={t("a11y.loadingPhotos")} />
+        )}
       </div>
     </div>
   );

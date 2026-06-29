@@ -66,18 +66,18 @@ impl ProgressThrottler {
 /// Start scanning watched folders.
 ///
 /// Only one scan runs at a time. If a scan is already in progress,
-/// new scan requests are silently ignored. This prevents resource
-/// contention on disk I/O-heavy operations.
+/// new scan requests are ignored and `false` is returned. This prevents
+/// resource contention on disk I/O-heavy operations.
 ///
 /// TODO: Implement per-folder scan queue for v0.2.0
-pub fn spawn_scan(app: AppHandle, state: &AppState, folder_id: i64) {
+pub fn spawn_scan(app: AppHandle, state: &AppState, folder_id: i64) -> bool {
     if state
         .scanning
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         .is_err()
     {
         warn!(folder_id, "scan already in progress, skipping");
-        return;
+        return false;
     }
 
     let app = app.clone();
@@ -95,6 +95,7 @@ pub fn spawn_scan(app: AppHandle, state: &AppState, folder_id: i64) {
         }
         scanning.store(false, Ordering::SeqCst);
     });
+    true
 }
 
 pub async fn run_scan(
@@ -416,7 +417,7 @@ mod tests {
 
     #[test]
     fn scan_module_compiles() {
-        let _: fn(AppHandle, &AppState, i64) = spawn_scan;
+        let _: fn(AppHandle, &AppState, i64) -> bool = spawn_scan;
     }
 
     #[tokio::test]
@@ -538,6 +539,43 @@ mod tests {
         let mut restore = fs::metadata(&restricted).unwrap().permissions();
         restore.set_mode(0o755);
         let _ = fs::set_permissions(&restricted, restore);
+    }
+
+    #[tokio::test]
+    async fn discover_case_insensitive_extensions() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("upper.JPG"), b"jpg").unwrap();
+        fs::write(dir.path().join("mixed.PnG"), b"png").unwrap();
+
+        let files = discover_files(dir.path()).await.unwrap();
+        assert_eq!(files.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn discover_raw_extensions_are_included() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("photo.cr2"), b"raw").unwrap();
+        fs::write(dir.path().join("photo.nef"), b"raw").unwrap();
+        fs::write(dir.path().join("readme.txt"), b"text").unwrap();
+
+        let files = discover_files(dir.path()).await.unwrap();
+        assert_eq!(files.len(), 2);
+        assert!(files.iter().all(|p| {
+            p.extension().and_then(|e| e.to_str()).is_some_and(|ext| {
+                ext.eq_ignore_ascii_case("cr2") || ext.eq_ignore_ascii_case("nef")
+            })
+        }));
+    }
+
+    #[tokio::test]
+    async fn discover_ignores_double_extension_backup_files() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("photo.jpg.bak"), b"backup").unwrap();
+        fs::write(dir.path().join("valid.jpg"), b"jpg").unwrap();
+
+        let files = discover_files(dir.path()).await.unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].file_name().unwrap(), "valid.jpg");
     }
 
     fn progress_would_emit(

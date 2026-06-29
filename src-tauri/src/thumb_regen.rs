@@ -494,4 +494,27 @@ mod tests {
         let value: serde_json::Value = serde_json::from_str(&json).expect("parse json");
         assert_eq!(value["regenerated"], 42);
     }
+
+    #[test]
+    fn regenerate_skips_when_all_thumbnails_already_exist() {
+        let harness = TestHarness::new();
+        let hash = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+        write_thumb_file(hash, ThumbnailSize::Micro, b"micro");
+        write_thumb_file(hash, ThumbnailSize::Small, b"small");
+        let media_id = insert_media(&harness, "complete.png", Some(hash), None);
+        harness
+            .state
+            .db
+            .set_micro_thumb(media_id, b"jpeg-bytes")
+            .expect("set micro");
+
+        let result = regenerate_thumbnails_for_media(&harness.state, media_id).unwrap();
+        assert!(!result);
+    }
+
+    #[test]
+    fn media_needs_regeneration_when_hash_is_empty_string() {
+        let harness = TestHarness::new();
+        assert!(media_needs_thumbnail_regeneration(&harness.state.db, 1, ""));
+    }
 }

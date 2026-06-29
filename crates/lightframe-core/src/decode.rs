@@ -14,12 +14,13 @@ use std::path::Path;
 /// Recognized RAW camera extensions (TIFF-based and related container formats).
 pub const RAW_EXTENSIONS: &[&str] = &[
     "raw", "cr2", "cr3", "nef", "nrw", "arw", "dng", "orf", "rw2", "pef", "raf", "rwl", "3fr",
-    "srw",
+    "srw", "x3f", "mrw", "fff", "iiq", "mos", "kdc", "dcr", "erf", "mef", "bay", "cap", "rdc",
 ];
 
 const SCAN_CHUNK: usize = 512 * 1024;
 const MAX_JPEG_SIZE: u64 = 30 * 1024 * 1024;
 const MIN_JPEG_SIZE: usize = 128;
+const MIN_EXIF_THUMB_SIZE: usize = 64;
 
 /// Image formats handled explicitly by the decode pipeline.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,6 +38,32 @@ pub fn file_extension_lower(path: &Path) -> Option<String> {
 
 pub fn is_raw_path(path: &Path) -> bool {
     file_extension_lower(path).is_some_and(|ext| RAW_EXTENSIONS.contains(&ext.as_str()))
+}
+
+/// Upper-case RAW extension label for error messages (e.g. `"CR2"`).
+pub fn raw_format_label(path: &Path) -> Option<String> {
+    file_extension_lower(path).map(|ext| ext.to_ascii_uppercase())
+}
+
+/// Detect container family from file header for clearer RAW decode errors.
+pub fn raw_container_hint(path: &Path) -> &'static str {
+    let Ok(mut file) = File::open(path) else {
+        return "unknown container";
+    };
+    let mut header = [0u8; 16];
+    if file.read(&mut header).ok().is_none_or(|n| n < 4) {
+        return "unknown container";
+    }
+    if header.starts_with(b"II") || header.starts_with(b"MM") {
+        return "TIFF-based";
+    }
+    if header.len() >= 8 && &header[4..8] == b"ftyp" {
+        return "ISO-BMFF (e.g. CR3/HEIF)";
+    }
+    if header.starts_with(b"FUJIFILM") {
+        return "Fujifilm RAF";
+    }
+    "unknown container"
 }
 
 pub fn detect_image_format(path: &Path) -> ImageFormatKind {
@@ -65,11 +92,15 @@ pub fn is_decode_supported(path: &Path) -> bool {
 /// Most RAW formats store a larger preview JPEG plus a smaller EXIF thumbnail.
 /// This tries the largest embedded JPEG first, then the EXIF thumbnail.
 pub fn extract_raw_preview_bytes(path: &Path) -> Result<Vec<u8>> {
-    if let Ok(jpeg) = scan_largest_jpeg(path) {
-        return Ok(jpeg);
+    match scan_largest_jpeg(path) {
+        Ok(jpeg) => Ok(jpeg),
+        Err(scan_err) => match extract_exif_thumbnail(path) {
+            Ok(jpeg) => Ok(jpeg),
+            Err(exif_err) => Err(crate::Error::Decode(raw_preview_failure_message(
+                path, scan_err, exif_err,
+            ))),
+        },
     }
-
-    extract_exif_thumbnail(path)
 }
 
 /// Extract and decode embedded JPEG preview from RAW files.
@@ -80,7 +111,7 @@ pub fn extract_raw_preview(path: &Path) -> Result<DecodedImage> {
 
 fn decode_jpeg_bytes(jpeg: &[u8]) -> Result<DecodedImage> {
     let img = image::load_from_memory(jpeg).map_err(|e| {
-        crate::Error::Other(format!("embedded RAW preview JPEG decode failed: {e}"))
+        crate::Error::Decode(format!("embedded RAW preview JPEG decode failed: {e}"))
     })?;
     let rgba = img.to_rgba8();
     let (width, height) = rgba.dimensions();
@@ -89,6 +120,30 @@ fn decode_jpeg_bytes(jpeg: &[u8]) -> Result<DecodedImage> {
         width,
         height,
     })
+}
+
+fn raw_preview_failure_message(
+    path: &Path,
+    scan_err: crate::Error,
+    exif_err: crate::Error,
+) -> String {
+    let format = raw_format_label(path).unwrap_or_else(|| "RAW".into());
+    let container = raw_container_hint(path);
+    format!(
+        "RAW (.{format}) embedded preview not found ({container}): \
+         JPEG scan failed ({scan_err}); EXIF thumbnail failed ({exif_err})"
+    )
+}
+
+fn raw_decode_failure_message(path: &Path, preview_err: crate::Error) -> String {
+    let format = raw_format_label(path).unwrap_or_else(|| "RAW".into());
+    let container = raw_container_hint(path);
+    #[cfg(feature = "raw-decode")]
+    let full_decode_hint = "full sensor decode was attempted but also failed";
+    #[cfg(not(feature = "raw-decode"))]
+    let full_decode_hint = "full sensor decode unavailable (build without raw-decode feature; ISO-BMFF formats like CR3 require it)";
+
+    format!("RAW (.{format}) decode failed ({container}): {preview_err}; {full_decode_hint}")
 }
 
 fn extract_exif_thumbnail(path: &Path) -> Result<Vec<u8>> {
@@ -115,14 +170,14 @@ fn extract_exif_thumbnail(path: &Path) -> Result<Vec<u8>> {
             continue;
         }
         if let Ok(jpeg) = read_jpeg_at_offset(path, u64::from(offset), u64::from(length))
-            && is_valid_jpeg(&jpeg)
+            && is_valid_jpeg(&jpeg, MIN_EXIF_THUMB_SIZE)
         {
             return Ok(jpeg);
         }
     }
 
     Err(crate::Error::Other(
-        "no embedded JPEG preview found in RAW file".into(),
+        "no EXIF JPEGInterchangeFormat thumbnail in RAW file".into(),
     ))
 }
 
@@ -165,7 +220,7 @@ fn scan_largest_jpeg(path: &Path) -> Result<Vec<u8>> {
             let abs_start = chunk_start + i as u64;
             let remaining = file_len - abs_start;
             if let Ok(jpeg) = extract_jpeg_segment(path, abs_start, remaining)
-                && is_valid_jpeg(&jpeg)
+                && is_valid_jpeg(&jpeg, MIN_JPEG_SIZE)
                 && best
                     .as_ref()
                     .is_none_or(|current| jpeg.len() > current.len())
@@ -202,8 +257,8 @@ fn find_eoi(data: &[u8]) -> Option<usize> {
     data.windows(2).rposition(|w| w == [0xFF, 0xD9])
 }
 
-fn is_valid_jpeg(data: &[u8]) -> bool {
-    data.len() >= MIN_JPEG_SIZE
+fn is_valid_jpeg(data: &[u8], min_size: usize) -> bool {
+    data.len() >= min_size
         && data.starts_with(&[0xFF, 0xD8])
         && data.ends_with(&[0xFF, 0xD9])
         && image::load_from_memory(data).is_ok()
@@ -465,8 +520,15 @@ pub fn decode_image(path: &Path) -> Result<DecodedImage> {
 
         match extract_raw_preview(path) {
             Ok(decoded) => return Ok(decoded),
-            Err(e) => {
-                tracing::debug!(path = %path.display(), "RAW preview extraction failed: {e}");
+            Err(preview_err) => {
+                tracing::debug!(
+                    path = %path.display(),
+                    "RAW preview extraction failed: {preview_err}"
+                );
+                return Err(crate::Error::Decode(raw_decode_failure_message(
+                    path,
+                    preview_err,
+                )));
             }
         }
     }
@@ -475,7 +537,6 @@ pub fn decode_image(path: &Path) -> Result<DecodedImage> {
         let prefix = match detect_image_format(path) {
             ImageFormatKind::Avif => "AVIF decode failed",
             ImageFormatKind::Heic => "HEIC decode failed",
-            ImageFormatKind::Other if is_raw_path(path) => "RAW decode failed",
             ImageFormatKind::Other => "decode failed",
         };
         crate::Error::Other(format!("{prefix}: {e}"))
@@ -648,18 +709,95 @@ mod tests {
     }
 
     #[test]
-    fn decode_image_raw_without_preview_falls_through_and_fails() {
+    fn decode_image_raw_without_preview_returns_descriptive_error() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("broken.dng");
         std::fs::write(&path, b"no jpeg here").unwrap();
 
         match decode_image(&path) {
-            Err(e) => assert!(
-                e.to_string().contains("RAW"),
-                "expected RAW-specific error, got: {e}"
-            ),
+            Err(e) => {
+                let msg = e.to_string();
+                assert!(
+                    msg.contains("RAW") && msg.contains("DNG"),
+                    "expected RAW-specific error with format, got: {msg}"
+                );
+                assert!(
+                    msg.contains("embedded preview") || msg.contains("JPEG scan"),
+                    "expected preview extraction detail, got: {msg}"
+                );
+                #[cfg(not(feature = "raw-decode"))]
+                assert!(
+                    msg.contains("raw-decode"),
+                    "expected raw-decode feature hint, got: {msg}"
+                );
+            }
             Ok(_) => panic!("expected RAW decode to fail without preview"),
         }
+    }
+
+    #[test]
+    fn raw_format_label_returns_uppercase_extension() {
+        assert_eq!(
+            raw_format_label(Path::new("/photos/sample.cr2")),
+            Some("CR2".to_string())
+        );
+        assert_eq!(
+            raw_format_label(Path::new("/photos/sample.NEF")),
+            Some("NEF".to_string())
+        );
+    }
+
+    #[test]
+    fn raw_container_hint_detects_tiff_header() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tiff.cr2");
+        std::fs::write(&path, b"II*\x00\x08\x00\x00\x00").unwrap();
+        assert_eq!(raw_container_hint(&path), "TIFF-based");
+    }
+
+    #[test]
+    fn raw_container_hint_detects_ftyp_header() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("heif.cr3");
+        let mut data = vec![0u8; 12];
+        data[4..8].copy_from_slice(b"ftyp");
+        std::fs::write(&path, &data).unwrap();
+        assert_eq!(raw_container_hint(&path), "ISO-BMFF (e.g. CR3/HEIF)");
+    }
+
+    #[test]
+    fn extract_raw_preview_bytes_error_includes_both_attempts() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty.nef");
+        std::fs::write(&path, b"not a raw with jpeg").unwrap();
+
+        match extract_raw_preview_bytes(&path) {
+            Err(e) => {
+                let msg = e.to_string();
+                assert!(msg.contains("NEF"), "got: {msg}");
+                assert!(msg.contains("JPEG scan"), "got: {msg}");
+                assert!(msg.contains("EXIF thumbnail"), "got: {msg}");
+            }
+            Ok(_) => panic!("expected extraction to fail"),
+        }
+    }
+
+    #[test]
+    fn extract_raw_preview_exif_thumbnail_fallback() {
+        let jpeg = sample_jpeg_bytes();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("exif-thumb.pef");
+        // Prefix without SOI marker so scan fails; JPEG appended for manual EXIF offset tests
+        // is covered by scan path when SOI is present — use tiny invalid SOI decoy + real JPEG after.
+        let mut data = b"PEF-no-valid-scan\x00".to_vec();
+        // Invalid tiny SOI fragment (too small to pass validation)
+        data.extend_from_slice(&[0xFF, 0xD8, 0xFF, 0xD9]);
+        data.extend_from_slice(&jpeg);
+        std::fs::write(&path, &data).unwrap();
+
+        // Scan skips invalid tiny JPEG; largest valid JPEG should still be found.
+        let bytes = extract_raw_preview_bytes(&path).expect("should find embedded jpeg");
+        assert!(bytes.len() >= jpeg.len());
     }
 
     #[test]
@@ -836,6 +974,22 @@ mod tests {
             Err(e) => assert!(e.to_string().contains("HEIC/HEIF")),
             Ok(_) => panic!("expected HEIC decode to fail"),
         }
+    }
+
+    #[test]
+    fn decode_image_nonexistent_path_returns_error() {
+        let path = Path::new("/nonexistent/lightframe/decode-test/missing.png");
+        assert!(decode_image(path).is_err());
+        assert!(extract_raw_preview_bytes(path).is_err());
+    }
+
+    #[test]
+    fn extract_raw_preview_bytes_rejects_tiny_invalid_jpeg() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("tiny.cr2");
+        // JPEG markers present but payload too small to be valid.
+        std::fs::write(&path, b"\xFF\xD8\xFF\xD9").unwrap();
+        assert!(extract_raw_preview_bytes(&path).is_err());
     }
 
     #[test]

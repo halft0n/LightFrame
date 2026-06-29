@@ -40,13 +40,13 @@ pub struct FolderWatcher {
 
 impl FolderWatcher {
     pub fn new(folder: &Path) -> Result<Self> {
-        let (tx, rx) = mpsc::channel(4096);
+        let (tx, rx) = mpsc::channel(8192);
 
         let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
             if let Ok(event) = res
                 && let Err(e) = tx.try_send(event)
             {
-                tracing::warn!("file watcher: event dropped (channel full): {e}");
+                tracing::warn!("file watcher: event dropped (channel full, consider reducing filesystem activity or restarting scan): {e}");
             }
         })
         .map_err(|e| lightframe_core::Error::Other(e.to_string()))?;

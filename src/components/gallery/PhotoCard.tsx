@@ -2,6 +2,7 @@ import { memo, useCallback, useState } from "react";
 import type { MediaItem } from "@/lib/tauri";
 import { getThumbnailUrl } from "@/lib/tauri";
 import { dragMediaIdsForItem, setDragMediaIds } from "@/lib/dragMedia";
+import { useTranslation } from "@/i18n/useTranslation";
 
 interface PhotoCardProps {
   item: MediaItem;
@@ -27,6 +28,7 @@ export const PhotoCard = memo(function PhotoCard({
   onOpen,
   animationIndex = 0,
 }: PhotoCardProps) {
+  const { t } = useTranslation();
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
 
@@ -60,7 +62,11 @@ export const PhotoCard = memo(function PhotoCard({
       )}
 
       {error ? (
-        <div className="absolute inset-0 flex items-center justify-center bg-neutral-800 text-neutral-500">
+        <div
+          className="absolute inset-0 flex items-center justify-center bg-neutral-200 text-neutral-500 dark:bg-neutral-800"
+          role="img"
+          aria-label={t("a11y.thumbnailError")}
+        >
           <svg
             xmlns="http://www.w3.org/2000/svg"
             viewBox="0 0 24 24"
@@ -97,8 +103,8 @@ export const PhotoCard = memo(function PhotoCard({
       )}
 
       {isRaw && (
-        <span className="absolute left-1 top-1 rounded bg-amber-600 px-1 text-xs text-white">
-          RAW
+        <span className="absolute left-1 top-1 rounded bg-amber-600 px-1 text-xs font-medium text-white">
+          {t("gallery.rawBadge")}
         </span>
       )}
 

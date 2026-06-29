@@ -39,7 +39,7 @@
   --bg-tertiary: #262626;
   --text-primary: #f5f5f5;
   --text-secondary: #a3a3a3;
-  --text-muted: #737373;
+  --text-muted: #949494;
   --border-color: #2a2a2a;
   --accent-primary: #60a5fa;
   --accent-secondary: #818cf8;
@@ -206,6 +206,10 @@ input:focus:not(:focus-visible) {
 
 .sidebar-nav-item:not(.sidebar-nav-item-active):hover {
   background: rgb(0 0 0 / 0.04);
+}
+
+.sidebar-nav-item:active:not(.sidebar-nav-item-active) {
+  transform: scale(0.98);
 }
 
 .dark .sidebar-nav-item:not(.sidebar-nav-item-active):hover {

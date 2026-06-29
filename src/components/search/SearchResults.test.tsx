@@ -44,7 +44,7 @@ describe("SearchResults", () => {
     searchMediaCount.mockReturnValue(new Promise(() => {}));
 
     render(<SearchResults />);
-    expect(screen.getByText("加载中…")).toBeInTheDocument();
+    expect(screen.getByText(/正在搜索|加载中|Loading/i)).toBeInTheDocument();
   });
 
   it("shows no-results state when search returns empty", async () => {

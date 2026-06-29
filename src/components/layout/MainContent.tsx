@@ -40,6 +40,8 @@ export function MainContent() {
     return <SearchResultsView />;
   }
 
+  const viewKey = `${currentView}-${searchQuery}`;
+
   if (watchedFolders.length === 0 && currentView !== "settings") {
     return (
       <EmptyState
@@ -50,47 +52,55 @@ export function MainContent() {
     );
   }
 
-  if (currentView === "settings") return <FolderManager />;
+  const renderView = () => {
+    if (currentView === "settings") return <FolderManager />;
 
-  if (currentView === "duplicates") return <DedupView />;
+    if (currentView === "duplicates") return <DedupView />;
 
-  if (currentView === "screenshots") return <ScreenshotView />;
+    if (currentView === "screenshots") return <ScreenshotView />;
 
-  if (currentView === "all") return <PhotoGrid />;
+    if (currentView === "all") return <PhotoGrid />;
 
-  if (currentView === "videos") return <VideosView />;
+    if (currentView === "videos") return <VideosView />;
 
-  if (currentView === "timeline") return <TimelineView />;
+    if (currentView === "timeline") return <TimelineView />;
 
-  if (currentView === "locations") return <LocationView />;
+    if (currentView === "locations") return <LocationView />;
 
-  if (currentView === "map") return <MapView />;
+    if (currentView === "map") return <MapView />;
 
-  if (currentView === "albums") return <AlbumListView />;
+    if (currentView === "albums") return <AlbumListView />;
 
-  if (currentView === "album-detail") return <AlbumDetailView />;
+    if (currentView === "album-detail") return <AlbumDetailView />;
 
-  if (currentView === "smart-albums") return <SmartAlbumListView />;
+    if (currentView === "smart-albums") return <SmartAlbumListView />;
 
-  if (currentView === "smart-album-detail") return <SmartAlbumView />;
+    if (currentView === "smart-album-detail") return <SmartAlbumView />;
 
-  if (currentView === "memories") return <MemoriesView />;
+    if (currentView === "memories") return <MemoriesView />;
 
-  if (currentView === "memory-detail") return <MemoryDetailView />;
+    if (currentView === "memory-detail") return <MemoryDetailView />;
 
-  if (currentView === "people") return <PeopleView />;
+    if (currentView === "people") return <PeopleView />;
 
-  if (currentView === "person-detail") return <PersonDetailView />;
+    if (currentView === "person-detail") return <PersonDetailView />;
 
-  if (currentView === "favorites") return <FavoritesView />;
+    if (currentView === "favorites") return <FavoritesView />;
 
-  if (currentView === "deleted") return <DeletedView />;
+    if (currentView === "deleted") return <DeletedView />;
 
-  if (currentView === "folder") return <FolderView />;
+    if (currentView === "folder") return <FolderView />;
+
+    return (
+      <div className="flex flex-1 items-center justify-center text-neutral-500">
+        <p className="text-sm">{t("main.welcome")}</p>
+      </div>
+    );
+  };
 
   return (
-    <div className="flex flex-1 items-center justify-center text-neutral-500">
-      <p className="text-sm">{t("main.welcome")}</p>
+    <div key={viewKey} className="page-enter flex min-h-0 flex-1 flex-col overflow-hidden">
+      {renderView()}
     </div>
   );
 }

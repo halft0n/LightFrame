@@ -60,10 +60,19 @@ function EmptyIllustration({ variant }: { variant: EmptyStateVariant }) {
 }
 
 export function EmptyState({ variant = "photos", title, description, action }: EmptyStateProps) {
+  const titleId = "empty-state-title";
+
   return (
-    <div className="page-enter flex flex-1 flex-col items-center justify-center px-6 py-16 text-center">
+    <div
+      role="status"
+      aria-labelledby={titleId}
+      className="page-enter flex flex-1 flex-col items-center justify-center px-6 py-16 text-center"
+    >
       <EmptyIllustration variant={variant} />
-      <h2 className="mt-6 text-xl font-semibold tracking-tight text-neutral-800 dark:text-neutral-100">
+      <h2
+        id={titleId}
+        className="mt-6 text-xl font-semibold tracking-tight text-neutral-800 dark:text-neutral-100"
+      >
         {title}
       </h2>
       {description && (

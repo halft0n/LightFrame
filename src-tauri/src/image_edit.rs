@@ -1208,6 +1208,43 @@ mod tests {
         assert!(result.unwrap_err().contains("invalid edit params"));
     }
 
+    #[test]
+    fn test_parse_null_json_returns_error() {
+        assert!(parse_edit_params("null").is_err());
+    }
+
+    #[test]
+    fn test_parse_empty_string_returns_error() {
+        assert!(parse_edit_params("").is_err());
+    }
+
+    #[test]
+    fn test_parse_ignores_unknown_fields() {
+        let json = r#"{"brightness": 5.0, "unknownField": 99}"#;
+        let params = parse_edit_params(json).expect("unknown fields should be ignored");
+        assert!(approx_eq(params.brightness, 5.0));
+    }
+
+    #[test]
+    fn test_export_missing_source_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing.png");
+        let output = dir.path().join("out.jpg");
+        let err = export_edited_image(&missing, &output, "{}", 85).unwrap_err();
+        assert!(err.contains("failed to open image"));
+    }
+
+    #[test]
+    fn test_export_invalid_params_json_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("source.png");
+        let dst = dir.path().join("out.jpg");
+        save_test_png(&create_test_image(), &src);
+
+        let err = export_edited_image(&src, &dst, "{bad json", 85).unwrap_err();
+        assert!(err.contains("invalid edit params"));
+    }
+
     // ── Color conversion ──────────────────────────────────────────────────
 
     #[test]

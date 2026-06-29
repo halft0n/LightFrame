@@ -272,6 +272,7 @@ export async function loadMoreMedia() {
     appendMedia(items);
   } catch (error) {
     console.error("Failed to load more media:", error);
+    throw error;
   }
 }
 

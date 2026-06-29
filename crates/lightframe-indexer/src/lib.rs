@@ -12,9 +12,7 @@ use lightframe_core::Result;
 use std::path::{Path, PathBuf};
 
 const PHOTO_EXTENSIONS: &[&str] = &[
-    "jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "tif", "heic", "heif", "avif", "svg",
-    "ico", "raw", "cr2", "cr3", "nef", "nrw", "arw", "dng", "orf", "rw2", "pef", "raf", "rwl",
-    "3fr", "srw",
+    "jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "tif", "heic", "heif", "avif", "svg", "ico",
 ];
 
 const VIDEO_EXTENSIONS: &[&str] = &[
@@ -22,12 +20,14 @@ const VIDEO_EXTENSIONS: &[&str] = &[
 ];
 
 #[cfg(target_os = "windows")]
-const MEDIA_EXTENSIONS: &[&str] = &[
-    "jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "tif", "heic", "heif", "avif", "svg",
-    "ico", "raw", "cr2", "cr3", "nef", "nrw", "arw", "dng", "orf", "rw2", "pef", "raf", "rwl",
-    "3fr", "srw", "mp4", "mov", "avi", "mkv", "wmv", "flv", "webm", "m4v", "3gp", "mts", "m2ts",
-    "ts",
-];
+fn windows_media_extensions() -> Vec<&'static str> {
+    PHOTO_EXTENSIONS
+        .iter()
+        .chain(lightframe_core::decode::RAW_EXTENSIONS.iter())
+        .chain(VIDEO_EXTENSIONS.iter())
+        .copied()
+        .collect()
+}
 
 #[cfg(target_os = "windows")]
 fn get_volume_letter(path: &Path) -> char {
@@ -39,6 +39,9 @@ fn get_volume_letter(path: &Path) -> char {
 }
 
 pub fn is_media_file(path: &Path) -> bool {
+    if lightframe_core::decode::is_raw_path(path) {
+        return true;
+    }
     path.extension()
         .and_then(|ext| ext.to_str())
         .map(|ext| {
@@ -49,6 +52,10 @@ pub fn is_media_file(path: &Path) -> bool {
 }
 
 pub fn classify_extension(path: &Path) -> lightframe_core::media::MediaType {
+    if lightframe_core::decode::is_raw_path(path) {
+        return lightframe_core::media::MediaType::Raw;
+    }
+
     let ext = path
         .extension()
         .and_then(|e| e.to_str())
@@ -57,14 +64,6 @@ pub fn classify_extension(path: &Path) -> lightframe_core::media::MediaType {
 
     if VIDEO_EXTENSIONS.contains(&ext.as_str()) {
         return lightframe_core::media::MediaType::Video;
-    }
-
-    let raw_exts = [
-        "raw", "cr2", "cr3", "nef", "nrw", "arw", "dng", "orf", "rw2", "pef", "raf", "rwl", "3fr",
-        "srw",
-    ];
-    if raw_exts.contains(&ext.as_str()) {
-        return lightframe_core::media::MediaType::Raw;
     }
 
     if PHOTO_EXTENSIONS.contains(&ext.as_str()) {
@@ -77,8 +76,9 @@ pub fn classify_extension(path: &Path) -> lightframe_core::media::MediaType {
 pub async fn scan_folder(folder: &Path) -> Result<Vec<PathBuf>> {
     #[cfg(target_os = "windows")]
     {
+        let extensions = windows_media_extensions();
         if let Ok(scanner) = mft::MftScanner::new(get_volume_letter(folder))
-            && let Ok(entries) = scanner.scan_media_files(MEDIA_EXTENSIONS)
+            && let Ok(entries) = scanner.scan_media_files(&extensions)
             && !entries.is_empty()
         {
             return Ok(entries.into_iter().map(|e| e.path).collect());
@@ -149,14 +149,29 @@ mod tests {
 
     #[test]
     fn classify_raw() {
-        assert_eq!(classify_extension(Path::new("a.cr2")), MediaType::Raw);
-        assert_eq!(classify_extension(Path::new("b.nef")), MediaType::Raw);
-        assert_eq!(classify_extension(Path::new("c.dng")), MediaType::Raw);
-        assert_eq!(classify_extension(Path::new("d.arw")), MediaType::Raw);
-        assert_eq!(classify_extension(Path::new("e.nrw")), MediaType::Raw);
-        assert_eq!(classify_extension(Path::new("f.rwl")), MediaType::Raw);
-        assert_eq!(classify_extension(Path::new("g.3fr")), MediaType::Raw);
-        assert_eq!(classify_extension(Path::new("h.srw")), MediaType::Raw);
+        use lightframe_core::decode::RAW_EXTENSIONS;
+
+        for ext in RAW_EXTENSIONS {
+            let name = format!("sample.{ext}");
+            assert_eq!(
+                classify_extension(Path::new(&name)),
+                MediaType::Raw,
+                ".{ext} should classify as Raw"
+            );
+        }
+    }
+
+    #[test]
+    fn is_media_file_detects_all_raw_extensions() {
+        use lightframe_core::decode::RAW_EXTENSIONS;
+
+        for ext in RAW_EXTENSIONS {
+            let name = format!("photo.{ext}");
+            assert!(
+                is_media_file(Path::new(&name)),
+                ".{ext} should be detected as media"
+            );
+        }
     }
 
     #[test]

@@ -420,4 +420,69 @@ describe("PhotoViewer", () => {
       vi.stubGlobal("Image", OriginalImage);
     }
   });
+
+  it("closes viewer on Escape after exit animation", async () => {
+    const closeViewerSpy = vi.spyOn(appStore, "closeViewer");
+    render(<PhotoViewer mediaId={1} />);
+
+    await waitFor(() => {
+      expect(getMainImage()).toBeInTheDocument();
+    });
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(closeViewerSpy).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(250);
+      expect(closeViewerSpy).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+      closeViewerSpy.mockRestore();
+    }
+  });
+
+  it("does not navigate when neighbors are null", async () => {
+    const openViewerSpy = vi.spyOn(appStore, "openViewer");
+    setupInvoke({ neighbors: { prev_id: null, next_id: null } });
+    (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
+      if (cmd === "get_media_by_id") return Promise.resolve(mockPhoto);
+      if (cmd === "get_media_neighbors") {
+        return Promise.resolve({ prev_id: null, next_id: null });
+      }
+      if (cmd === "get_media_window") return Promise.resolve([mockPhoto]);
+      if (cmd === "has_edits") return Promise.resolve(false);
+      if (cmd === "is_favorite") return Promise.resolve(false);
+      return Promise.resolve(null);
+    });
+
+    render(<PhotoViewer mediaId={1} />);
+
+    await waitFor(() => {
+      expect(getMainImage()).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    expect(openViewerSpy).not.toHaveBeenCalled();
+    openViewerSpy.mockRestore();
+  });
+
+  it("back button triggers close animation", async () => {
+    const closeViewerSpy = vi.spyOn(appStore, "closeViewer");
+    render(<PhotoViewer mediaId={1} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("返回")).toBeInTheDocument();
+    });
+
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByLabelText("返回"));
+      vi.advanceTimersByTime(250);
+      expect(closeViewerSpy).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+      closeViewerSpy.mockRestore();
+    }
+  });
 });

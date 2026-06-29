@@ -108,4 +108,39 @@ mod tests {
         assert_eq!(cache.get(3, ThumbnailSize::Small), None);
         assert_eq!(cache.get(3, ThumbnailSize::Large), None);
     }
+
+    #[test]
+    fn get_returns_none_for_missing_entries() {
+        let cache = ThumbCache::new();
+        assert_eq!(cache.get(99, ThumbnailSize::Micro), None);
+        assert_eq!(cache.get(99, ThumbnailSize::Small), None);
+    }
+
+    #[test]
+    fn insert_overwrites_existing_thumbnail() {
+        let cache = ThumbCache::new();
+        cache.insert(5, ThumbnailSize::Small, vec![1, 2]);
+        cache.insert(5, ThumbnailSize::Small, vec![9, 8, 7]);
+        assert_eq!(cache.get(5, ThumbnailSize::Small), Some(vec![9, 8, 7]));
+    }
+
+    #[test]
+    fn invalidate_does_not_remove_other_media() {
+        let cache = ThumbCache::new();
+        cache.insert(1, ThumbnailSize::Micro, vec![1]);
+        cache.insert(2, ThumbnailSize::Micro, vec![2]);
+        cache.invalidate_media(1);
+        assert_eq!(cache.get(1, ThumbnailSize::Micro), None);
+        assert_eq!(cache.get(2, ThumbnailSize::Micro), Some(vec![2]));
+    }
+
+    #[test]
+    fn micro_and_standard_caches_are_independent() {
+        let cache = ThumbCache::new();
+        cache.insert(7, ThumbnailSize::Micro, vec![10]);
+        cache.insert(7, ThumbnailSize::Small, vec![20]);
+        cache.invalidate_media(7);
+        assert_eq!(cache.get(7, ThumbnailSize::Micro), None);
+        assert_eq!(cache.get(7, ThumbnailSize::Small), None);
+    }
 }

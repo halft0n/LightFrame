@@ -31,11 +31,12 @@ fn validate_media_path(db: &lightframe_db::Database, path: &str) -> Result<(), S
         return Err("invalid path".to_string());
     }
     let folders = db.list_watched_folders().map_err(|e| e.to_string())?;
-    if let Ok(raw_canonical) = file_path.canonicalize() {
-        let canonical = crate::original_protocol::strip_extended_prefix(raw_canonical);
-        if !crate::original_protocol::path_is_in_watched_folders(&canonical, &folders) {
-            return Err("path outside watched folders".to_string());
-        }
+    let check_path = match file_path.canonicalize() {
+        Ok(raw) => crate::original_protocol::strip_extended_prefix(raw),
+        Err(_) => file_path.to_path_buf(),
+    };
+    if !crate::original_protocol::path_is_in_watched_folders(&check_path, &folders) {
+        return Err("path outside watched folders".to_string());
     }
     Ok(())
 }
@@ -328,6 +329,31 @@ mod command_validation_tests {
     }
 
     #[test]
+    fn check_batch_size_accepts_single_item() {
+        assert!(check_batch_size(&[42]).is_ok());
+    }
+
+    #[test]
+    fn check_batch_size_rejects_one_over_max() {
+        let ids: Vec<i64> = (0..=MAX_BATCH_SIZE as i64).collect();
+        assert_eq!(ids.len(), MAX_BATCH_SIZE + 1);
+        let err = check_batch_size(&ids).unwrap_err();
+        assert!(err.contains(&format!("batch size {}", MAX_BATCH_SIZE + 1)));
+    }
+
+    #[test]
+    fn db_err_includes_command_context_and_error() {
+        let msg = db_err("batch_delete_media", "3 ids", "database locked");
+        assert_eq!(msg, "batch_delete_media(3 ids): database locked");
+    }
+
+    #[test]
+    fn truncate_utf8_zero_limit_returns_empty() {
+        assert_eq!(truncate_utf8("hello", 0), "");
+        assert_eq!(truncate_utf8("你好", 0), "");
+    }
+
+    #[test]
     fn save_edit_params_size_limit_constant() {
         const MAX_EDIT_PARAMS_SIZE: usize = 64 * 1024;
         let oversized = "x".repeat(MAX_EDIT_PARAMS_SIZE + 1);
@@ -437,6 +463,17 @@ mod path_validation_tests {
 
         assert!(validate_media_path(&db, &missing.to_string_lossy()).is_ok());
     }
+
+    #[test]
+    fn validate_media_path_rejects_empty_watched_folder_list() {
+        let db = lightframe_db::Database::open(std::path::Path::new(":memory:")).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("photo.jpg");
+        std::fs::write(&file, b"jpeg").unwrap();
+
+        let err = validate_media_path(&db, file.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("outside watched folders"));
+    }
 }
 
 #[cfg(test)]
@@ -470,6 +507,44 @@ mod export_tests {
         let dest = unique_export_path(dir.path(), "foo/bar.jpg");
         assert_eq!(dest, dir.path().join("bar.jpg"));
     }
+
+    #[test]
+    fn unique_export_path_adds_numbered_suffix_on_collision() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("photo.jpg"), b"original").unwrap();
+
+        let dest = unique_export_path(dir.path(), "photo.jpg");
+        assert_eq!(dest, dir.path().join("photo_1.jpg"));
+        assert!(!dest.exists());
+    }
+
+    #[test]
+    fn unique_export_path_increments_suffix_until_free() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("photo.jpg"), b"1").unwrap();
+        std::fs::write(dir.path().join("photo_1.jpg"), b"2").unwrap();
+        std::fs::write(dir.path().join("photo_2.jpg"), b"3").unwrap();
+
+        let dest = unique_export_path(dir.path(), "photo.jpg");
+        assert_eq!(dest, dir.path().join("photo_3.jpg"));
+    }
+
+    #[test]
+    fn unique_export_path_handles_extensionless_collision() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("README"), b"v1").unwrap();
+
+        let dest = unique_export_path(dir.path(), "README");
+        assert_eq!(dest, dir.path().join("README_1"));
+    }
+
+    #[test]
+    fn sanitize_filename_dot_segments_become_unnamed() {
+        assert_eq!(sanitize_filename("   "), "   ");
+        assert_eq!(sanitize_filename(""), "unnamed");
+        assert_eq!(sanitize_filename("///"), "unnamed");
+        assert_eq!(sanitize_filename("."), "unnamed");
+    }
 }
 
 #[tauri::command]
@@ -493,7 +568,9 @@ pub fn scan_folder(
         .map_err(|e| db_err("scan_folder", &folder_id.to_string(), e))?
         .ok_or_else(|| format!("scan_folder({folder_id}): folder not found"))?;
 
-    scan::spawn_scan(app, &state, folder_id);
+    if !scan::spawn_scan(app, &state, folder_id) {
+        return Err("scan already in progress".to_string());
+    }
     Ok(())
 }
 
@@ -1521,7 +1598,7 @@ pub async fn detect_faces_batch(
 
     let media_ids = state
         .db
-        .get_media_ids_without_faces()
+        .get_media_ids_without_faces(500)
         .map_err(|e| e.to_string())?;
 
     let total = media_ids.len() as i64;
@@ -1578,11 +1655,12 @@ async fn detect_and_store_faces_for_media(state: &AppState, media_id: i64) -> Re
         return Err(format!("media file not found: {}", media.path));
     }
 
-    let ai = state.ai.lock().await;
-    let faces = ai
-        .detect_faces_in_image(path)
-        .await
-        .map_err(|e| e.to_string())?;
+    let faces = {
+        let ai = state.ai.lock().await;
+        ai.detect_faces_in_image(path)
+            .await
+            .map_err(|e| e.to_string())?
+    };
 
     let count = faces.len() as i64;
     if !faces.is_empty() {

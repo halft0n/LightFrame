@@ -1388,7 +1388,7 @@ fn get_media_ids_without_faces_excludes_media_with_detections() {
     )
     .unwrap();
 
-    let ids = db.get_media_ids_without_faces().unwrap();
+    let ids = db.get_media_ids_without_faces(500).unwrap();
     assert!(ids.contains(&without_face));
     assert!(!ids.contains(&with_face));
 }

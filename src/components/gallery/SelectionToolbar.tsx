@@ -140,7 +140,11 @@ export function SelectionToolbar({
   return (
     <>
       <div className="pointer-events-none fixed inset-x-0 bottom-6 z-40 flex justify-center px-4">
-        <div className="pointer-events-auto flex items-center gap-3 rounded-xl border border-neutral-700 bg-neutral-900/95 px-4 py-2.5 shadow-xl backdrop-blur-sm dark:border-neutral-700 dark:bg-neutral-900/95">
+        <div
+          role="toolbar"
+          aria-label={t("a11y.selectionToolbar")}
+          className="pointer-events-auto flex items-center gap-3 rounded-xl border border-neutral-700 bg-neutral-900/95 px-4 py-2.5 shadow-xl backdrop-blur-sm dark:border-neutral-700 dark:bg-neutral-900/95"
+        >
           <span className="text-sm font-medium text-neutral-200">
             {t("batch.selected", { count })}
           </span>
@@ -151,7 +155,8 @@ export function SelectionToolbar({
             type="button"
             disabled={busy}
             onClick={() => setShowDeleteConfirm(true)}
-            className="rounded-md px-3 py-1.5 text-sm text-red-400 transition hover:bg-red-950/50 disabled:opacity-50"
+            className="rounded-md px-3 py-1.5 text-sm text-red-400 transition hover:bg-red-950/50 active:bg-red-950/70 disabled:opacity-50"
+            aria-label={t("batch.delete")}
           >
             {t("batch.delete")}
           </button>
@@ -241,17 +246,26 @@ export function SelectionToolbar({
       {showDeleteConfirm && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
-          tabIndex={-1}
-          autoFocus
+          role="presentation"
+          onClick={() => setShowDeleteConfirm(false)}
           onKeyDown={(e) => {
             if (e.key === "Escape") setShowDeleteConfirm(false);
           }}
         >
-          <div className="w-full max-w-sm rounded-xl border border-neutral-700 bg-neutral-900 p-5 shadow-xl">
-            <p className="text-sm font-medium text-neutral-100">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="delete-confirm-title"
+            aria-describedby="delete-confirm-hint"
+            className="w-full max-w-sm rounded-xl border border-neutral-700 bg-neutral-900 p-5 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p id="delete-confirm-title" className="text-sm font-medium text-neutral-100">
               {t("batch.confirmDelete", { count })}
             </p>
-            <p className="mt-2 text-xs text-neutral-400">{t("batch.confirmDeleteHint")}</p>
+            <p id="delete-confirm-hint" className="mt-2 text-xs text-neutral-400">
+              {t("batch.confirmDeleteHint")}
+            </p>
             <div className="mt-4 flex justify-end gap-2">
               <button
                 type="button"
@@ -274,7 +288,11 @@ export function SelectionToolbar({
       )}
 
       {exportMessage && (
-        <div className="pointer-events-none fixed inset-x-0 bottom-20 z-50 flex justify-center px-4">
+        <div
+          role="status"
+          aria-live="polite"
+          className="pointer-events-none fixed inset-x-0 bottom-20 z-50 flex justify-center px-4"
+        >
           <div className="pointer-events-auto rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm text-neutral-200 shadow-xl">
             {exportMessage}
           </div>

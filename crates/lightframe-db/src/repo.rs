@@ -3137,7 +3137,7 @@ impl Database {
             .map_err(|e| lightframe_core::Error::Database(e.to_string()))
     }
 
-    pub fn get_media_ids_without_faces(&self) -> lightframe_core::Result<Vec<i64>> {
+    pub fn get_media_ids_without_faces(&self, limit: i64) -> lightframe_core::Result<Vec<i64>> {
         let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
@@ -3147,12 +3147,13 @@ impl Database {
                    AND NOT EXISTS (
                        SELECT 1 FROM face_detections fd WHERE fd.media_id = mf.id
                    )
-                 ORDER BY mf.id",
+                 ORDER BY mf.id
+                 LIMIT ?1",
             )
             .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
 
         let rows = stmt
-            .query_map([], |row| row.get(0))
+            .query_map(params![limit], |row| row.get(0))
             .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
 
         rows.collect::<Result<Vec<_>, _>>()

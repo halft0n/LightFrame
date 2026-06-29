@@ -224,8 +224,11 @@ export default function App() {
               <path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />
             </svg>
           </button>
-          <div ref={searchContainerRef} className="relative flex flex-1 max-w-2xl items-center gap-2">
+          <div ref={searchContainerRef} className="relative flex flex-1 max-w-2xl items-center gap-2" role="search">
             <div className="relative flex-1">
+            <label htmlFor="app-search" className="sr-only">
+              {t("a11y.searchInput")}
+            </label>
             <svg
               className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-400"
               viewBox="0 0 24 24"
@@ -238,11 +241,15 @@ export default function App() {
               <path d="M20 20l-3-3" strokeLinecap="round" />
             </svg>
             <input
+              id="app-search"
               type="search"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onFocus={() => setSearchFocused(true)}
               placeholder={t("search.placeholder")}
+              aria-label={t("a11y.searchInput")}
+              aria-expanded={searchFocused && searchHistory.length > 0}
+              aria-controls={searchFocused && searchHistory.length > 0 ? "search-history-list" : undefined}
               className="search-input w-full rounded-lg py-2 pl-9 pr-24 text-sm text-neutral-900 placeholder:text-neutral-400 dark:text-neutral-200 dark:placeholder:text-neutral-500 sm:pr-3"
             />
             <span
@@ -263,19 +270,19 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => clearSearchHistory()}
-                    className="text-xs text-neutral-400 transition hover:text-neutral-600 dark:hover:text-neutral-300"
+                    className="text-xs text-neutral-400 transition hover:text-neutral-600 active:text-neutral-700 dark:hover:text-neutral-300 dark:active:text-neutral-200"
                     aria-label={t("search.clearHistory")}
                   >
                     {t("search.clearHistory")}
                   </button>
                 </div>
-                <ul>
+                <ul id="search-history-list" role="listbox" aria-label={t("search.recent")}>
                   {searchHistory.map((query) => (
-                    <li key={query}>
+                    <li key={query} role="option">
                       <button
                         type="button"
                         onClick={() => handleHistorySelect(query)}
-                        className="block w-full truncate px-3 py-2 text-left text-sm text-neutral-700 transition hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                        className="block w-full truncate px-3 py-2 text-left text-sm text-neutral-700 transition hover:bg-neutral-100 active:bg-neutral-200 dark:text-neutral-300 dark:hover:bg-neutral-800 dark:active:bg-neutral-700"
                       >
                         {query}
                       </button>
@@ -288,7 +295,7 @@ export default function App() {
             <button
               type="button"
               onClick={() => setSearchMode(searchMode === "text" ? "semantic" : "text")}
-              className={`shrink-0 rounded-lg border p-2 transition ${
+              className={`shrink-0 rounded-lg border p-2 transition active:scale-95 ${
                 searchMode === "semantic"
                   ? "border-violet-300 bg-violet-500/10 text-violet-700 dark:border-violet-700 dark:text-violet-300"
                   : "border-neutral-200/80 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-800"
@@ -339,7 +346,7 @@ export default function App() {
             </span>
           )}
         </header>
-        <div className="main-content-enter flex flex-1 flex-col overflow-hidden">
+        <div className="main-content-enter flex flex-1 flex-col overflow-hidden min-w-0">
           <MainContent />
         </div>
       </main>

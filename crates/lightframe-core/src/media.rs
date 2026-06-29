@@ -10,6 +10,13 @@ pub enum MediaType {
     Unknown,
 }
 
+impl MediaType {
+    /// Whether this media type represents a camera RAW file.
+    pub fn is_raw(self) -> bool {
+        matches!(self, Self::Raw)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MediaFile {
     pub id: i64,
@@ -77,6 +84,14 @@ mod tests {
         assert_eq!(ThumbnailSize::Micro.pixels(), 64);
         assert_eq!(ThumbnailSize::Small.pixels(), 256);
         assert_eq!(ThumbnailSize::Large.pixels(), 1024);
+    }
+
+    #[test]
+    fn media_type_is_raw() {
+        assert!(MediaType::Raw.is_raw());
+        assert!(!MediaType::Photo.is_raw());
+        assert!(!MediaType::Video.is_raw());
+        assert!(!MediaType::Screenshot.is_raw());
     }
 
     #[test]

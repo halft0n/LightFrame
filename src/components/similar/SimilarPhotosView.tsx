@@ -8,6 +8,7 @@ import {
 import { openViewer } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 import { localizeError } from "@/lib/errors";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 
 interface SimilarPhotosViewProps {
   mediaId: number;
@@ -68,7 +69,7 @@ export function SimilarPhotosView({ mediaId, onBack }: SimilarPhotosViewProps) {
 
       <div className="flex-1 overflow-y-auto p-4">
         {loading && (
-          <p className="py-12 text-center text-sm text-neutral-400">{t("similar.computing")}</p>
+          <LoadingIndicator className="py-12" label={t("similar.computing")} />
         )}
 
         {!loading && error && (

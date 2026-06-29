@@ -206,4 +206,107 @@ describe("ImageEditor", () => {
       expect(document.querySelector(".cursor-move.border-2")).toBeInTheDocument();
     });
   });
+
+  it("loads saved edit params from backend on mount", async () => {
+    (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
+      if (cmd === "get_edit") {
+        return Promise.resolve(JSON.stringify({ exposure: 0.5, brightness: 10 }));
+      }
+      if (cmd === "save_edit") return Promise.resolve(undefined);
+      if (cmd === "revert_edit") return Promise.resolve(undefined);
+      return Promise.resolve(null);
+    });
+
+    render(<ImageEditor {...defaultProps} />);
+
+    await waitFor(() => {
+      const brightnessSlider = screen.getByLabelText("亮度") as HTMLInputElement;
+      expect(brightnessSlider.value).toBe("10");
+    });
+  });
+
+  it("save without modifications calls revertEdit", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<ImageEditor {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("亮度")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("revert_edit", { mediaId: 1 });
+      expect(invoke).not.toHaveBeenCalledWith("save_edit", expect.anything());
+    });
+  });
+
+  it("shows save error when backend fails", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
+      if (cmd === "get_edit") return Promise.resolve(null);
+      if (cmd === "save_edit") return Promise.reject(new Error("disk full"));
+      return Promise.resolve(null);
+    });
+
+    render(<ImageEditor {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("亮度")).toBeInTheDocument();
+    });
+
+    const brightnessSlider = screen.getByLabelText("亮度") as HTMLInputElement;
+    fireEvent.change(brightnessSlider, { target: { value: "15" } });
+    await vi.advanceTimersByTimeAsync(350);
+
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(screen.getByText("保存编辑失败")).toBeInTheDocument();
+    });
+    consoleSpy.mockRestore();
+  });
+
+  it("Ctrl+Z triggers undo", async () => {
+    render(<ImageEditor {...defaultProps} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("亮度")).toBeInTheDocument();
+    });
+
+    const undoBtn = screen.getByRole("button", { name: /撤销/ });
+    const brightnessSlider = screen.getByLabelText("亮度") as HTMLInputElement;
+    fireEvent.change(brightnessSlider, { target: { value: "25" } });
+    await vi.advanceTimersByTimeAsync(350);
+
+    await waitFor(() => {
+      expect(undoBtn).not.toBeDisabled();
+    });
+
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    expect(undoBtn).toBeDisabled();
+  });
+
+  it("revert resets edits and calls revertEdit", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const onSaved = vi.fn();
+    render(<ImageEditor {...defaultProps} onSaved={onSaved} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("亮度")).toBeInTheDocument();
+    });
+
+    const brightnessSlider = screen.getByLabelText("亮度") as HTMLInputElement;
+    fireEvent.change(brightnessSlider, { target: { value: "20" } });
+    await vi.advanceTimersByTimeAsync(350);
+
+    await user.click(screen.getByRole("button", { name: "恢复原始" }));
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith("revert_edit", { mediaId: 1 });
+      expect(brightnessSlider.value).toBe("0");
+    });
+    expect(onSaved).toHaveBeenCalled();
+  });
 });

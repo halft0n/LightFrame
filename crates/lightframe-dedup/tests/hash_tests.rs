@@ -112,3 +112,35 @@ fn single_element_hamming_is_zero() {
     let only = 0xAAAA_BBBB_CCCC_DDDDu64;
     assert_eq!(hamming_distance(only, only), 0);
 }
+
+#[test]
+fn compute_dhash_missing_file_returns_error() {
+    let result = lightframe_dedup::dhash(std::path::Path::new("/nonexistent/photo.png"));
+    assert!(result.is_err());
+}
+
+#[test]
+fn file_hash_empty_file_is_deterministic() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("empty.bin");
+    std::fs::write(&path, []).unwrap();
+
+    let h1 = lightframe_dedup::file_hash(&path).unwrap();
+    let h2 = lightframe_dedup::file_hash(&path).unwrap();
+    assert_eq!(h1, h2);
+    assert_eq!(h1.len(), 64);
+}
+
+#[test]
+fn perceptual_similarity_threshold_zero_requires_exact_match() {
+    assert!(is_perceptually_similar(0xABCD, 0xABCD, 0));
+    assert!(!is_perceptually_similar(0xABCD, 0xABCE, 0));
+}
+
+#[test]
+fn hamming_distance_half_word_difference() {
+    assert_eq!(
+        hamming_distance(0xFFFF_FFFF_0000_0000, 0xFFFF_FFFF_FFFF_FFFF),
+        32
+    );
+}

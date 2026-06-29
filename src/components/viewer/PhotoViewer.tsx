@@ -21,6 +21,7 @@ import { ImageEditor } from "@/components/editor/ImageEditor";
 import { InfoPanel } from "./InfoPanel";
 import { SimilarPhotosPanel } from "./SimilarPhotosPanel";
 import { useImagePreloader } from "@/hooks/useImagePreloader";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 
 interface PhotoViewerProps {
   mediaId: number;
@@ -607,8 +608,30 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
             filmstripIds={filmstrip.map((item) => item.id)}
             onNavigate={openViewer}
           />
+        ) : !media ? (
+          <div className="flex flex-1 items-center justify-center">
+            <LoadingIndicator label={t("gallery.loading")} />
+          </div>
         ) : (
           <>
+            <button
+              type="button"
+              onClick={() => navigate(neighbors.prev_id)}
+              disabled={neighbors.prev_id == null}
+              className="absolute left-2 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white transition hover:bg-black/60 active:bg-black/70 disabled:pointer-events-none disabled:opacity-0"
+              aria-label={t("viewer.prev")}
+            >
+              ‹
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate(neighbors.next_id)}
+              disabled={neighbors.next_id == null}
+              className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-full bg-black/40 p-2 text-white transition hover:bg-black/60 active:bg-black/70 disabled:pointer-events-none disabled:opacity-0"
+              aria-label={t("viewer.next")}
+            >
+              ›
+            </button>
             <div
               className={`flex flex-1 items-center justify-center overflow-hidden ${
                 zoom > 1 ? (dragging ? "cursor-grabbing" : "cursor-grab") : ""
@@ -664,6 +687,12 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
           </>
         )}
       </div>
+
+      {copyFeedback && (
+        <div role="status" aria-live="polite" className="sr-only">
+          {copyFeedback}
+        </div>
+      )}
 
       {!isVideo && (
         <div

@@ -86,7 +86,7 @@ describe("TimelineView", () => {
       () => new Promise(() => {}),
     );
     render(<TimelineView />);
-    expect(screen.getByText(/加载中|Loading/i)).toBeInTheDocument();
+    expect(screen.getByText(/加载中|正在加载照片|Loading/i)).toBeInTheDocument();
   });
 
   it("renders timeline summary after groups load", async () => {

@@ -539,15 +539,16 @@ describe("appStore", () => {
       expect(getMediaPage).not.toHaveBeenCalled();
     });
 
-    it("loadMoreMedia handles errors without throwing", async () => {
+    it("loadMoreMedia propagates errors after logging", async () => {
       const itemWithCursor = { ...sampleMedia, created_at: "2024-01-01T00:00:00" };
       setMedia([itemWithCursor], 10);
       getMediaPage.mockRejectedValue(new Error("network"));
       const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
-      await loadMoreMedia();
+      await expect(loadMoreMedia()).rejects.toThrow("network");
 
       expect(getSnapshot().mediaItems).toHaveLength(1);
+      expect(consoleSpy).toHaveBeenCalledWith("Failed to load more media:", expect.any(Error));
       consoleSpy.mockRestore();
     });
 
@@ -695,6 +696,34 @@ describe("appStore", () => {
     it("setMediaScrollIndex clamps negative values to zero", () => {
       setMediaScrollIndex(-5);
       expect(getSnapshot().mediaScrollIndex).toBe(0);
+    });
+
+    it("updateFolder leaves other folders unchanged", () => {
+      addFolder(sampleFolder);
+      addFolder({ ...sampleFolder, id: 2, path: "/videos" });
+      updateFolder(1, { media_count: 50 });
+
+      const folders = getSnapshot().watchedFolders;
+      expect(folders[0].media_count).toBe(50);
+      expect(folders[1].media_count).toBe(0);
+    });
+
+    it("updateFolder is no-op for unknown folder id", () => {
+      addFolder(sampleFolder);
+      updateFolder(999, { media_count: 100 });
+      expect(getSnapshot().watchedFolders[0].media_count).toBe(0);
+    });
+
+    it("removeFolder is no-op for unknown id", () => {
+      addFolder(sampleFolder);
+      removeFolder(999);
+      expect(getSnapshot().watchedFolders).toHaveLength(1);
+    });
+
+    it("toggleMediaSelection on same id twice clears selection", () => {
+      toggleMediaSelection(7);
+      toggleMediaSelection(7);
+      expect(getSnapshot().selectedMediaIds).toEqual([]);
     });
   });
 });

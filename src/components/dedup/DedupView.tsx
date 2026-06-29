@@ -9,6 +9,8 @@ import {
   type DuplicateMember,
 } from "@/lib/tauri";
 import { useTranslation } from "@/i18n/useTranslation";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 
 const GROUP_PAGE_SIZE = 20;
 
@@ -40,7 +42,9 @@ const DedupMemberCard = memo(function DedupMemberCard({
     <button
       type="button"
       onClick={() => onSelect(group.id, member.media_id)}
-      className={`group relative overflow-hidden rounded-lg text-left transition ${
+      aria-label={member.filename}
+      aria-pressed={isKept}
+      className={`group relative overflow-hidden rounded-lg text-left transition active:scale-[0.98] ${
         isKept
           ? "ring-2 ring-green-500 ring-offset-2 ring-offset-neutral-950"
           : "opacity-70 hover:opacity-100"
@@ -156,6 +160,8 @@ export function DedupView() {
   const [groups, setGroups] = useState<DuplicateGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
   const [hasScanned, setHasScanned] = useState(false);
   const [scanResult, setScanResult] = useState<string | null>(null);
   const [selectedKeep, setSelectedKeep] = useState<Record<number, number>>({});
@@ -163,6 +169,7 @@ export function DedupView() {
 
   const loadGroups = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const data = await getDuplicateGroups();
       setGroups(data);
@@ -170,10 +177,11 @@ export function DedupView() {
       if (data.length > 0) setHasScanned(true);
     } catch (err) {
       console.error("Failed to load duplicate groups:", err);
+      setLoadError(t("errors.generic"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadGroups();
@@ -182,6 +190,7 @@ export function DedupView() {
   const handleScan = async () => {
     setScanning(true);
     setScanResult(null);
+    setScanError(null);
     try {
       const result = await runDedupScan();
       setScanResult(
@@ -194,6 +203,7 @@ export function DedupView() {
       await loadGroups();
     } catch (err) {
       console.error("Dedup scan failed:", err);
+      setScanError(t("errors.generic"));
     } finally {
       setScanning(false);
     }
@@ -270,17 +280,26 @@ export function DedupView() {
       </div>
 
       {scanResult && (
-        <div className="border-b border-neutral-200/80 dark:border-neutral-800 bg-green-900/20 px-6 py-2 text-sm text-green-400">
+        <div
+          role="status"
+          className="border-b border-neutral-200/80 dark:border-neutral-800 bg-green-900/20 px-6 py-2 text-sm text-green-400"
+        >
           {scanResult}
         </div>
       )}
 
+      {scanError && (
+        <ErrorBanner message={scanError} onRetry={() => void handleScan()} />
+      )}
+
+      {loadError && !loading && (
+        <ErrorBanner message={loadError} onRetry={() => void loadGroups()} />
+      )}
+
       <div className="flex-1 overflow-y-auto px-6 py-4">
         {loading ? (
-          <div className="flex flex-1 items-center justify-center py-20 text-neutral-500">
-            <p>{t("gallery.loading")}</p>
-          </div>
-        ) : groups.length === 0 ? (
+          <LoadingIndicator className="py-20" label={t("gallery.loading")} />
+        ) : groups.length === 0 && !loadError ? (
           <div className="flex flex-1 flex-col items-center justify-center py-20 text-neutral-500">
             <div className="text-5xl">✓</div>
             <p className="mt-4 text-lg">{t("dedup.noDuplicates")}</p>

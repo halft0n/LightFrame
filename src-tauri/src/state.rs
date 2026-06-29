@@ -90,6 +90,14 @@ pub struct AppState {
 const TRASH_RETENTION_DAYS: i64 = 30;
 
 fn purge_expired_trash(db: &Database) {
+    let watched_folders = match db.list_watched_folders() {
+        Ok(folders) => folders,
+        Err(e) => {
+            tracing::warn!("startup: failed to list watched folders for trash cleanup: {e}");
+            return;
+        }
+    };
+
     let expired_items = match db.list_expired_deleted_media(TRASH_RETENTION_DAYS) {
         Ok(items) => items,
         Err(e) => {
@@ -100,6 +108,14 @@ fn purge_expired_trash(db: &Database) {
 
     for (path, hash) in expired_items {
         let file_path = std::path::Path::new(&path);
+        let check_path = match file_path.canonicalize() {
+            Ok(raw) => crate::original_protocol::strip_extended_prefix(raw),
+            Err(_) => file_path.to_path_buf(),
+        };
+        if !crate::original_protocol::path_is_in_watched_folders(&check_path, &watched_folders) {
+            tracing::warn!("trash cleanup: skipping {path} (outside watched folders)");
+            continue;
+        }
         if file_path.is_file()
             && let Err(e) = std::fs::remove_file(file_path)
         {

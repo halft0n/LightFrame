@@ -21,6 +21,8 @@ import {
   type ThumbnailSize,
 } from "@/store/appStore";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
+import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { useTranslation } from "@/i18n/useTranslation";
 
 const GAP = 3;
@@ -99,6 +101,7 @@ export function PhotoGrid({
   const lastSelectedRef = useRef<number | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [internalLoadingMore, setInternalLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState(false);
 
   const loadingMore = loadingMoreProp ?? internalLoadingMore;
   const columnWidth = THUMBNAIL_WIDTHS[thumbnailSize];
@@ -134,10 +137,11 @@ export function PhotoGrid({
       return;
     }
     setInternalLoadingMore(true);
+    setLoadMoreError(false);
     try {
       await loadMoreMedia();
-    } catch (err) {
-      console.error("Failed to load more photos:", err);
+    } catch {
+      setLoadMoreError(true);
     } finally {
       setInternalLoadingMore(false);
     }
@@ -274,8 +278,9 @@ export function PhotoGrid({
                 .map((m) => m.id);
               if (ids.length > 0) startSlideshow(ids);
             }}
-            className="rounded-lg border border-neutral-200/80 px-3 py-1.5 text-xs font-medium text-neutral-600 transition hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            className="rounded-lg border border-neutral-200/80 px-3 py-1.5 text-xs font-medium text-neutral-600 transition hover:bg-neutral-100 active:bg-neutral-200 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800 dark:active:bg-neutral-700"
             title={t("slideshow.startAll")}
+            aria-label={t("slideshow.startAll")}
           >
             ▶ {t("slideshow.start")}
           </button>
@@ -327,6 +332,7 @@ export function PhotoGrid({
                         selectedMediaIds={selectedMediaIds}
                         onSelect={handleSelect}
                         onOpen={openViewer}
+                        animationIndex={colIndex}
                       />
                     );
                   })}
@@ -337,9 +343,16 @@ export function PhotoGrid({
         </div>
 
         {loadingMore && (
-          <div className="flex items-center justify-center gap-2 py-6">
-            <div className="loading-shimmer-bar shimmer" aria-hidden="true" />
-            <span className="text-sm text-neutral-500">{t("gallery.loading")}</span>
+          <LoadingIndicator className="py-6" label={t("a11y.loadingPhotos")} />
+        )}
+
+        {loadMoreError && !loadingMore && (
+          <div className="px-3 py-4">
+            <ErrorBanner
+              message={t("gallery.loadError")}
+              onRetry={() => void loadMore()}
+              className="rounded-lg border"
+            />
           </div>
         )}
       </div>

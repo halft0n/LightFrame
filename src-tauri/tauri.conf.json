@@ -1,6 +1,6 @@
 {
   "productName": "LightFrame",
-  "version": "0.0.12",
+  "version": "0.0.13",
   "identifier": "com.lightframe.app",
   "build": {
     "frontendDist": "../dist",
@@ -19,24 +19,18 @@
         "minHeight": 600,
         "decorations": true,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "additionalBrowserArgs": "--disable-background-networking --disable-component-update"
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' original: thumb: face: asset: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost; font-src 'self' data:"
+      "csp": "default-src 'self'; img-src 'self' original: thumb: face: asset: data: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com; font-src 'self' data:"
     }
   },
-  "plugins": {
-    "updater": {
-      "endpoints": [
-        "https://github.com/halft0n/LightFrame/releases/latest/download/latest.json"
-      ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDc5MkM0RUM4NDEwNkMzMEMKUldRTXd3WkJ5RTRzZVppWUhXaXBMU2NFQmtrMkxvaWlFOWtCYnBUWjBsOTcxY1NDYlRsRGl6WWgK"
-    }
-  },
+  "plugins": {},
   "bundle": {
     "active": true,
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "targets": ["deb", "rpm", "appimage", "nsis", "msi", "dmg", "app"],
     "icon": [
       "icons/32x32.png",

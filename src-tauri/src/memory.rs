@@ -88,6 +88,21 @@ mod tests {
     }
 
     #[test]
+    fn parse_kb_handles_large_values() {
+        assert_eq!(parse_kb("4294967295 kB"), Some(4_294_967_295));
+    }
+
+    #[test]
+    fn memory_snapshot_fields_are_accessible() {
+        let snap = MemorySnapshot {
+            rss_kb: 1024,
+            vm_size_kb: 2048,
+        };
+        assert_eq!(snap.rss_kb, 1024);
+        assert_eq!(snap.vm_size_kb, 2048);
+    }
+
+    #[test]
     fn current_memory_returns_some_on_linux() {
         #[cfg(target_os = "linux")]
         {

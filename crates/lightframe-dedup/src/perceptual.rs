@@ -412,4 +412,46 @@ mod tests {
         }
         hash
     }
+
+    #[test]
+    fn compute_dhash_missing_file_returns_error() {
+        let result = compute_dhash(Path::new("/nonexistent/perceptual.png"));
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn dhash_from_decoded_matches_file_hash() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("solid.png");
+        save_image(&solid_image(64, 64, 128), &path);
+
+        let decoded = lightframe_core::decode::decode_image(&path).expect("decode");
+        let from_file = compute_dhash(&path).unwrap();
+        let from_decoded = dhash_from_decoded(&decoded).unwrap();
+        assert_eq!(from_file, from_decoded);
+    }
+
+    #[test]
+    fn phash_identical_decoded_images_match() {
+        let rgba: RgbImage = solid_image(48, 48, 100);
+        let width = rgba.width();
+        let height = rgba.height();
+        let mut rgba_buf = vec![0u8; (width * height * 4) as usize];
+        for (i, pixel) in rgba.pixels().enumerate() {
+            let base = i * 4;
+            rgba_buf[base] = pixel[0];
+            rgba_buf[base + 1] = pixel[1];
+            rgba_buf[base + 2] = pixel[2];
+            rgba_buf[base + 3] = 255;
+        }
+        let decoded = DecodedImage {
+            rgba: rgba_buf,
+            width,
+            height,
+        };
+        let h1 = phash_from_decoded(&decoded).unwrap();
+        let h2 = phash_from_decoded(&decoded).unwrap();
+        assert_eq!(h1, h2);
+        assert_eq!(hamming_distance(h1, h2), 0);
+    }
 }

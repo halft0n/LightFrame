@@ -1,10 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { invoke } from "@tauri-apps/api/core";
 import { FolderManager } from "./FolderManager";
 import { setLocale } from "@/i18n/index";
 import { setWatchedFolders } from "@/store/appStore";
 import type { WatchedFolder } from "@/lib/tauri";
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(),
+}));
 
 const removeWatchedFolder = vi.fn();
 const scanFolder = vi.fn();
@@ -39,6 +44,15 @@ beforeEach(() => {
   setWatchedFolders([]);
   removeWatchedFolder.mockReset();
   scanFolder.mockReset();
+  vi.clearAllMocks();
+  (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
+    if (cmd === "get_log_config") {
+      return Promise.resolve({ level: "debug", retention_days: 14, max_size_mb: 200 });
+    }
+    if (cmd === "get_log_directory") return Promise.resolve("/logs");
+    if (cmd === "get_log_files") return Promise.resolve([]);
+    return Promise.resolve(null);
+  });
   delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
 });
 
@@ -89,5 +103,29 @@ describe("FolderManager", () => {
     await user.click(screen.getByRole("button", { name: "深色" }));
 
     expect(changeThemeSpy).toHaveBeenCalledWith("dark");
+  });
+
+  it("rescan folder button calls scanFolder", async () => {
+    const user = userEvent.setup();
+    setWatchedFolders([sampleFolder]);
+    scanFolder.mockResolvedValue(undefined);
+
+    render(<FolderManager />);
+    await user.click(screen.getByRole("button", { name: "重新扫描" }));
+
+    expect(scanFolder).toHaveBeenCalledWith(1);
+  });
+
+  it("shows scanning status while rescan is in progress", async () => {
+    const user = userEvent.setup();
+    setWatchedFolders([sampleFolder]);
+    scanFolder.mockImplementation(
+      () => new Promise((resolve) => setTimeout(resolve, 100)),
+    );
+
+    render(<FolderManager />);
+    await user.click(screen.getByRole("button", { name: "重新扫描" }));
+
+    expect(screen.getAllByText("扫描中…").length).toBeGreaterThan(0);
   });
 });

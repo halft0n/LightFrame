@@ -8,8 +8,14 @@ import {
   getSnapshot,
   toggleMediaSelection,
   clearMediaSelection,
+  setThumbnailSize,
 } from "@/store/appStore";
 import type { MediaItem } from "@/lib/tauri";
+
+const batchDeleteMedia = vi.fn();
+const batchToggleFavorite = vi.fn();
+const loadMediaMock = vi.fn();
+const loadMoreMediaMock = vi.fn();
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -17,12 +23,44 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }));
+vi.mock("@tanstack/react-virtual", () => ({
+  useVirtualizer: ({ count }: { count: number }) => ({
+    getTotalSize: () => Math.max(count, 1) * 120,
+    getVirtualItems: () =>
+      Array.from({ length: count }, (_, index) => ({
+        key: index,
+        index,
+        start: index * 120,
+        size: 120,
+      })),
+    measure: vi.fn(),
+    range: { startIndex: 0, endIndex: Math.max(count - 1, 0) },
+  }),
+}));
+vi.mock("@/lib/tauri", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/tauri")>();
+  return {
+    ...actual,
+    batchDeleteMedia: (...args: unknown[]) => batchDeleteMedia(...args),
+    batchToggleFavorite: (...args: unknown[]) => batchToggleFavorite(...args),
+  };
+});
+vi.mock("@/store/appStore", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/store/appStore")>();
+  return {
+    ...actual,
+    loadMedia: (...args: unknown[]) => loadMediaMock(...args),
+    loadMoreMedia: (...args: unknown[]) => loadMoreMediaMock(...args),
+  };
+});
 
 class ResizeObserverMock {
   observe = vi.fn();
   unobserve = vi.fn();
   disconnect = vi.fn();
-  constructor(private callback?: ResizeObserverCallback) {}
+  constructor(private callback?: ResizeObserverCallback) {
+    lastResizeObserver = this;
+  }
   trigger(width = 800) {
     this.callback?.(
       [{ contentRect: { width, height: 600 } } as ResizeObserverEntry],
@@ -30,7 +68,25 @@ class ResizeObserverMock {
     );
   }
 }
+let lastResizeObserver: ResizeObserverMock | null = null;
 globalThis.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
+
+function renderGridWithLayout(items: MediaItem[], totalCount?: number) {
+  if (totalCount !== undefined) {
+    setMedia(items, totalCount);
+  } else {
+    setMedia(items, items.length);
+  }
+  const view = render(<PhotoGrid />);
+  const scrollContainer = view.container.querySelector(".overflow-y-auto");
+  if (scrollContainer) {
+    Object.defineProperty(scrollContainer, "clientWidth", { value: 800, configurable: true });
+    Object.defineProperty(scrollContainer, "clientHeight", { value: 600, configurable: true });
+    Object.defineProperty(scrollContainer, "scrollHeight", { value: 2000, configurable: true });
+  }
+  lastResizeObserver?.trigger(800);
+  return view;
+}
 
 const sampleMedia: MediaItem = {
   id: 1,
@@ -52,7 +108,13 @@ beforeEach(() => {
   setLocale("zh-CN");
   clearMediaSelection();
   setMedia([], 0);
+  setThumbnailSize("medium");
+  lastResizeObserver = null;
   vi.clearAllMocks();
+  batchDeleteMedia.mockResolvedValue(1);
+  batchToggleFavorite.mockResolvedValue(1);
+  loadMediaMock.mockResolvedValue(undefined);
+  loadMoreMediaMock.mockResolvedValue(undefined);
   (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
     if (cmd === "get_media_page") return Promise.resolve([]);
     if (cmd === "get_media_count") return Promise.resolve(0);
@@ -88,14 +150,8 @@ describe("PhotoGrid", () => {
   });
 
   it("handles loadMore failure without crashing", async () => {
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     setMedia(moreMedia, 120);
-
-    (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
-      if (cmd === "get_media_page") return Promise.reject(new Error("network error"));
-      if (cmd === "list_albums") return Promise.resolve([]);
-      return Promise.resolve(null);
-    });
+    loadMoreMediaMock.mockRejectedValue(new Error("network error"));
 
     const { container } = render(<PhotoGrid />);
     const scrollContainer = container.querySelector(".overflow-y-auto");
@@ -108,15 +164,9 @@ describe("PhotoGrid", () => {
     fireEvent.scroll(scrollContainer!);
 
     await waitFor(() => {
-      expect(consoleSpy).toHaveBeenCalledWith(
-        "Failed to load more media:",
-        expect.any(Error),
-      );
+      expect(screen.getByText("加载更多失败")).toBeInTheDocument();
     });
-    expect(screen.queryByText("加载更多失败")).not.toBeInTheDocument();
     expect(getSnapshot().mediaItems).toHaveLength(60);
-
-    consoleSpy.mockRestore();
   });
 
   it("clears selection on Escape key", async () => {
@@ -171,5 +221,99 @@ describe("PhotoGrid", () => {
     const input = screen.getByTestId("search-input");
     fireEvent.keyDown(input, { key: "Escape" });
     expect(getSnapshot().selectedMediaIds).toEqual([1]);
+  });
+
+  it("batch deletes selected items on Delete key when confirmed", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    setMedia([sampleMedia, { ...sampleMedia, id: 2, filename: "beach.jpg" }], 2);
+    toggleMediaSelection(1);
+    toggleMediaSelection(2);
+
+    render(<PhotoGrid />);
+
+    fireEvent.keyDown(window, { key: "Delete" });
+
+    await waitFor(() => {
+      expect(batchDeleteMedia).toHaveBeenCalledWith([1, 2]);
+      expect(getSnapshot().selectedMediaIds).toEqual([]);
+      expect(loadMediaMock).toHaveBeenCalled();
+    });
+  });
+
+  it("skips batch delete when confirmation is cancelled", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => false));
+    setMedia([sampleMedia], 1);
+    toggleMediaSelection(1);
+
+    render(<PhotoGrid />);
+
+    fireEvent.keyDown(window, { key: "Delete" });
+
+    await waitFor(() => {
+      expect(batchDeleteMedia).not.toHaveBeenCalled();
+      expect(getSnapshot().selectedMediaIds).toEqual([1]);
+    });
+  });
+
+  it("batch favorites selected items on F key", async () => {
+    setMedia([sampleMedia, { ...sampleMedia, id: 2, filename: "beach.jpg" }], 2);
+    toggleMediaSelection(1);
+
+    render(<PhotoGrid />);
+
+    fireEvent.keyDown(window, { key: "f" });
+
+    await waitFor(() => {
+      expect(batchToggleFavorite).toHaveBeenCalledWith([1], true);
+    });
+  });
+
+  it("changes thumbnail size via size control", async () => {
+    setMedia([sampleMedia], 1);
+    render(<PhotoGrid />);
+
+    fireEvent.click(screen.getByRole("button", { name: "小" }));
+
+    expect(getSnapshot().thumbnailSize).toBe("small");
+  });
+
+  it("shift-click selects inclusive range", async () => {
+    const items = [
+      sampleMedia,
+      { ...sampleMedia, id: 2, filename: "beach.jpg" },
+      { ...sampleMedia, id: 3, filename: "mountain.jpg" },
+    ];
+    renderGridWithLayout(items);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("gridcell").length).toBeGreaterThanOrEqual(3);
+    });
+
+    const cells = screen.getAllByRole("gridcell");
+    fireEvent.click(cells[0]!);
+    expect(getSnapshot().selectedMediaIds).toEqual([1]);
+
+    fireEvent.click(cells[2]!, { shiftKey: true });
+    expect(getSnapshot().selectedMediaIds).toEqual([1, 2, 3]);
+  });
+
+  it("ctrl-click toggles selection without clearing others", async () => {
+    const items = [
+      sampleMedia,
+      { ...sampleMedia, id: 2, filename: "beach.jpg" },
+    ];
+    renderGridWithLayout(items);
+
+    await waitFor(() => {
+      expect(screen.getAllByRole("gridcell").length).toBeGreaterThanOrEqual(2);
+    });
+
+    const cells = screen.getAllByRole("gridcell");
+    fireEvent.click(cells[0]!);
+    fireEvent.click(cells[1]!, { ctrlKey: true });
+    expect(getSnapshot().selectedMediaIds).toEqual([1, 2]);
+
+    fireEvent.click(cells[0]!, { ctrlKey: true });
+    expect(getSnapshot().selectedMediaIds).toEqual([2]);
   });
 });

@@ -37,4 +37,18 @@ describe("isTypingTarget", () => {
     expect(isTypingTarget(document)).toBe(false);
     expect(isTypingTarget(window)).toBe(false);
   });
+
+  it("returns false when contenteditable is false", () => {
+    const div = document.createElement("div");
+    div.contentEditable = "false";
+    expect(isTypingTarget(div)).toBe(false);
+  });
+
+  it("returns true for plaintext-only contenteditable", () => {
+    const div = document.createElement("div");
+    div.contentEditable = "plaintext-only";
+    document.body.appendChild(div);
+    expect(isTypingTarget(div)).toBe(true);
+    document.body.removeChild(div);
+  });
 });
