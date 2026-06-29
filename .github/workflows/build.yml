@@ -193,7 +193,7 @@ jobs:
             done
 
             # Collect updater bundles and signatures when signing keys are configured
-            if [ -n "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
+            if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
               mkdir -p "release-artifacts/updater/${LABEL}"
               for f in $(find "$SEARCH_DIR" -type f \( -name "*.sig" -o -name "*.nsis.zip" -o -name "*.app.tar.gz" -o -name "*.AppImage.tar.gz" \) 2>/dev/null); do
                 BASENAME="$(basename "$f")"
@@ -235,7 +235,7 @@ jobs:
           find artifacts -type f | sort || echo "No artifacts found"
 
       - name: Generate latest.json for auto-updater
-        if: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+        if: always()
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           REPO="${{ github.repository }}"
