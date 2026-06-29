@@ -33,7 +33,17 @@ fn validate_media_path(db: &lightframe_db::Database, path: &str) -> Result<(), S
     let folders = db.list_watched_folders().map_err(|e| e.to_string())?;
     let check_path = match file_path.canonicalize() {
         Ok(raw) => crate::original_protocol::strip_extended_prefix(raw),
-        Err(_) => file_path.to_path_buf(),
+        Err(_) => {
+            // File doesn't exist yet — try canonicalizing parent to resolve short names (Windows)
+            if let Some(parent) = file_path.parent()
+                && let Ok(canonical_parent) = parent.canonicalize()
+                && let Some(name) = file_path.file_name()
+            {
+                crate::original_protocol::strip_extended_prefix(canonical_parent).join(name)
+            } else {
+                file_path.to_path_buf()
+            }
+        }
     };
     if !crate::original_protocol::path_is_in_watched_folders(&check_path, &folders) {
         return Err("path outside watched folders".to_string());
