@@ -12,11 +12,14 @@ dirs = "6"
 image.workspace = true
 kamadak-exif.workspace = true
 tracing.workspace = true
+rawloader = { workspace = true, optional = true }
 
 [features]
 default = []
 # Enable AVIF decoding via image crate's optional libdav1d backend.
 avif-native = ["image/avif-native"]
+# Full RAW sensor decode via rawloader (LGPL-2.1); not enabled by default.
+raw-decode = ["dep:rawloader"]
 
 [dev-dependencies]
 serde_json.workspace = true

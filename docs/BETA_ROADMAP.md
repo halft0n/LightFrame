@@ -43,9 +43,29 @@
 
 - ⬜ Windows Authenticode code signing (SmartScreen warning remains — see `docs/SIGNING.md`)
 - ⬜ macOS Developer ID signing + notarization (Gatekeeper warning on first open)
-- ⬜ RAW file improved decode (indexed + RAW badge; no libraw/dcraw demosaic yet)
+- ⬜ RAW file improved decode (indexed + RAW badge; optional `raw-decode` feature with rawloader + bilinear demosaic; default build uses embedded JPEG preview only)
 - ⬜ 10万+ real-world performance validation (benchmarks exist; large-library soak testing pending)
 - ⬜ Cloud sync (P2, future)
+
+---
+
+## Optional features & licensing
+
+### RAW full decode (`raw-decode`)
+
+LightFrame's default MIT build extracts embedded JPEG previews from RAW files (CR2, NEF, ARW, DNG, ORF, PEF, RW2, RAF, 3FR, NRW, SRW, etc.) without linking any LGPL code.
+
+To enable full sensor decode (Bayer extraction + bilinear demosaic + white balance + orientation):
+
+```bash
+cargo build -p lightframe-core --features raw-decode
+# or propagate through the app crate:
+cargo build -p lightframe-app --features lightframe-core/raw-decode
+```
+
+This pulls in [`rawloader`](https://crates.io/crates/rawloader) **0.37**, licensed under **LGPL-2.1**. Distribution of binaries built with `raw-decode` must comply with LGPL obligations (provide source/object relink info, allow user replacement of the library, etc.). The default release pipeline does **not** enable this feature to keep the primary artifact MIT-licensed.
+
+When `raw-decode` is enabled, `decode_image()` tries full RAW decode first and falls back to the embedded JPEG preview on failure.
 
 ---
 
@@ -63,7 +83,7 @@
 ### Should-Have (P1)
 
 - [x] Thumbnail regeneration for corrupt/missing thumbnails
-- [ ] RAW file support (via dcraw/libraw) — **partial:** extension recognized, embedded preview only
+- [ ] RAW file support — **partial:** extension recognized, embedded preview by default; optional full sensor decode via `raw-decode` feature (`rawloader`, LGPL-2.1)
 - [x] HEIC/AVIF support — **AVIF full decode; HEIC graceful fallback** (libheif optional)
 - [x] Map view for geo-tagged photos
 - [x] Slideshow mode
@@ -104,7 +124,7 @@ Below is the execution plan for what remains after v0.0.11. Effort estimates ass
 | 1 | **Windows Authenticode signing** | P0 | 2–3 days | Purchase OV/EV code-signing certificate (~$200–500/yr); configure `WINDOWS_CERTIFICATE` CI secret; `signtool` on release pipeline | **Soft block** — app runs unsigned; SmartScreen hurts first-run UX on Windows |
 | 2 | **macOS notarization** | P0 | 2–4 days | Apple Developer Program ($99/yr); Developer ID cert; `APPLE_*` CI secrets; notarytool + stapler in workflow | **Soft block** — `.dmg` ships but Gatekeeper warns on first open |
 | 3 | **10万+ real-world performance testing** | P0 | 3–5 days | Hardware with SSD + 100K+ photo library (or synthetic fixture); profiling (`tracing`, memory sampling); grid scroll / search / dedup soak | **Yes** — NFR-001–NFR-008 acceptance requires evidence |
-| 4 | **RAW improved decode** | P1 | 5–8 days | Evaluate `rawloader` / libraw bindings; embedded JPEG preview path already works; full demosaic is scope-limited per FMT-030 | **No** — partial RAW support acceptable for beta |
+| 4 | **RAW improved decode** | P1 | 5–8 days | Optional `raw-decode` feature (`rawloader` LGPL-2.1 + bilinear demosaic); default MIT build uses embedded JPEG preview only | **No** — partial RAW support acceptable for beta |
 | 5 | **Beta bug triage & P0 fixes** | P0 | Ongoing (1–2 weeks) | Beta testers; GitHub Issues template; reproduction on Win/Linux/macOS | **Yes** — release criteria require P0 = 0 |
 | 6 | **Cloud sync (WebDAV/S3)** | P2 | 15–20 days | Storage backend design; conflict resolution; optional network | **No** — explicitly deferred post-beta |
 
