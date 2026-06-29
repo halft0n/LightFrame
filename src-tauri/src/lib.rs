@@ -4,6 +4,7 @@ mod image_edit;
 mod logging;
 mod memory;
 mod original_protocol;
+mod protocol_utils;
 mod scan;
 mod state;
 mod thumb_cache;

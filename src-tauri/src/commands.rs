@@ -12,7 +12,7 @@ use lightframe_thumbnail::thumb_path;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
-const MAX_BATCH_SIZE: usize = 1000;
+const MAX_BATCH_SIZE: usize = 900;
 
 fn check_batch_size(media_ids: &[i64]) -> Result<(), String> {
     if media_ids.len() > MAX_BATCH_SIZE {

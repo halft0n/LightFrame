@@ -1,4 +1,5 @@
 use crate::original_protocol::{path_is_in_watched_folders, strip_extended_prefix};
+use crate::protocol_utils::{cors_headers, error_response, ok_response, strip_scheme_path};
 use crate::state::AppState;
 use http::{StatusCode, header};
 use image::GenericImageView;
@@ -102,51 +103,21 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
         return error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to encode crop");
     }
 
-    ok_response(buf.into_inner())
-}
-
-fn strip_scheme_path(request_path: &str) -> &str {
-    let mut path = request_path.trim_start_matches('/');
-    if let Some(rest) = path.strip_prefix("localhost/") {
-        path = rest;
-    } else if path == "localhost" {
-        path = "";
-    }
-    path.trim_start_matches('/')
-}
-
-fn ok_response(bytes: Vec<u8>) -> Response<Vec<u8>> {
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "image/jpeg")
-        .header(header::CACHE_CONTROL, "max-age=86400")
-        .header("Access-Control-Allow-Origin", "*")
-        .body(bytes)
-        .unwrap_or_else(|_| {
+    ok_response(
+        cors_headers(
             Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(b"internal error".to_vec())
-                .expect("hardcoded response must build")
-        })
-}
-
-fn error_response(status: StatusCode, message: &str) -> Response<Vec<u8>> {
-    Response::builder()
-        .status(status)
-        .header(header::CONTENT_TYPE, "text/plain")
-        .header("Access-Control-Allow-Origin", "*")
-        .body(message.as_bytes().to_vec())
-        .unwrap_or_else(|_| {
-            Response::builder()
-                .status(StatusCode::INTERNAL_SERVER_ERROR)
-                .body(b"internal error".to_vec())
-                .expect("hardcoded response must build")
-        })
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "image/jpeg")
+                .header(header::CACHE_CONTROL, "max-age=86400"),
+        ),
+        buf.into_inner(),
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protocol_utils::{error_response, strip_scheme_path};
     use http::StatusCode;
     use lightframe_core::config::AppConfig;
     use lightframe_core::media::{MediaFile, MediaType};
@@ -382,7 +353,15 @@ mod tests {
             Some("*")
         );
 
-        let ok = ok_response(b"jpeg".to_vec());
+        let ok = ok_response(
+            cors_headers(
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header(http::header::CONTENT_TYPE, "image/jpeg")
+                    .header(http::header::CACHE_CONTROL, "max-age=86400"),
+            ),
+            b"jpeg".to_vec(),
+        );
         assert_eq!(
             ok.headers()
                 .get("Access-Control-Allow-Origin")

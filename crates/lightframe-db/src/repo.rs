@@ -1940,13 +1940,28 @@ impl Database {
     }
 
     pub fn add_to_album(&self, album_id: i64, media_ids: &[i64]) -> lightframe_core::Result<()> {
+        if media_ids.is_empty() {
+            return Ok(());
+        }
+        const CHUNK_SIZE: usize = 450;
         let conn = self.conn()?;
-        for media_id in media_ids {
-            conn.execute(
-                "INSERT OR IGNORE INTO album_items (album_id, media_id) VALUES (?1, ?2)",
-                params![album_id, media_id],
-            )
-            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        for chunk in media_ids.chunks(CHUNK_SIZE) {
+            let placeholders: Vec<String> = chunk
+                .iter()
+                .enumerate()
+                .map(|(i, _)| format!("(?1, ?{})", i + 2))
+                .collect();
+            let sql = format!(
+                "INSERT OR IGNORE INTO album_items (album_id, media_id) VALUES {}",
+                placeholders.join(", ")
+            );
+            let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(album_id)];
+            for media_id in chunk {
+                params.push(Box::new(*media_id));
+            }
+            let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+            conn.execute(&sql, param_refs.as_slice())
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
         }
         conn.execute(
             "UPDATE albums SET updated_at = datetime('now') WHERE id = ?1",

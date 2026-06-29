@@ -1,3 +1,4 @@
+use crate::protocol_utils::{cors_headers, error_response, ok_response, strip_scheme_path};
 use crate::state::AppState;
 use http::{StatusCode, header};
 use lightframe_db::WatchedFolder;
@@ -89,12 +90,13 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
     if lightframe_core::decode::is_raw_path(&canonical) {
         match lightframe_core::decode::extract_raw_preview_bytes(&canonical) {
             Ok(jpeg) => {
-                return finish_response(
-                    Response::builder()
-                        .status(StatusCode::OK)
-                        .header(header::CONTENT_TYPE, "image/jpeg")
-                        .header(header::CACHE_CONTROL, "max-age=3600")
-                        .header("Access-Control-Allow-Origin", "*"),
+                return ok_response(
+                    cors_headers(
+                        Response::builder()
+                            .status(StatusCode::OK)
+                            .header(header::CONTENT_TYPE, "image/jpeg")
+                            .header(header::CACHE_CONTROL, "max-age=3600"),
+                    ),
                     jpeg,
                 );
             }
@@ -108,12 +110,13 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
     }
 
     match std::fs::read(&canonical) {
-        Ok(bytes) => finish_response(
-            Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, mime)
-                .header(header::CACHE_CONTROL, "max-age=3600")
-                .header("Access-Control-Allow-Origin", "*"),
+        Ok(bytes) => ok_response(
+            cors_headers(
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, mime)
+                    .header(header::CACHE_CONTROL, "max-age=3600"),
+            ),
             bytes,
         ),
         Err(e) => {
@@ -209,16 +212,6 @@ pub fn strip_extended_prefix(p: PathBuf) -> PathBuf {
     p
 }
 
-fn strip_scheme_path(request_path: &str) -> &str {
-    let mut path = request_path.trim_start_matches('/');
-    if let Some(rest) = path.strip_prefix("localhost/") {
-        path = rest;
-    } else if path == "localhost" {
-        path = "";
-    }
-    path.trim_start_matches('/')
-}
-
 fn looks_like_windows_path(s: &str) -> bool {
     let s = s.trim_start_matches('/');
     if s.len() >= 2 && s.as_bytes()[0].is_ascii_alphabetic() && s.as_bytes()[1] == b':' {
@@ -305,25 +298,6 @@ fn percent_decode(s: &str) -> String {
         i += 1;
     }
     String::from_utf8(result).unwrap_or_else(|_| s.to_string())
-}
-
-fn finish_response(builder: http::response::Builder, body: Vec<u8>) -> Response<Vec<u8>> {
-    builder.body(body).unwrap_or_else(|_| {
-        Response::builder()
-            .status(StatusCode::INTERNAL_SERVER_ERROR)
-            .body(b"internal error".to_vec())
-            .expect("hardcoded response must build")
-    })
-}
-
-fn error_response(status: StatusCode, message: &str) -> Response<Vec<u8>> {
-    finish_response(
-        Response::builder()
-            .status(status)
-            .header(header::CONTENT_TYPE, "text/plain")
-            .header("Access-Control-Allow-Origin", "*"),
-        message.as_bytes().to_vec(),
-    )
 }
 
 #[cfg(test)]

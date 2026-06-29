@@ -1,3 +1,4 @@
+use crate::protocol_utils::{cors_headers, error_response, ok_response, strip_scheme_path};
 use crate::state::AppState;
 use http::{StatusCode, header};
 use lightframe_core::media::ThumbnailSize;
@@ -35,7 +36,7 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
     };
 
     if let Some(cached) = state.thumb_cache.get(media_id, size) {
-        return ok_response(cached, content_type_for(size));
+        return thumb_ok_response(cached, content_type_for(size));
     }
 
     let media = match state.db.get_media_by_id(media_id) {
@@ -54,7 +55,7 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
         && let Ok(Some(blob)) = state.db.get_micro_thumb(media_id)
     {
         state.thumb_cache.insert(media_id, size, blob.clone());
-        return ok_response(blob, "image/jpeg");
+        return thumb_ok_response(blob, "image/jpeg");
     }
 
     let Some(hash) = media.blake3_hash else {
@@ -67,7 +68,7 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
         return match std::fs::read(&cache_path) {
             Ok(bytes) => {
                 state.thumb_cache.insert(media_id, size, bytes.clone());
-                ok_response(bytes, "image/webp")
+                thumb_ok_response(bytes, "image/webp")
             }
             Err(e) => {
                 tracing::warn!(
@@ -93,17 +94,19 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
         ?size,
         "on-demand thumbnail generation — scan may not have completed for this file"
     );
-    ok_response(PLACEHOLDER_PNG.to_vec(), "image/png")
+    thumb_ok_response(PLACEHOLDER_PNG.to_vec(), "image/png")
 }
 
-fn strip_scheme_path(request_path: &str) -> &str {
-    let mut path = request_path.trim_start_matches('/');
-    if let Some(rest) = path.strip_prefix("localhost/") {
-        path = rest;
-    } else if path == "localhost" {
-        path = "";
-    }
-    path.trim_start_matches('/')
+fn thumb_ok_response(bytes: Vec<u8>, content_type: &str) -> Response<Vec<u8>> {
+    ok_response(
+        cors_headers(
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, content_type)
+                .header(header::CACHE_CONTROL, "max-age=31536000, immutable"),
+        ),
+        bytes,
+    )
 }
 
 fn parse_size(s: &str) -> Option<ThumbnailSize> {
@@ -120,36 +123,6 @@ fn content_type_for(size: ThumbnailSize) -> &'static str {
         ThumbnailSize::Micro => "image/jpeg",
         ThumbnailSize::Small | ThumbnailSize::Large => "image/webp",
     }
-}
-
-fn finish_response(builder: http::response::Builder, body: Vec<u8>) -> Response<Vec<u8>> {
-    builder.body(body).unwrap_or_else(|_| {
-        Response::builder()
-            .status(StatusCode::INTERNAL_SERVER_ERROR)
-            .body(b"internal error".to_vec())
-            .expect("hardcoded response must build")
-    })
-}
-
-fn ok_response(bytes: Vec<u8>, content_type: &str) -> Response<Vec<u8>> {
-    finish_response(
-        Response::builder()
-            .status(StatusCode::OK)
-            .header(header::CONTENT_TYPE, content_type)
-            .header(header::CACHE_CONTROL, "max-age=31536000, immutable")
-            .header("Access-Control-Allow-Origin", "*"),
-        bytes,
-    )
-}
-
-fn error_response(status: StatusCode, message: &str) -> Response<Vec<u8>> {
-    finish_response(
-        Response::builder()
-            .status(status)
-            .header(header::CONTENT_TYPE, "text/plain")
-            .header("Access-Control-Allow-Origin", "*"),
-        message.as_bytes().to_vec(),
-    )
 }
 
 #[cfg(test)]
@@ -335,7 +308,7 @@ mod tests {
 
     #[test]
     fn ok_response_includes_cors_header_for_webview2() {
-        let resp = ok_response(vec![0xFF, 0xD8], "image/jpeg");
+        let resp = thumb_ok_response(vec![0xFF, 0xD8], "image/jpeg");
         assert_eq!(
             resp.headers()
                 .get("Access-Control-Allow-Origin")
