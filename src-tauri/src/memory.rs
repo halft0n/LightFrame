@@ -64,7 +64,5 @@ fn read_sysinfo() -> Option<MemorySnapshot> {
 }
 
 fn parse_kb(raw: &str) -> Option<u64> {
-    raw.split_whitespace()
-        .next()
-        .and_then(|s| s.parse().ok())
+    raw.split_whitespace().next().and_then(|s| s.parse().ok())
 }

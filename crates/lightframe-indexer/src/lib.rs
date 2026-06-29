@@ -74,12 +74,11 @@ pub fn classify_extension(path: &Path) -> lightframe_core::media::MediaType {
 pub async fn scan_folder(folder: &Path) -> Result<Vec<PathBuf>> {
     #[cfg(target_os = "windows")]
     {
-        if let Ok(scanner) = mft::mft::MftScanner::new(get_volume_letter(folder)) {
-            if let Ok(entries) = scanner.scan_media_files(MEDIA_EXTENSIONS) {
-                if !entries.is_empty() {
-                    return Ok(entries.into_iter().map(|e| e.path).collect());
-                }
-            }
+        if let Ok(scanner) = mft::MftScanner::new(get_volume_letter(folder))
+            && let Ok(entries) = scanner.scan_media_files(MEDIA_EXTENSIONS)
+            && !entries.is_empty()
+        {
+            return Ok(entries.into_iter().map(|e| e.path).collect());
         }
     }
 
@@ -181,7 +180,7 @@ mod tests {
     #[cfg(target_os = "windows")]
     #[test]
     fn mft_scanner_placeholder_returns_empty() {
-        let scanner = mft::mft::MftScanner::new('C').unwrap();
+        let scanner = mft::MftScanner::new('C').unwrap();
         let entries = scanner.scan_media_files(&["jpg"]).unwrap();
         assert!(entries.is_empty());
     }
@@ -189,7 +188,7 @@ mod tests {
     #[cfg(target_os = "windows")]
     #[test]
     fn usn_journal_placeholder_returns_empty() {
-        let journal = mft::mft::UsnJournal::new('C').unwrap();
+        let journal = mft::UsnJournal::new('C').unwrap();
         let changes = journal.poll_changes().unwrap();
         assert!(changes.is_empty());
     }
