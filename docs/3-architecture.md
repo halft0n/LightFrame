@@ -1,8 +1,9 @@
 # LightFrame（影迹）架构设计文档
 
-> **版本：** 1.2  
-> **日期：** 2026-06-28  
-> **状态：** Phase 1–3 + 高级编辑器已实现（与代码同步）  
+> **版本：** 1.3  
+> **日期：** 2026-06-29  
+> **状态：** Phase 1–3 已实现；Phase 4 部分完成（v0.0.11）  
+> **当前版本：** v0.0.11
 > **技术栈：** Tauri 2.x + Rust + React 19 + Python AI 扩展（可选）
 
 ---
@@ -216,10 +217,11 @@ src-tauri/
     │   search.rs               # FTS5 搜索
     │   dedup.rs                # 去重操作
     │   settings.rs             # 设置读写
-    │   ai.rs                   # AI 分类/人脸
+    │   ai.rs                   # AI 分类/人脸/语义搜索/模型下载
     │   geo.rs                  # 地点查询
     │   video.rs                # 视频播放信息
     │   system.rs               # 系统/托盘/更新
+    ├── thumb_regen.rs          # 缩略图重建队列
     ├── state.rs                # AppState / Tauri Managed State
     └── protocol.rs             # thumb:// / preview:// 协议
 ```
@@ -706,6 +708,7 @@ src/
 │   ├── LibraryPage.tsx         # 图库（全部照片时间线）
 │   ├── TimelinePage.tsx        # 年/月/日分组
 │   ├── PlacesPage.tsx          # 地点 + 地图
+│   ├── MapPage.tsx             # 地图全屏视图（MapView）
 │   ├── PeoplePage.tsx          # 人物（Phase 3）
 │   ├── AlbumsPage.tsx          # 相簿列表
 │   ├── AlbumDetailPage.tsx     # 相簿详情
@@ -713,8 +716,9 @@ src/
 │   ├── DuplicatesPage.tsx      # 重复照片
 │   ├── ScreenshotsPage.tsx     # 截图
 │   ├── ViewerPage.tsx          # 全屏查看器
+│   ├── SlideshowOverlay.tsx    # 幻灯片（SlideshowView）
 │   ├── SearchPage.tsx          # 搜索结果
-│   └── SettingsPage.tsx        # 设置
+│   └── SettingsPage.tsx        # 设置（含 UpdateChecker、AiSettings）
 ├── components/
 │   ├── layout/
 │   │   ├── AppShell.tsx        # 侧边栏 + 主内容
@@ -725,12 +729,20 @@ src/
 │   │   ├── MediaTile.tsx       # 单张照片 tile
 │   │   ├── TimelineSection.tsx # 日期分组头
 │   │   └── ThumbnailImage.tsx  # thumb:// 封装
+│   ├── map/
+│   │   └── MapView.tsx         # Leaflet 地图 + 聚类标记
+│   ├── people/
+│   │   ├── PeopleView.tsx      # 人物列表 + 合并
+│   │   └── PersonDetailView.tsx # 人物详情 + 拆分/重命名
 │   ├── viewer/
-│   │   ├── PhotoViewer.tsx
+│   │   ├── PhotoViewer.tsx     # 查看器（含打印/分享）
+│   │   ├── SlideshowView.tsx   # 幻灯片模式
 │   │   ├── Filmstrip.tsx       # 底部胶片条
 │   │   └── InfoPanel.tsx       # EXIF 信息面板
+│   ├── settings/
+│   │   ├── UpdateChecker.tsx   # 自动更新检查
+│   │   └── AiSettings.tsx      # AI 模型下载与管理
 │   ├── album/
-│   ├── map/
 │   └── ui/                     # shadcn/ui 组件
 ├── store/
 │   └── appStore.ts             # useSyncExternalStore 全局状态（文件夹、视图、扫描进度、查看器）
@@ -1308,12 +1320,15 @@ pub fn create_indexer() -> Box<dyn FileIndexer> {
 
 ### 5.4 安装包与自动更新
 
-| 平台 | 安装格式 | 更新机制 |
-|------|---------|---------|
-| Windows | NSIS / MSI（Tauri bundler） | Tauri updater + 签名验证 |
-| Linux | AppImage（首选）+ .deb + .rpm | AppImage 替换 / 包管理器 |
+| 平台 | 安装格式 | 更新机制 | v0.0.11 状态 |
+|------|---------|---------|--------------|
+| Windows | NSIS / MSI（Tauri bundler） | Tauri updater + 签名验证 | ✅ 构建；⬜ Authenticode 未配置 |
+| Linux | AppImage（首选）+ .deb + .rpm | AppImage 替换 / 包管理器 | ✅ CI 构建 |
+| macOS | `.dmg` + `.app` | Tauri updater | ✅ CI 构建；⬜ 公证未配置 |
 
-**CI/CD：** GitHub Actions / GitLab CI 矩阵构建 `x86_64-pc-windows-msvc` + `x86_64-unknown-linux-gnu`。
+**自动更新（已实现）：** `tauri-plugin-updater` + `plugins.updater.pubkey` + Settings `UpdateChecker`；CI release job 生成 `latest.json` 与 `.sig` 签名包。
+
+**CI/CD：** GitHub Actions 矩阵构建 `x86_64-pc-windows-msvc`、`x86_64-unknown-linux-gnu`、`x86_64-apple-darwin`、`aarch64-apple-darwin`（tag 触发）。
 
 ---
 

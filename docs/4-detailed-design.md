@@ -1,10 +1,10 @@
 # LightFrame（影迹）详细方案设计
 
-> **文档版本**：v1.1  
-> **更新日期**：2026-06-28  
+> **文档版本**：v1.2  
+> **更新日期**：2026-06-29  
 > **关联文档**：[需求规格说明书](./2-requirements.md) · [技术调研报告](./0-research-report.md) · [技术路线决策](./1-tech-stack-decision.md)  
 > **技术栈**：Tauri 2.x + Rust + React + Python AI 扩展（可选）  
-> **状态**：Phase 1–3 已实现（本文档与代码同步）
+> **状态**：Phase 1–3 已实现；Phase 4 部分完成（v0.0.11）
 
 ---
 
@@ -915,6 +915,13 @@ pub enum TimelineGroup {
 
 **视频缩略图（best-effort）：** 扫描 `process_file` 中，若 `find_ffmpeg()` 可用，用 FFmpeg 抽取第 1 秒帧 → 生成 small/micro；失败或无 FFmpeg 时跳过，不影响索引。
 
+**缩略图重建（v0.0.11）：** `lightframe-thumbnail::regenerate` + `thumb_regen.rs` 后台队列；Settings 触发全库或单文件重建，覆盖损坏/缺失缓存。
+
+**格式解码（v0.0.11，`lightframe-core::decode`）：**
+- AVIF：通过 `avif-native` feature（libdav1d）完整解码
+- HEIC/HEIF：索引可识别；无 libheif 时跳过解码并显示占位（graceful fallback）
+- RAW：扩展名识别 + 嵌入 JPEG 预览；无 libraw demosaic
+
 **内存 LRU**（运行时）：
 
 | 级别 | 容量 |
@@ -1398,6 +1405,7 @@ async fn ensure_models(config: &AiConfig) -> Result<()> {
 - 基础安装包**不含**模型（NFR-064）
 - 设置页「启用 AI 功能」触发下载
 - 支持镜像 URL 配置
+- **v0.0.11 已实现：** `download_model` IPC、`model-download-progress` 事件、`AiSettings.tsx` 进度条 UI
 
 #### 5.4.3 版本更新
 
@@ -2987,7 +2995,8 @@ ALTER TABLE media_files ADD COLUMN clip_embed BLOB;
 5. **Week 6**：React VirtualGallery + Viewer 基础
 6. **Week 7–8**：相簿 + 配置 + i18n + 设置页
 7. **Phase 2**：去重 + 截图识别 + 地点 + 搜索 — ✅ 已完成
-8. **Phase 3**：Python AI sidecar 框架 + 语义搜索 + 截图 OCR + 人脸聚类
+8. **Phase 3**：Python AI sidecar 框架 + 语义搜索 + 截图 OCR + 人脸聚类 — ✅ 核心 Rust 路径已完成
+9. **Phase 4**：打包 + 自动更新 + Beta — ⚠️ 进行中（见 `BETA_ROADMAP.md`）
 
 ---
 
