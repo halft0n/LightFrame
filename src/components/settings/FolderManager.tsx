@@ -172,7 +172,7 @@ export function FolderManager() {
   };
 
   return (
-    <div className="page-enter flex flex-1 flex-col overflow-hidden">
+    <div className="page-enter flex flex-1 flex-col overflow-y-auto">
       <section className="settings-section px-6 py-5">
         <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
           {t("theme.title")}
@@ -194,34 +194,6 @@ export function FolderManager() {
             </button>
           ))}
         </div>
-      </section>
-
-      <UpdateChecker />
-
-      <AiSettings />
-
-      <LogSettings />
-
-      <section className="settings-section px-6 py-5">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
-              {t("settings.thumbnails")}
-            </h2>
-            <p className="mt-1 text-sm text-neutral-500">{t("settings.thumbnailsHint")}</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => void handleRegenerateThumbnails()}
-            disabled={regeneratingThumbs || watchedFolders.length === 0}
-            className="rounded-lg border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
-          >
-            {regeneratingThumbs ? t("settings.thumbRegenerating") : t("settings.regenerateThumbnails")}
-          </button>
-        </div>
-        {thumbRegenProgress && (regeneratingThumbs || thumbRegenProgress.status === "complete") && (
-          <ThumbnailRegenProgressBar progress={thumbRegenProgress} />
-        )}
       </section>
 
       <section className="settings-section px-6 py-5">
@@ -259,7 +231,7 @@ export function FolderManager() {
         </div>
       </section>
 
-      <div className="flex-1 overflow-y-auto px-6 py-5">
+      <div className="px-6 pb-3">
         {watchedFolders.length === 0 ? (
           <EmptyState variant="folder" title={t("main.addFolder")} />
         ) : (
@@ -313,6 +285,34 @@ export function FolderManager() {
           </ul>
         )}
       </div>
+
+      <section className="settings-section px-6 py-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+              {t("settings.thumbnails")}
+            </h2>
+            <p className="mt-1 text-sm text-neutral-500">{t("settings.thumbnailsHint")}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleRegenerateThumbnails()}
+            disabled={regeneratingThumbs || watchedFolders.length === 0}
+            className="rounded-lg border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+          >
+            {regeneratingThumbs ? t("settings.thumbRegenerating") : t("settings.regenerateThumbnails")}
+          </button>
+        </div>
+        {thumbRegenProgress && (regeneratingThumbs || thumbRegenProgress.status === "complete") && (
+          <ThumbnailRegenProgressBar progress={thumbRegenProgress} />
+        )}
+      </section>
+
+      <LogSettings />
+
+      <UpdateChecker />
+
+      <AiSettings />
     </div>
   );
 }
