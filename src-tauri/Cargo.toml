@@ -1,9 +1,9 @@
 [package]
-name = "catchlight-app"
+name = "lightframe-app"
 version.workspace = true
 edition.workspace = true
 description = "LightFrame (影迹) — cross-platform photo viewer and manager"
-default-run = "catchlight-app"
+default-run = "lightframe-app"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -25,26 +25,26 @@ http = "1"
 chrono = { version = "0.4", features = ["serde"] }
 lru = "0.12"
 
-catchlight-core.workspace = true
-catchlight-db.workspace = true
-catchlight-indexer.workspace = true
-catchlight-metadata.workspace = true
-catchlight-thumbnail.workspace = true
-catchlight-video.workspace = true
-catchlight-dedup.workspace = true
-catchlight-ai.workspace = true
-catchlight-geo.workspace = true
+lightframe-core.workspace = true
+lightframe-db.workspace = true
+lightframe-indexer.workspace = true
+lightframe-metadata.workspace = true
+lightframe-thumbnail.workspace = true
+lightframe-video.workspace = true
+lightframe-dedup.workspace = true
+lightframe-ai.workspace = true
+lightframe-geo.workspace = true
 image.workspace = true
 futures = "0.3"
 
 [dev-dependencies]
 tempfile = "3"
-catchlight-db.workspace = true
-catchlight-core.workspace = true
-catchlight-indexer.workspace = true
-catchlight-dedup.workspace = true
-catchlight-metadata.workspace = true
-catchlight-thumbnail.workspace = true
+lightframe-db.workspace = true
+lightframe-core.workspace = true
+lightframe-indexer.workspace = true
+lightframe-dedup.workspace = true
+lightframe-metadata.workspace = true
+lightframe-thumbnail.workspace = true
 image.workspace = true
 tokio.workspace = true
 chrono = { version = "0.4", features = ["serde"] }

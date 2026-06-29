@@ -1,6 +1,6 @@
-use catchlight_ai::AiDispatcher;
-use catchlight_core::config::{self, AppConfig};
-use catchlight_db::Database;
+use lightframe_ai::AiDispatcher;
+use lightframe_core::config::{self, AppConfig};
+use lightframe_db::Database;
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -85,7 +85,7 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new() -> catchlight_core::Result<Self> {
+    pub fn new() -> lightframe_core::Result<Self> {
         let db = Arc::new(Database::open_default()?);
         let _ = db.cleanup_deleted_older_than(30);
         let config = load_config();

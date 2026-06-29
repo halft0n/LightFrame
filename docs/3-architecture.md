@@ -43,15 +43,15 @@ flowchart TB
     end
 
     subgraph Backend["后端 (Rust Workspace)"]
-        Core[catchlight-core<br/>领域模型]
-        Indexer[catchlight-indexer<br/>MFT/USN/inotify]
-        Meta[catchlight-metadata<br/>EXIF/GPS]
-        Thumb[catchlight-thumbnail<br/>缩略图缓存]
-        DB[catchlight-db<br/>SQLite]
-        Dedup[catchlight-dedup<br/>BLAKE3/PHash]
-        AI[catchlight-ai<br/>CLIP/人脸]
-        Geo[catchlight-geo<br/>反向地理编码]
-        Video[catchlight-video<br/>FFmpeg]
+        Core[lightframe-core<br/>领域模型]
+        Indexer[lightframe-indexer<br/>MFT/USN/inotify]
+        Meta[lightframe-metadata<br/>EXIF/GPS]
+        Thumb[lightframe-thumbnail<br/>缩略图缓存]
+        DB[lightframe-db<br/>SQLite]
+        Dedup[lightframe-dedup<br/>BLAKE3/PHash]
+        AI[lightframe-ai<br/>CLIP/人脸]
+        Geo[lightframe-geo<br/>反向地理编码]
+        Video[lightframe-video<br/>FFmpeg]
     end
 
     subgraph PythonAI["Python AI 扩展 (可选, 按需启动)"]
@@ -97,7 +97,7 @@ flowchart TB
 │  Tauri commands/ · state.rs · protocol.rs · 事件总线             │
 ├─────────────────────────────────────────────────────────────────┤
 │                     领域层 (Domain)                              │
-│  catchlight-core · 相簿/媒体/扫描任务 领域模型与业务规则          │
+│  lightframe-core · 相簿/媒体/扫描任务 领域模型与业务规则          │
 ├─────────────────────────────────────────────────────────────────┤
 │                     基础设施层 (Infrastructure)                   │
 │  indexer · metadata · thumbnail · db · dedup · ai · geo · video│
@@ -194,15 +194,15 @@ flowchart TB
 src-tauri/
 ├── Cargo.toml                  # workspace 根
 ├── crates/
-│   ├── catchlight-core/        # 核心领域模型（零框架依赖）
-│   ├── catchlight-indexer/     # 文件索引引擎
-│   ├── catchlight-metadata/    # EXIF/GPS 元数据
-│   ├── catchlight-thumbnail/   # 缩略图生成与缓存
-│   ├── catchlight-db/          # SQLite 数据层
-│   ├── catchlight-dedup/       # 去重引擎
-│   ├── catchlight-ai/          # AI 功能（可选）
-│   ├── catchlight-geo/         # 反向地理编码
-│   └── catchlight-video/       # 视频处理
+│   ├── lightframe-core/        # 核心领域模型（零框架依赖）
+│   ├── lightframe-indexer/     # 文件索引引擎
+│   ├── lightframe-metadata/    # EXIF/GPS 元数据
+│   ├── lightframe-thumbnail/   # 缩略图生成与缓存
+│   ├── lightframe-db/          # SQLite 数据层
+│   ├── lightframe-dedup/       # 去重引擎
+│   ├── lightframe-ai/          # AI 功能（可选）
+│   ├── lightframe-geo/         # 反向地理编码
+│   └── lightframe-video/       # 视频处理
 └── src/
     ├── main.rs
     ├── lib.rs
@@ -226,7 +226,7 @@ src-tauri/
 
 #### 2.1.1 Crate 职责与公开 API
 
-##### catchlight-core
+##### lightframe-core
 
 **职责：** 纯领域模型与业务规则，不依赖 Tauri、SQLite、Tokio。
 
@@ -252,7 +252,7 @@ pub trait ScanEventPublisher { ... }
 
 ---
 
-##### catchlight-indexer
+##### lightframe-indexer
 
 **职责：** 跨平台文件发现与变更监听。
 
@@ -273,11 +273,11 @@ pub struct GenericIndexer;   // 降级：notify + walkdir
 pub enum FileChange { Created(PathBuf), Modified(PathBuf), Deleted(PathBuf), Renamed { from, to } }
 ```
 
-**依赖：** `catchlight-core`、平台 crate（`ntfs-reader`、`notify`、`walkdir`）。
+**依赖：** `lightframe-core`、平台 crate（`ntfs-reader`、`notify`、`walkdir`）。
 
 ---
 
-##### catchlight-metadata
+##### lightframe-metadata
 
 **职责：** EXIF/IPTC/XMP 提取，拍摄时间/GPS/相机信息标准化。
 
@@ -302,11 +302,11 @@ pub struct MediaMetadata {
 
 **策略：** `kamadak-exif` 处理 JPEG/HEIF/PNG；ExifTool sidecar 兜底 RAW/特殊格式。
 
-**依赖：** `catchlight-core`、`kamadak-exif`、`image`。
+**依赖：** `lightframe-core`、`kamadak-exif`、`image`。
 
 ---
 
-##### catchlight-thumbnail
+##### lightframe-thumbnail
 
 **职责：** 多级缩略图生成、磁盘缓存、内存 LRU。
 
@@ -334,11 +334,11 @@ pub enum ThumbResult { Ready(PathBuf), Scheduled, Error(ThumbError) }
 | small | 256×256 | WebP | 磁盘缓存 |
 | large | 1024×1024 | WebP | 磁盘缓存 |
 
-**依赖：** `catchlight-core`、`catchlight-metadata`、`image`、`webp`。
+**依赖：** `lightframe-core`、`lightframe-metadata`、`image`、`webp`。
 
 ---
 
-##### catchlight-db
+##### lightframe-db
 
 **职责：** SQLite schema、迁移、类型安全查询、FTS5 同步。
 
@@ -367,11 +367,11 @@ pub struct MediaQuery {
 
 **Schema 版本（已实现）：** v1 基础表 → v2 `scan_status` → v3 `is_favorite`/`is_deleted`/`deleted_at` → v4 FTS5 → v5 部分索引（`idx_media_not_deleted`、`idx_media_type_active`、`idx_media_deleted_at`）
 
-**依赖：** `catchlight-core`、`rusqlite`（bundled）、`refinery` 或 `rusqlite_migration`。
+**依赖：** `lightframe-core`、`rusqlite`（bundled）、`refinery` 或 `rusqlite_migration`。
 
 ---
 
-##### catchlight-dedup
+##### lightframe-dedup
 
 **职责：** 三级去重：精确（BLAKE3）→ 感知（DHash/PHash）→ 语义（CNN 向量，可选）。**Phase 2 已实现 L1+L2**：BLAKE3 精确分组 + DHash 汉明距离聚类，`DedupView` 工具页展示重复组。
 
@@ -386,11 +386,11 @@ pub struct DedupEngine {
 }
 ```
 
-**依赖：** `catchlight-core`、`catchlight-db`、`blake3`、`img_hash`。
+**依赖：** `lightframe-core`、`lightframe-db`、`blake3`、`img_hash`。
 
 ---
 
-##### catchlight-ai
+##### lightframe-ai
 
 **职责：** AI 统一分发器（AiDispatcher），管理 Rust ONNX 基础推理与 Python sidecar 高级 AI 扩展。包含 CLIP 截图识别、人脸检测（InsightFace ONNX）、Python JSON-RPC 桥接。**可选模块**，未安装模型或 Python 时优雅降级。
 
@@ -406,11 +406,11 @@ pub struct AiClassifier {
 pub enum ScreenshotClassification { Screenshot, Document, Code, Chat, CameraPhoto, Unknown }
 ```
 
-**依赖：** `catchlight-core`、`ort`（ONNX Runtime）、`catchlight-thumbnail`。
+**依赖：** `lightframe-core`、`ort`（ONNX Runtime）、`lightframe-thumbnail`。
 
 ---
 
-##### catchlight-geo
+##### lightframe-geo
 
 **职责：** GPS → 国家/城市/地点名，离线 K-D Tree 查询。**Phase 2 已实现**：扫描流水线在 EXIF 提取 GPS 后调用 `reverse_geocode`，结果写入 `country`/`city` 列。
 
@@ -423,11 +423,11 @@ pub struct GeoResolver {
 }
 ```
 
-**依赖：** `catchlight-core`、`rrgeo`。
+**依赖：** `lightframe-core`、`rrgeo`。
 
 ---
 
-##### catchlight-video
+##### lightframe-video
 
 **职责：** FFmpeg 封装，视频缩略图（best-effort）、时长、编码信息。
 
@@ -440,7 +440,7 @@ pub fn find_ffmpeg() -> Option<PathBuf>;
 pub fn probe_duration(path: &Path) -> Result<f64>;
 ```
 
-**依赖：** `catchlight-core`、`tokio::process`。
+**依赖：** `lightframe-core`、`tokio::process`。
 
 ---
 
@@ -448,20 +448,20 @@ pub fn probe_duration(path: &Path) -> Result<f64>;
 
 ```mermaid
 graph TD
-    Core[catchlight-core]
+    Core[lightframe-core]
 
-    Indexer[catchlight-indexer] --> Core
-    Meta[catchlight-metadata] --> Core
-    DB[catchlight-db] --> Core
-    Thumb[catchlight-thumbnail] --> Core
+    Indexer[lightframe-indexer] --> Core
+    Meta[lightframe-metadata] --> Core
+    DB[lightframe-db] --> Core
+    Thumb[lightframe-thumbnail] --> Core
     Thumb --> Meta
-    Dedup[catchlight-dedup] --> Core
+    Dedup[lightframe-dedup] --> Core
     Dedup --> DB
     Dedup --> Thumb
-    AI[catchlight-ai] --> Core
+    AI[lightframe-ai] --> Core
     AI --> Thumb
-    Geo[catchlight-geo] --> Core
-    Video[catchlight-video] --> Core
+    Geo[lightframe-geo] --> Core
+    Video[lightframe-video] --> Core
 
     Tauri[src-tauri] --> Indexer
     Tauri --> Meta
@@ -474,7 +474,7 @@ graph TD
 ```
 
 **规则：**
-- `catchlight-core` 不依赖任何 sibling crate
+- `lightframe-core` 不依赖任何 sibling crate
 - infra crate 之间禁止循环依赖
 - Tauri 壳层仅通过 crate 公开 API 访问，不直接写 SQL
 
@@ -550,7 +550,7 @@ pub struct WatchedFolder {
 }
 ```
 
-**扫描流水线（Phase 1–2 实现）：** `futures::stream` + `buffer_unordered(concurrency)` 有界并发，在信号量预算内并行处理每个文件（EXIF、BLAKE3/DHash 哈希、缩略图、截图规则检测、GPS 反向地理编码），而非 per-file `spawn` 无界任务。GPS 坐标经 `catchlight-geo::reverse_geocode`（`reverse_geocoder` / rrgeo）解析为国家/城市后写入 `media_files`，供地点分组视图与 FTS5 索引。
+**扫描流水线（Phase 1–2 实现）：** `futures::stream` + `buffer_unordered(concurrency)` 有界并发，在信号量预算内并行处理每个文件（EXIF、BLAKE3/DHash 哈希、缩略图、截图规则检测、GPS 反向地理编码），而非 per-file `spawn` 无界任务。GPS 坐标经 `lightframe-geo::reverse_geocode`（`reverse_geocoder` / rrgeo）解析为国家/城市后写入 `media_files`，供地点分组视图与 FTS5 索引。
 
 ```rust
 // src-tauri/src/scan.rs
@@ -814,7 +814,7 @@ flowchart TB
 
 | 状态类型 | 方案 | 示例 |
 |----------|------|------|
-| **全局持久** | localStorage（语言）+ SQLite 经 IPC（业务数据） | `catchlight-locale`、监控文件夹 |
+| **全局持久** | localStorage（语言）+ SQLite 经 IPC（业务数据） | `lightframe-locale`、监控文件夹 |
 | **全局会话** | `appStore.ts`（`useSyncExternalStore`） | 当前视图、侧边栏、扫描进度 |
 | **列表数据** | 组件内 useState + IPC 分页 | `PhotoGrid`、`TimelineView` 按需加载 |
 | **服务端状态** | IPC + `listen()` 事件 | `scan-progress`、`thumb://` 协议 |
@@ -1249,7 +1249,7 @@ pub fn up(conn: &Connection) -> Result<()> {
 ### 5.1 文件索引平台抽象
 
 ```rust
-// catchlight-indexer/src/platform/mod.rs
+// lightframe-indexer/src/platform/mod.rs
 
 #[async_trait]
 pub trait FileIndexer: Send + Sync {
@@ -1427,7 +1427,7 @@ flowchart LR
 | **editParams.ts** | TypeScript 类型、`parseEditParams`/`serializeEditParams`、`buildCssFilter`/`buildImageTransform`/`buildClipPath` 实时预览 |
 | **curves.ts** | 曲线控制点排序、Fritsch-Carlson 单调三次样条 LUT 构建、恒等曲线检测 |
 | **image_edit.rs** | JSON 反序列化、旋转/翻转/裁剪/透视（单应性矩阵）/曲线 LUT/色阶映射/可选颜色 HSL 范围调整/色调映射、JPEG 导出 |
-| **catchlight-db** | `save_edit_params` / `get_edit_params` / `clear_edit_params` |
+| **lightframe-db** | `save_edit_params` / `get_edit_params` / `clear_edit_params` |
 
 ### 7.3 IPC 命令
 

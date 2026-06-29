@@ -24,7 +24,7 @@ Export or convert the certificate to a format usable by Tauri (typically a `.pfx
 Tauri 2 uses updater signing keys separate from Authenticode. Generate a key pair once:
 
 ```bash
-pnpm tauri signer generate -w ~/.tauri/catchlight.key
+pnpm tauri signer generate -w ~/.tauri/lightframe.key
 ```
 
 This creates:
@@ -44,7 +44,7 @@ Set these when building signed releases (locally or in CI):
 Example (local shell):
 
 ```bash
-export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/catchlight.key)"
+export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/lightframe.key)"
 export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="your-key-password"
 pnpm tauri build
 ```
@@ -57,7 +57,7 @@ After `pnpm tauri build`, sign the executable and installer with `signtool` (Win
 
 ```powershell
 # Main application binary
-signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a "src-tauri\target\release\catchlight.exe"
+signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a "src-tauri\target\release\lightframe.exe"
 
 # NSIS installer (sign after bundling)
 signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a "src-tauri\target\release\bundle\nsis\LightFrame_*-setup.exe"

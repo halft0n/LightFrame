@@ -107,7 +107,7 @@ flowchart LR
 | 模块 | 可借鉴内容 | CatchLight 对应实现 |
 |------|-----------|-------------------|
 | **Folder-native 设计** | 监控文件夹 = 图库入口，JSON manifest 管理虚拟相簿 | `watched_folders` 表 + 侧边栏文件夹树 |
-| **SQL keyset 分页** | 大库游标分页，避免 OFFSET 性能退化 | `catchlight-db` 中 `keyset_paginate(taken_at, id)` |
+| **SQL keyset 分页** | 大库游标分页，避免 OFFSET 性能退化 | `lightframe-db` 中 `keyset_paginate(taken_at, id)` |
 | **扫描-缩略图契约** | 扫描完成后触发缩略图队列，状态字段 `thumb_cached` | indexer → thumbnail 事件总线 |
 | **MVVM 分层** | View / ViewModel / Service 清晰分离 | React 组件 + `appStore`（useSyncExternalStore）+ Tauri commands |
 
@@ -116,10 +116,10 @@ flowchart LR
 | 模块 | 可借鉴内容 | CatchLight 对应实现 |
 |------|-----------|-------------------|
 | **Tauri IPC 分层** | commands 按域拆分，state 注入 | `src-tauri/src/commands/{index,media,album}.rs` |
-| **ProcessingBudget** | 并发任务预算，防止 CPU/IO 过载 | `catchlight-core::task_scheduler` |
+| **ProcessingBudget** | 并发任务预算，防止 CPU/IO 过载 | `lightframe-core::task_scheduler` |
 | **thumb:// 协议** | 自定义 URI 加载缩略图，前端 `<img src="thumb://...">` | `protocol.rs` + 三级缓存 |
-| **CLIP 搜索管线** | ONNX 嵌入 + 向量索引 | `catchlight-ai` + `usearch` |
-| **FFmpeg sidecar** | 外部 FFmpeg 进程生成视频缩略图/预览 | `catchlight-video` |
+| **CLIP 搜索管线** | ONNX 嵌入 + 向量索引 | `lightframe-ai` + `usearch` |
+| **FFmpeg sidecar** | 外部 FFmpeg 进程生成视频缩略图/预览 | `lightframe-video` |
 
 #### 1.3.3 FlyPhotos
 
@@ -181,7 +181,7 @@ gantt
 | 天 | 任务 | 交付物 |
 |----|------|--------|
 | D1–D2 | Tauri 2.x + React 19 + TypeScript 脚手架；Vite 配置；TailwindCSS v4 + shadcn/ui 初始化 | 空壳应用可启动 |
-| D2–D3 | Cargo workspace 多 crate 结构：`catchlight-core`、`catchlight-db`、`catchlight-indexer` 等占位 crate | `cargo build` 通过 |
+| D2–D3 | Cargo workspace 多 crate 结构：`lightframe-core`、`lightframe-db`、`lightframe-indexer` 等占位 crate | `cargo build` 通过 |
 | D3–D4 | GitHub Actions：Windows + Ubuntu 双平台 `cargo test` + `pnpm test` + `cargo clippy` | CI badge 可用 |
 | D4–D5 | 自定义 i18n（`src/i18n/`）；`locales/zh-CN.json`、`locales/en.json`；localStorage + 浏览器语言检测 | 语言切换可用 |
 | D5 | eslint + prettier + husky；rustfmt + clippy；CONTRIBUTING.md 代码规范摘要 | lint 钩子生效 |
@@ -193,11 +193,11 @@ CatchLight/
 ├── src/                    # React 前端
 ├── src-tauri/              # Tauri 主 crate
 ├── crates/
-│   ├── catchlight-core/
-│   ├── catchlight-db/
-│   ├── catchlight-indexer/
-│   ├── catchlight-metadata/
-│   └── catchlight-thumbnail/
+│   ├── lightframe-core/
+│   ├── lightframe-db/
+│   ├── lightframe-indexer/
+│   ├── lightframe-metadata/
+│   └── lightframe-thumbnail/
 ├── locales/
 ├── .github/workflows/
 └── docs/
@@ -372,7 +372,7 @@ CatchLight/
 | 任务 | 详情 |
 |------|------|
 | Python sidecar 框架 | Rust JSON-RPC 客户端（tokio 子进程管理、超时、重连） |
-| catchlight-ai-py 骨架 | Python 包入口、模型管理器、JSON-RPC server |
+| lightframe-ai-py 骨架 | Python 包入口、模型管理器、JSON-RPC server |
 | AI 安装引导 UI | Python 环境检测 + 一键安装提示（Settings → AI 扩展） |
 | CLIP ViT-B/32 | Rust ONNX 基础搜索 + Python FAISS 高级语义搜索 |
 | 向量索引 | `usearch` / HNSW 近似最近邻 |
@@ -711,12 +711,12 @@ flowchart TB
 
 | Crate | 测试重点 | 目标覆盖率 |
 |-------|----------|-----------|
-| `catchlight-indexer` | 扫描结果、事件解析、扩展名过滤 | 核心路径 80%+ |
-| `catchlight-db` | 迁移、keyset 分页、FTS 查询 | 90%+ |
-| `catchlight-metadata` | EXIF 解析 fixture（JPEG/HEIF/无 EXIF） | 85%+ |
-| `catchlight-thumbnail` | 尺寸、格式、缓存 key | 80%+ |
-| `catchlight-dedup` | BLAKE3、汉明距离聚类 | 90%+ |
-| `catchlight-ai` | 模型 mock、嵌入维度 | 70%+ |
+| `lightframe-indexer` | 扫描结果、事件解析、扩展名过滤 | 核心路径 80%+ |
+| `lightframe-db` | 迁移、keyset 分页、FTS 查询 | 90%+ |
+| `lightframe-metadata` | EXIF 解析 fixture（JPEG/HEIF/无 EXIF） | 85%+ |
+| `lightframe-thumbnail` | 尺寸、格式、缓存 key | 80%+ |
+| `lightframe-dedup` | BLAKE3、汉明距离聚类 | 90%+ |
+| `lightframe-ai` | 模型 mock、嵌入维度 | 70%+ |
 
 **Fixture 管理**：`crates/*/tests/fixtures/` 存放小样例图片；大样本（1 万+）仅 CI nightly 使用。
 
@@ -735,7 +735,7 @@ flowchart TB
 ```bash
 # Rust
 cargo test --workspace
-cargo test -p catchlight-indexer -- --nocapture
+cargo test -p lightframe-indexer -- --nocapture
 
 # 前端
 pnpm test

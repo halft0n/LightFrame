@@ -10,8 +10,8 @@
 
 ### Linux
 
-- **Debian/Ubuntu**: `sudo dpkg -i catchlight_*.deb`
-- **Fedora/RHEL**: `sudo rpm -i catchlight-*.rpm`
+- **Debian/Ubuntu**: `sudo dpkg -i lightframe_*.deb`
+- **Fedora/RHEL**: `sudo rpm -i lightframe-*.rpm`
 - **通用**: 下载 `.AppImage`，赋予执行权限后运行
 
 ### macOS

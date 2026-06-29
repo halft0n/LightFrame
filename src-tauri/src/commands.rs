@@ -1,14 +1,14 @@
 use crate::scan;
 use crate::state::{AppState, ScanProgress};
 use crate::watcher;
-use catchlight_ai::AiStatus;
-use catchlight_core::config::AppConfig;
-use catchlight_core::media::{MediaFile, ThumbnailSize};
-use catchlight_db::{
+use lightframe_ai::AiStatus;
+use lightframe_core::config::AppConfig;
+use lightframe_core::media::{MediaFile, ThumbnailSize};
+use lightframe_db::{
     Album, DuplicateGroupDetail, LocationGroup, LocationStats, MediaNeighbors, Memory, Person,
     SmartAlbum, SmartAlbumRule, TimelineGroup, WatchedFolder,
 };
-use catchlight_thumbnail::thumb_path;
+use lightframe_thumbnail::thumb_path;
 use serde::Serialize;
 use tauri::{AppHandle, State};
 
@@ -56,12 +56,12 @@ pub fn cleanup_logs() -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn get_log_config() -> catchlight_core::config::LogConfig {
+pub fn get_log_config() -> lightframe_core::config::LogConfig {
     crate::logging::get_log_config()
 }
 
 #[tauri::command]
-pub fn set_log_config(config: catchlight_core::config::LogConfig) -> Result<(), String> {
+pub fn set_log_config(config: lightframe_core::config::LogConfig) -> Result<(), String> {
     crate::logging::set_log_config(config);
     Ok(())
 }
@@ -574,27 +574,27 @@ pub struct ModelStatus {
     pub models_dir: String,
     pub clip_available: bool,
     pub face_available: bool,
-    pub models: Vec<catchlight_ai::ModelFileStatus>,
+    pub models: Vec<lightframe_ai::ModelFileStatus>,
 }
 
 #[tauri::command]
 pub async fn get_model_status() -> Result<ModelStatus, String> {
     Ok(ModelStatus {
-        models_dir: catchlight_ai::models::models_dir()
+        models_dir: lightframe_ai::models::models_dir()
             .to_string_lossy()
             .to_string(),
-        clip_available: catchlight_ai::models::clip_model_available(),
-        face_available: catchlight_ai::models::face_model_available(),
-        models: catchlight_ai::all_model_statuses(),
+        clip_available: lightframe_ai::models::clip_model_available(),
+        face_available: lightframe_ai::models::face_model_available(),
+        models: lightframe_ai::all_model_statuses(),
     })
 }
 
 #[tauri::command]
 pub async fn download_model(filename: String) -> Result<String, String> {
-    let model = catchlight_ai::model_by_filename(&filename)
+    let model = lightframe_ai::model_by_filename(&filename)
         .ok_or_else(|| format!("unknown model: {filename}"))?;
 
-    let path = tokio::task::spawn_blocking(move || catchlight_ai::download_model(model))
+    let path = tokio::task::spawn_blocking(move || lightframe_ai::download_model(model))
         .await
         .map_err(|e| e.to_string())?
         .map_err(|e| e.to_string())?;
@@ -604,8 +604,8 @@ pub async fn download_model(filename: String) -> Result<String, String> {
 
 #[tauri::command]
 pub fn open_models_dir() -> Result<(), String> {
-    catchlight_ai::models::ensure_models_dir().map_err(|e| e.to_string())?;
-    let path = catchlight_ai::models::models_dir();
+    lightframe_ai::models::ensure_models_dir().map_err(|e| e.to_string())?;
+    let path = lightframe_ai::models::models_dir();
     open_in_file_manager(&path)
 }
 
@@ -1049,7 +1049,7 @@ pub fn get_memory_media(
 
 #[tauri::command]
 pub fn get_ai_status() -> AiStatus {
-    catchlight_ai::check_ai_status()
+    lightframe_ai::check_ai_status()
 }
 
 #[derive(Serialize)]
@@ -1169,9 +1169,9 @@ pub async fn detect_faces(
         .map_err(|e| e.to_string())?;
 
     if !faces.is_empty() {
-        let inputs: Vec<catchlight_db::FaceDetectionInput> = faces
+        let inputs: Vec<lightframe_db::FaceDetectionInput> = faces
             .iter()
-            .map(|f| catchlight_db::FaceDetectionInput {
+            .map(|f| lightframe_db::FaceDetectionInput {
                 bbox: f.bbox,
                 confidence: f.confidence,
                 embedding: f.embedding.clone(),
@@ -1279,7 +1279,7 @@ pub async fn cluster_faces(
             return Ok(Vec::new());
         }
 
-        let clusters = catchlight_ai::cluster_face_embeddings(&faces, threshold);
+        let clusters = lightframe_ai::cluster_face_embeddings(&faces, threshold);
         let mut results = Vec::with_capacity(clusters.len());
 
         for cluster in clusters {

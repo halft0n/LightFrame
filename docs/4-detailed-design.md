@@ -49,14 +49,14 @@
 
 | Crate / 模块 | 职责 |
 |--------------|------|
-| `catchlight-core` | 共享类型、错误、配置 schema |
-| `catchlight-index` | FileIndexer trait 及平台实现 |
-| `catchlight-metadata` | EXIF、GPS、反向地理编码 |
-| `catchlight-thumb` | 缩略图生成、缓存、自定义协议 |
-| `catchlight-dedup` | 三级去重 |
-| `catchlight-ai` | 截图识别、CLIP ONNX、Python sidecar 桥接（AiDispatcher） |
-| `catchlight-db` | SQLite schema、migration、查询 |
-| `catchlight-app` | Tauri commands、服务编排 |
+| `lightframe-core` | 共享类型、错误、配置 schema |
+| `lightframe-index` | FileIndexer trait 及平台实现 |
+| `lightframe-metadata` | EXIF、GPS、反向地理编码 |
+| `lightframe-thumb` | 缩略图生成、缓存、自定义协议 |
+| `lightframe-dedup` | 三级去重 |
+| `lightframe-ai` | 截图识别、CLIP ONNX、Python sidecar 桥接（AiDispatcher） |
+| `lightframe-db` | SQLite schema、migration、查询 |
+| `lightframe-app` | Tauri commands、服务编排 |
 
 ### 0.3 数据流总览
 
@@ -105,7 +105,7 @@ flowchart LR
 ### 1.2 核心接口定义
 
 ```rust
-// catchlight-index/src/lib.rs
+// lightframe-index/src/lib.rs
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FileChangeKind {
@@ -240,7 +240,7 @@ flowchart TD
 **伪代码**：
 
 ```rust
-// catchlight-index/src/windows/ntfs.rs
+// lightframe-index/src/windows/ntfs.rs
 
 const BATCH_SIZE: usize = 5000;
 
@@ -418,7 +418,7 @@ fn has_mft_access() -> bool {
 #### 1.4.1 walkdir + inotify 实现
 
 ```rust
-// catchlight-index/src/linux/inotify.rs
+// lightframe-index/src/linux/inotify.rs
 
 async fn linux_full_scan(roots: &[PathBuf], recursive: bool) -> Result<Vec<FileEntry>> {
     let mut entries = Vec::new();
@@ -684,7 +684,7 @@ flowchart TD
 #### 2.2.2 Rust 原生解析
 
 ```rust
-// catchlight-metadata/src/exif.rs
+// lightframe-metadata/src/exif.rs
 
 pub struct ExifData {
     pub taken_at: Option<i64>,
@@ -760,10 +760,10 @@ async fn exiftool_batch(paths: &[PathBuf]) -> Result<Vec<ExifData>> {
 
 #### 2.3.1 rrgeo 离线方案（Phase 2 已实现）
 
-**实现 crate：** `catchlight-geo`，依赖 crates.io 上的 `reverse_geocoder`（rrgeo 项目）。扫描流水线 `process_file` 在 EXIF 提取 GPS 后调用 `reverse_geocode(lat, lon)`，将 `country`/`city` 写入 `media_files`，供 `LocationView` 国家→城市分组与 FTS5 索引。
+**实现 crate：** `lightframe-geo`，依赖 crates.io 上的 `reverse_geocoder`（rrgeo 项目）。扫描流水线 `process_file` 在 EXIF 提取 GPS 后调用 `reverse_geocode(lat, lon)`，将 `country`/`city` 写入 `media_files`，供 `LocationView` 国家→城市分组与 FTS5 索引。
 
 ```rust
-// catchlight-metadata/src/geocode.rs
+// lightframe-metadata/src/geocode.rs
 
 use rrgeo::{ReverseGeocoder, GeoNamesRecord};
 
@@ -1098,7 +1098,7 @@ fn handle_thumb_request(request: &HttpRequest) -> HttpResponse {
 | 磁盘/BLOB 命中 | 立即返回，`Cache-Control: immutable` |
 | 未生成 + micro | 同步快速生成（嵌入 thumb 或 64px 纯色占位） |
 | 未生成 + small/large | 返回 micro 放大版或低分辨率占位；后台完成后前端刷新 |
-| 生成失败 | 1×1 透明 WebP + `X-CatchLight-Error: corrupt` |
+| 生成失败 | 1×1 透明 WebP + `X-LightFrame-Error: corrupt` |
 
 **对比 Lap thumb://**：Lap 按 album 分 cache；CatchLight 按全局 hash 分片，**跨相簿复用**。
 
@@ -1106,7 +1106,7 @@ fn handle_thumb_request(request: &HttpRequest) -> HttpResponse {
 
 ## 4. 去重系统详细设计
 
-**Phase 2 实现摘要：** `catchlight-dedup` 提供 BLAKE3 精确去重（同 `file_size` 预筛）与 DHash 感知去重（汉明距离阈值聚类）；`DedupView` 展示重复组；L3 语义去重（CLIP）留 Phase 3。
+**Phase 2 实现摘要：** `lightframe-dedup` 提供 BLAKE3 精确去重（同 `file_size` 预筛）与 DHash 感知去重（汉明距离阈值聚类）；`DedupView` 展示重复组；L3 语义去重（CLIP）留 Phase 3。
 
 ### 4.1 设计决策
 
@@ -1275,7 +1275,7 @@ fn dhash_bucket(dhash: u64) -> u16 {
 
 ### 5.2 三层检测策略（Phase 2：规则层已集成扫描流水线）
 
-扫描 `process_file` 在写入 DB 前调用 `catchlight_ai::detect_screenshot(path, width, height)`：对 Photo 类型按分辨率/扩展名规则判定，命中则设为 `MediaType::Screenshot`，`ScreenshotView` 提供专属浏览。L2/L3 视觉与 CLIP 分类为 Phase 3 扩展。
+扫描 `process_file` 在写入 DB 前调用 `lightframe_ai::detect_screenshot(path, width, height)`：对 Photo 类型按分辨率/扩展名规则判定，命中则设为 `MediaType::Screenshot`，`ScreenshotView` 提供专属浏览。L2/L3 视觉与 CLIP 分类为 Phase 3 扩展。
 
 ```mermaid
 flowchart TD
@@ -1776,7 +1776,7 @@ export function t(key: string, params?: Record<string, string | number>): string
 
 export function setLocale(locale: Locale) {
   currentLocale = locale;
-  localStorage.setItem("catchlight-locale", locale);
+  localStorage.setItem("lightframe-locale", locale);
   listeners.forEach((fn) => fn());
 }
 ```
@@ -1796,7 +1796,7 @@ function matchLocale(system: string, supported: string[]): string | null {
 #### 8.3.1 rust-i18n 配置
 
 ```rust
-// catchlight-core/src/i18n.rs
+// lightframe-core/src/i18n.rs
 use rust_i18n::i18n;
 
 i18n!("locales", fallback = "en");
@@ -2026,7 +2026,7 @@ clear_thumb_cache(level?) -> ()
 
 ```
 ┌────────────────────────────────────────────────────────────────────┐
-│                     Rust 核心 (catchlight-ai)                       │
+│                     Rust 核心 (lightframe-ai)                       │
 │  ┌──────────────┐                                                  │
 │  │ AiDispatcher │──── 基础 AI: ONNX CLIP / DHash / PHash          │
 │  │              │                                                  │
@@ -2035,7 +2035,7 @@ clear_thumb_cache(level?) -> ()
 ├────────────────────────────────────────────────────────────────────┤
 │                                                                    │
 │  ┌─────────────────────── Python Sidecar ───────────────────────┐  │
-│  │  catchlight-ai-py (venv)                                     │  │
+│  │  lightframe-ai-py (venv)                                     │  │
 │  │  ┌───────────┐ ┌───────────┐ ┌───────────┐ ┌──────────────┐ │  │
 │  │  │ RPC Server│ │ModelLoader│ │CapRegistry│ │HealthReporter│ │  │
 │  │  └─────┬─────┘ └───────────┘ └───────────┘ └──────────────┘ │  │
@@ -2133,7 +2133,7 @@ clear_thumb_cache(level?) -> ()
 #### 10.4.1 进程生命周期管理
 
 ```rust
-// catchlight-ai/src/python_bridge.rs
+// lightframe-ai/src/python_bridge.rs
 
 pub struct PythonSidecar {
     child: Option<Child>,
@@ -2157,7 +2157,7 @@ impl PythonSidecar {
     async fn spawn(&mut self) -> Result<()> {
         let python = locate_python()?;
         let mut child = Command::new(&python)
-            .args(["-m", "catchlight_ai", "--mode", "rpc"])
+            .args(["-m", "lightframe_ai", "--mode", "rpc"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -2252,7 +2252,7 @@ async fn idle_watchdog(sidecar: Arc<Mutex<PythonSidecar>>, timeout: Duration) {
 #### 10.4.4 AI 分发器（统一入口）
 
 ```rust
-// catchlight-ai/src/dispatcher.rs
+// lightframe-ai/src/dispatcher.rs
 
 pub struct AiDispatcher {
     onnx_session: Option<OrtSession>,   // Rust 侧基础 CLIP
@@ -2300,11 +2300,11 @@ impl AiDispatcher {
 #### 10.5.1 包结构
 
 ```
-catchlight-ai-py/
+lightframe-ai-py/
 ├── pyproject.toml
-├── catchlight_ai/
+├── lightframe_ai/
 │   ├── __init__.py
-│   ├── __main__.py           # python -m catchlight_ai --mode rpc
+│   ├── __main__.py           # python -m lightframe_ai --mode rpc
 │   ├── rpc_server.py         # JSON-RPC stdin/stdout 循环
 │   ├── registry.py           # 能力注册与方法分发
 │   ├── model_loader.py       # 模型懒加载 + 缓存
@@ -2343,7 +2343,7 @@ insightface>=0.7            # 人脸（可选）
 #### 10.5.3 RPC Server 实现
 
 ```python
-# catchlight_ai/rpc_server.py
+# lightframe_ai/rpc_server.py
 
 import sys
 import json
@@ -2393,7 +2393,7 @@ class RpcServer:
 #### 10.5.4 语义搜索模块
 
 ```python
-# catchlight_ai/modules/semantic_search.py
+# lightframe_ai/modules/semantic_search.py
 
 import numpy as np
 import faiss
@@ -2476,7 +2476,7 @@ class SemanticSearchModule:
 #### 10.5.5 截图深度分类与 OCR
 
 ```python
-# catchlight_ai/modules/screenshot_cls.py
+# lightframe_ai/modules/screenshot_cls.py
 
 class ScreenshotClassifier:
     PROMPTS = {
@@ -2518,7 +2518,7 @@ class ScreenshotClassifier:
 #### 10.5.6 人脸深度聚类
 
 ```python
-# catchlight_ai/modules/face_cluster.py
+# lightframe_ai/modules/face_cluster.py
 
 from sklearn.cluster import AgglomerativeClustering
 import numpy as np
@@ -2571,7 +2571,7 @@ flowchart TD
 
 ```rust
 fn locate_python() -> Result<PathBuf> {
-    let venv_python = catchlight_dir().join("python-env")
+    let venv_python = data_dir().join("python-env")
         .join(if cfg!(windows) { "Scripts/python.exe" } else { "bin/python3" });
     if venv_python.exists() {
         return Ok(venv_python);
@@ -2717,7 +2717,7 @@ function AiSettings() {
 **内存管控**：
 
 ```python
-# catchlight_ai/__main__.py
+# lightframe_ai/__main__.py
 import resource
 
 def set_memory_limit(max_mb: int):
@@ -2980,10 +2980,10 @@ ALTER TABLE media_files ADD COLUMN clip_embed BLOB;
 
 ## 附录 C：开发实现顺序建议
 
-1. **Week 1–2**：`catchlight-db` + `catchlight-index`（Generic + Linux）
+1. **Week 1–2**：`lightframe-db` + `lightframe-index`（Generic + Linux）
 2. **Week 3**：Windows MFT/USN + 增量策略 + `scan_state`
-3. **Week 4**：`catchlight-metadata` + 时间线 API
-4. **Week 5**：`catchlight-thumb` + `thumb://` + micro BLOB
+3. **Week 4**：`lightframe-metadata` + 时间线 API
+4. **Week 5**：`lightframe-thumb` + `thumb://` + micro BLOB
 5. **Week 6**：React VirtualGallery + Viewer 基础
 6. **Week 7–8**：相簿 + 配置 + i18n + 设置页
 7. **Phase 2**：去重 + 截图识别 + 地点 + 搜索 — ✅ 已完成

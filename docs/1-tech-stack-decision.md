@@ -64,15 +64,15 @@
 │  ┌──────────────┴───────────────────────────┐    │
 │  │  Rust 核心 (Cargo Workspace)              │    │
 │  │                                           │    │
-│  │  catchlight-core     领域模型              │    │
-│  │  catchlight-indexer  MFT/USN/inotify      │    │
-│  │  catchlight-db       SQLite + FTS5        │    │
-│  │  catchlight-metadata EXIF/GPS             │    │
-│  │  catchlight-thumbnail 三级缩略图缓存      │    │
-│  │  catchlight-dedup    BLAKE3/PHash/DHash   │    │
-│  │  catchlight-ai       ONNX Runtime         │    │
-│  │  catchlight-geo      rrgeo 反向地理编码    │    │
-│  │  catchlight-video    FFmpeg sidecar       │    │
+│  │  lightframe-core     领域模型              │    │
+│  │  lightframe-indexer  MFT/USN/inotify      │    │
+│  │  lightframe-db       SQLite + FTS5        │    │
+│  │  lightframe-metadata EXIF/GPS             │    │
+│  │  lightframe-thumbnail 三级缩略图缓存      │    │
+│  │  lightframe-dedup    BLAKE3/PHash/DHash   │    │
+│  │  lightframe-ai       ONNX Runtime         │    │
+│  │  lightframe-geo      rrgeo 反向地理编码    │    │
+│  │  lightframe-video    FFmpeg sidecar       │    │
 │  └──────────────┬───────────────────────────┘    │
 │                 │ JSON-RPC (stdin/stdout)         │
 │  ┌──────────────┴───────────────────────────┐    │
@@ -153,12 +153,12 @@ Rust 核心启动
 # 方式 1: 内置安装引导 (推荐)
 # CatchLight 设置页面 → AI 扩展 → 一键安装
 # 内部执行:
-pip install catchlight-ai  # 包含 CLIP/InsightFace/Tesseract 等
+pip install lightframe-ai  # 包含 CLIP/InsightFace/Tesseract 等
 
 # 方式 2: 手动安装
-pip install catchlight-ai
+pip install lightframe-ai
 # 或
-pip install catchlight-ai[full]  # 包含所有可选模型
+pip install lightframe-ai[full]  # 包含所有可选模型
 ```
 
 ## 五、工作量影响

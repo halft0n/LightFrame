@@ -1,4 +1,4 @@
-use catchlight_core::config::LogConfig;
+use lightframe_core::config::LogConfig;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;

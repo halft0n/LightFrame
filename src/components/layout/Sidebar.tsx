@@ -225,7 +225,7 @@ export function Sidebar({ isMobile = false, mobileOpen = false, onMobileClose }:
   };
 
   const handleAlbumDragOver = useCallback((albumId: number, e: React.DragEvent) => {
-    if (![...e.dataTransfer.types].includes("application/x-catchlight-media-ids")) {
+    if (![...e.dataTransfer.types].includes("application/x-lightframe-media-ids")) {
       return;
     }
     e.preventDefault();

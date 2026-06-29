@@ -31,7 +31,7 @@ describe("i18n", () => {
 
   it("persists locale in localStorage", () => {
     setLocale("en");
-    expect(localStorage.getItem("catchlight-locale")).toBe("en");
+    expect(localStorage.getItem("lightframe-locale")).toBe("en");
   });
 
   it("notifies subscribers on locale change", () => {

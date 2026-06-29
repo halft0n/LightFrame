@@ -1,0 +1,15 @@
+[package]
+name = "lightframe-geo"
+version.workspace = true
+edition.workspace = true
+description = "Reverse geocoding and location grouping"
+
+[dependencies]
+lightframe-core.workspace = true
+serde.workspace = true
+tracing.workspace = true
+# rrgeo project publishes as reverse_geocoder on crates.io
+reverse_geocoder = "4"
+
+[dev-dependencies]
+serde_json.workspace = true

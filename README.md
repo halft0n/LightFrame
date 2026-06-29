@@ -73,15 +73,15 @@ CatchLight/
 ├── src/                    # React frontend
 ├── src-tauri/              # Tauri main crate
 ├── crates/                 # Rust domain crates
-│   ├── catchlight-core/
-│   ├── catchlight-db/
-│   ├── catchlight-indexer/
-│   ├── catchlight-metadata/
-│   ├── catchlight-thumbnail/
-│   ├── catchlight-dedup/
-│   ├── catchlight-ai/
-│   ├── catchlight-geo/
-│   └── catchlight-video/
+│   ├── lightframe-core/
+│   ├── lightframe-db/
+│   ├── lightframe-indexer/
+│   ├── lightframe-metadata/
+│   ├── lightframe-thumbnail/
+│   ├── lightframe-dedup/
+│   ├── lightframe-ai/
+│   ├── lightframe-geo/
+│   └── lightframe-video/
 ├── python/                 # Optional AI sidecar
 ├── locales/                # i18n translation files
 └── docs/                   # Design documents

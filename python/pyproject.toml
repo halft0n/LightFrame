@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "catchlight-ai"
+name = "lightframe-ai"
 version = "0.1.0"
 description = "LightFrame AI sidecar — JSON-RPC server for ML/vision tasks"
 requires-python = ">=3.10"
@@ -12,8 +12,8 @@ dependencies = [
 ]
 
 [project.scripts]
-catchlight-ai = "catchlight_ai.server:run_server"
+lightframe-ai = "lightframe_ai.server:run_server"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["catchlight_ai*"]
+include = ["lightframe_ai*"]

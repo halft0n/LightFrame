@@ -1,9 +1,9 @@
-use catchlight_app::export_edited_image;
-use catchlight_core::media::{MediaFile, ThumbnailSize};
-use catchlight_db::Database;
-use catchlight_indexer::classify_extension;
-use catchlight_thumbnail::thumb_path;
 use image::{ImageBuffer, Rgb};
+use lightframe_app::export_edited_image;
+use lightframe_core::media::{MediaFile, ThumbnailSize};
+use lightframe_db::Database;
+use lightframe_indexer::classify_extension;
+use lightframe_thumbnail::thumb_path;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -53,17 +53,17 @@ fn write_test_png(path: &Path, tint: u8) {
     img.save(path).expect("write png");
 }
 
-async fn index_folder(db: Arc<Database>, folder_id: i64) -> catchlight_core::Result<()> {
+async fn index_folder(db: Arc<Database>, folder_id: i64) -> lightframe_core::Result<()> {
     let folder = db
         .get_watched_folder(folder_id)?
-        .ok_or_else(|| catchlight_core::Error::Other(format!("folder {folder_id} not found")))?;
+        .ok_or_else(|| lightframe_core::Error::Other(format!("folder {folder_id} not found")))?;
 
     db.set_folder_scan_status(folder_id, "scanning")?;
 
     let root = PathBuf::from(&folder.path);
-    let files = catchlight_indexer::scan_folder(&root)
+    let files = lightframe_indexer::scan_folder(&root)
         .await
-        .map_err(|e| catchlight_core::Error::Other(e.to_string()))?;
+        .map_err(|e| lightframe_core::Error::Other(e.to_string()))?;
 
     for path in files {
         index_file(&db, folder_id, &path).await?;
@@ -74,7 +74,7 @@ async fn index_folder(db: Arc<Database>, folder_id: i64) -> catchlight_core::Res
     Ok(())
 }
 
-async fn index_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_core::Result<()> {
+async fn index_file(db: &Database, folder_id: i64, path: &Path) -> lightframe_core::Result<()> {
     let media_type = classify_extension(path);
 
     let fs_meta = tokio::task::spawn_blocking({
@@ -82,7 +82,7 @@ async fn index_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_co
         move || std::fs::metadata(&path)
     })
     .await
-    .map_err(|e| catchlight_core::Error::Other(e.to_string()))??;
+    .map_err(|e| lightframe_core::Error::Other(e.to_string()))??;
 
     let modified_at = fs_meta
         .modified()
@@ -98,37 +98,37 @@ async fn index_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_co
 
     let meta = tokio::task::spawn_blocking({
         let path = path.to_path_buf();
-        move || catchlight_metadata::extract(&path)
+        move || lightframe_metadata::extract(&path)
     })
     .await
-    .map_err(|e| catchlight_core::Error::Other(e.to_string()))??;
+    .map_err(|e| lightframe_core::Error::Other(e.to_string()))??;
 
     let blake3_hash = tokio::task::spawn_blocking({
         let path = path.to_path_buf();
-        move || catchlight_dedup::file_hash(&path)
+        move || lightframe_dedup::file_hash(&path)
     })
     .await
-    .map_err(|e| catchlight_core::Error::Other(e.to_string()))??;
+    .map_err(|e| lightframe_core::Error::Other(e.to_string()))??;
 
     let (dhash, phash, micro_blob) = tokio::task::spawn_blocking({
         let path = path.to_path_buf();
         let hash = blake3_hash.clone();
         move || -> (Option<u64>, Option<u64>, Option<Vec<u8>>) {
-            let decoded = match catchlight_core::decode::decode_image(&path) {
+            let decoded = match lightframe_core::decode::decode_image(&path) {
                 Ok(d) => d,
                 Err(_) => return (None, None, None),
             };
 
-            let dhash = Some(catchlight_dedup::dhash_from_decoded(&decoded));
-            let phash = Some(catchlight_dedup::phash_from_decoded(&decoded));
+            let dhash = Some(lightframe_dedup::dhash_from_decoded(&decoded));
+            let phash = Some(lightframe_dedup::phash_from_decoded(&decoded));
             let _ =
-                catchlight_thumbnail::generate_from_decoded(&decoded, &hash, ThumbnailSize::Small);
-            let micro = catchlight_thumbnail::micro_blob_from_decoded(&decoded).ok();
+                lightframe_thumbnail::generate_from_decoded(&decoded, &hash, ThumbnailSize::Small);
+            let micro = lightframe_thumbnail::micro_blob_from_decoded(&decoded).ok();
             (dhash, phash, micro)
         }
     })
     .await
-    .map_err(|e| catchlight_core::Error::Other(e.to_string()))?;
+    .map_err(|e| lightframe_core::Error::Other(e.to_string()))?;
 
     let media = MediaFile {
         id: 0,

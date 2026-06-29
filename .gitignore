@@ -50,10 +50,10 @@ models/
 cache/
 
 # Python AI extension
-catchlight-ai-py/__pycache__/
-catchlight-ai-py/*.egg-info/
-catchlight-ai-py/dist/
-catchlight-ai-py/build/
+lightframe-ai-py/__pycache__/
+lightframe-ai-py/*.egg-info/
+lightframe-ai-py/dist/
+lightframe-ai-py/build/
 *.pyc
 __pycache__/
 .venv/

@@ -1,6 +1,6 @@
 use crate::state::AppState;
-use catchlight_db::Database;
-use catchlight_indexer::{
+use lightframe_db::Database;
+use lightframe_indexer::{
     FolderWatcher, is_media_change_event, is_media_remove_event, is_media_rename_event,
 };
 use std::collections::HashMap;
@@ -43,7 +43,7 @@ impl Default for WatchManager {
     }
 }
 
-pub fn start(app: &AppHandle, state: &AppState) -> catchlight_core::Result<()> {
+pub fn start(app: &AppHandle, state: &AppState) -> lightframe_core::Result<()> {
     stop(state)?;
 
     let folders = state.db.list_watched_folders()?;
@@ -85,20 +85,20 @@ pub fn start(app: &AppHandle, state: &AppState) -> catchlight_core::Result<()> {
         .watch_manager
         .task
         .lock()
-        .map_err(|e| catchlight_core::Error::Other(e.to_string()))? = Some(handle);
+        .map_err(|e| lightframe_core::Error::Other(e.to_string()))? = Some(handle);
 
     debug!(count = folders.len(), "folder watcher started");
     Ok(())
 }
 
-pub fn stop(state: &AppState) -> catchlight_core::Result<()> {
+pub fn stop(state: &AppState) -> lightframe_core::Result<()> {
     state.watch_manager.active.store(false, Ordering::SeqCst);
 
     let handle = state
         .watch_manager
         .task
         .lock()
-        .map_err(|e| catchlight_core::Error::Other(e.to_string()))?
+        .map_err(|e| lightframe_core::Error::Other(e.to_string()))?
         .take();
 
     if let Some(handle) = handle {

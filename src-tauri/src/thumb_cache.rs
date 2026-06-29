@@ -1,4 +1,4 @@
-use catchlight_core::media::ThumbnailSize;
+use lightframe_core::media::ThumbnailSize;
 use lru::LruCache;
 use std::num::NonZeroUsize;
 use std::sync::Mutex;

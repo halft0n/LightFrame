@@ -1,0 +1,15 @@
+[package]
+name = "lightframe-core"
+version.workspace = true
+edition.workspace = true
+description = "Core types, traits, and shared utilities for LightFrame"
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true
+chrono = { version = "0.4", features = ["serde"] }
+dirs = "6"
+image.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

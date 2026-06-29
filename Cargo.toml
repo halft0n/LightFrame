@@ -20,12 +20,12 @@ rusqlite = { version = "0.33", features = ["bundled", "blob"] }
 blake3 = "1"
 image = "0.25"
 
-catchlight-core = { path = "crates/catchlight-core" }
-catchlight-db = { path = "crates/catchlight-db" }
-catchlight-indexer = { path = "crates/catchlight-indexer" }
-catchlight-metadata = { path = "crates/catchlight-metadata" }
-catchlight-thumbnail = { path = "crates/catchlight-thumbnail" }
-catchlight-dedup = { path = "crates/catchlight-dedup" }
-catchlight-ai = { path = "crates/catchlight-ai" }
-catchlight-geo = { path = "crates/catchlight-geo" }
-catchlight-video = { path = "crates/catchlight-video" }
+lightframe-core = { path = "crates/lightframe-core" }
+lightframe-db = { path = "crates/lightframe-db" }
+lightframe-indexer = { path = "crates/lightframe-indexer" }
+lightframe-metadata = { path = "crates/lightframe-metadata" }
+lightframe-thumbnail = { path = "crates/lightframe-thumbnail" }
+lightframe-dedup = { path = "crates/lightframe-dedup" }
+lightframe-ai = { path = "crates/lightframe-ai" }
+lightframe-geo = { path = "crates/lightframe-geo" }
+lightframe-video = { path = "crates/lightframe-video" }

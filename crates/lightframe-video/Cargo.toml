@@ -1,0 +1,15 @@
+[package]
+name = "lightframe-video"
+version.workspace = true
+edition.workspace = true
+description = "Video processing and thumbnail extraction via FFmpeg"
+
+[dependencies]
+lightframe-core.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+which = "7"
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["rt", "macros"] }
+tempfile = "3"

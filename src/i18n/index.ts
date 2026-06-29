@@ -10,7 +10,7 @@ const translations: Record<Locale, Record<string, string>> = {
 };
 
 function detectLocale(): Locale {
-  const stored = localStorage.getItem("catchlight-locale");
+  const stored = localStorage.getItem("lightframe-locale");
   if (stored && stored in translations) return stored as Locale;
 
   const browserLang = navigator.language;
@@ -27,7 +27,7 @@ export function getLocale(): Locale {
 
 export function setLocale(locale: Locale) {
   currentLocale = locale;
-  localStorage.setItem("catchlight-locale", locale);
+  localStorage.setItem("lightframe-locale", locale);
   listeners.forEach((fn) => fn());
 }
 

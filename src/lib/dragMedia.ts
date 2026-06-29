@@ -1,4 +1,4 @@
-export const DRAG_MEDIA_MIME = "application/x-catchlight-media-ids";
+export const DRAG_MEDIA_MIME = "application/x-lightframe-media-ids";
 
 export function setDragMediaIds(dataTransfer: DataTransfer, mediaIds: number[]): void {
   dataTransfer.setData(DRAG_MEDIA_MIME, JSON.stringify(mediaIds));

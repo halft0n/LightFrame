@@ -1,8 +1,8 @@
 use crate::state::{AppState, ScanStatus};
-use catchlight_core::media::{MediaFile, MediaType, ThumbnailSize};
-use catchlight_db::Database;
-use catchlight_indexer::{classify_extension, scan_folder as discover_files};
 use futures::stream::{self, StreamExt};
+use lightframe_core::media::{MediaFile, MediaType, ThumbnailSize};
+use lightframe_db::Database;
+use lightframe_indexer::{classify_extension, scan_folder as discover_files};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
@@ -56,10 +56,10 @@ pub async fn run_scan(
     scan_status: ScanStatus,
     concurrency: usize,
     folder_id: i64,
-) -> catchlight_core::Result<()> {
+) -> lightframe_core::Result<()> {
     let folder = db
         .get_watched_folder(folder_id)?
-        .ok_or_else(|| catchlight_core::Error::Other(format!("folder {folder_id} not found")))?;
+        .ok_or_else(|| lightframe_core::Error::Other(format!("folder {folder_id} not found")))?;
 
     scan_status.reset(folder_id);
     db.set_folder_scan_status(folder_id, "scanning")?;
@@ -99,7 +99,7 @@ pub async fn run_scan(
     Ok(())
 }
 
-async fn process_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_core::Result<()> {
+async fn process_file(db: &Database, folder_id: i64, path: &Path) -> lightframe_core::Result<()> {
     let path = path.to_path_buf();
     let media_type = classify_extension(&path);
 
@@ -108,7 +108,7 @@ async fn process_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_
         move || std::fs::metadata(&path)
     })
     .await
-    .map_err(|e| catchlight_core::Error::Other(e.to_string()))??;
+    .map_err(|e| lightframe_core::Error::Other(e.to_string()))??;
 
     let modified_at = fs_meta
         .modified()
@@ -137,20 +137,20 @@ async fn process_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_
     ) {
         tokio::task::spawn_blocking({
             let path = path.clone();
-            move || catchlight_metadata::extract(&path)
+            move || lightframe_metadata::extract(&path)
         })
         .await
-        .map_err(|e| catchlight_core::Error::Other(e.to_string()))??
+        .map_err(|e| lightframe_core::Error::Other(e.to_string()))??
     } else {
-        catchlight_metadata::PhotoMetadata::default()
+        lightframe_metadata::PhotoMetadata::default()
     };
 
     let blake3_hash = tokio::task::spawn_blocking({
         let path = path.clone();
-        move || catchlight_dedup::file_hash(&path)
+        move || lightframe_dedup::file_hash(&path)
     })
     .await
-    .map_err(|e| catchlight_core::Error::Other(e.to_string()))??;
+    .map_err(|e| lightframe_core::Error::Other(e.to_string()))??;
 
     let is_image = matches!(
         media_type,
@@ -162,7 +162,7 @@ async fn process_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_
             let path = path.clone();
             let hash = blake3_hash.clone();
             move || -> (Option<u64>, Option<u64>, Option<Vec<u8>>) {
-                let decoded = match catchlight_core::decode::decode_image(&path) {
+                let decoded = match lightframe_core::decode::decode_image(&path) {
                     Ok(d) => d,
                     Err(e) => {
                         tracing::warn!(path = %path.display(), "decode failed: {e}");
@@ -170,27 +170,27 @@ async fn process_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_
                     }
                 };
 
-                let dhash = Some(catchlight_dedup::dhash_from_decoded(&decoded));
-                let phash = Some(catchlight_dedup::phash_from_decoded(&decoded));
+                let dhash = Some(lightframe_dedup::dhash_from_decoded(&decoded));
+                let phash = Some(lightframe_dedup::phash_from_decoded(&decoded));
 
-                let _ = catchlight_thumbnail::generate_from_decoded(
+                let _ = lightframe_thumbnail::generate_from_decoded(
                     &decoded,
                     &hash,
                     ThumbnailSize::Micro,
                 );
-                let _ = catchlight_thumbnail::generate_from_decoded(
+                let _ = lightframe_thumbnail::generate_from_decoded(
                     &decoded,
                     &hash,
                     ThumbnailSize::Small,
                 );
 
-                let micro = catchlight_thumbnail::micro_blob_from_decoded(&decoded).ok();
+                let micro = lightframe_thumbnail::micro_blob_from_decoded(&decoded).ok();
 
                 (dhash, phash, micro)
             }
         })
         .await
-        .map_err(|e| catchlight_core::Error::Other(e.to_string()))?
+        .map_err(|e| lightframe_core::Error::Other(e.to_string()))?
     } else {
         (None, None, None)
     };
@@ -198,24 +198,24 @@ async fn process_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_
     if matches!(media_type, MediaType::Video) {
         let hash = blake3_hash.clone();
         let vid_path = path.clone();
-        let temp_frame = catchlight_thumbnail::thumb_path(&hash, ThumbnailSize::Small)
+        let temp_frame = lightframe_thumbnail::thumb_path(&hash, ThumbnailSize::Small)
             .with_extension("frame.jpg");
 
-        if catchlight_video::find_ffmpeg().is_some() {
+        if lightframe_video::find_ffmpeg().is_some() {
             if let Some(parent) = temp_frame.parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
-            match catchlight_video::extract_frame(&vid_path, &temp_frame, 1.0).await {
+            match lightframe_video::extract_frame(&vid_path, &temp_frame, 1.0).await {
                 Ok(()) if temp_frame.exists() => {
                     let frame = temp_frame.clone();
                     let hash_clone = hash.clone();
                     let _ = tokio::task::spawn_blocking(move || {
-                        let _ = catchlight_thumbnail::generate(
+                        let _ = lightframe_thumbnail::generate(
                             &frame,
                             &hash_clone,
                             ThumbnailSize::Micro,
                         );
-                        let _ = catchlight_thumbnail::generate(
+                        let _ = lightframe_thumbnail::generate(
                             &frame,
                             &hash_clone,
                             ThumbnailSize::Small,
@@ -233,7 +233,7 @@ async fn process_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_
 
     let media_type = if matches!(media_type, MediaType::Photo) {
         if let (Some(w), Some(h)) = (meta.width, meta.height) {
-            if catchlight_ai::detect_screenshot(&path, w, h)
+            if lightframe_ai::detect_screenshot(&path, w, h)
                 .map(|score| score.is_likely_screenshot())
                 .unwrap_or(false)
             {
@@ -251,15 +251,15 @@ async fn process_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_
     let micro_blob = if matches!(media_type, MediaType::Video) {
         let hash = blake3_hash.clone();
         tokio::task::spawn_blocking(move || {
-            let small_thumb = catchlight_thumbnail::thumb_path(&hash, ThumbnailSize::Small);
+            let small_thumb = lightframe_thumbnail::thumb_path(&hash, ThumbnailSize::Small);
             if small_thumb.exists() {
-                catchlight_thumbnail::generate_micro_blob(&small_thumb).ok()
+                lightframe_thumbnail::generate_micro_blob(&small_thumb).ok()
             } else {
                 None
             }
         })
         .await
-        .map_err(|e| catchlight_core::Error::Other(e.to_string()))?
+        .map_err(|e| lightframe_core::Error::Other(e.to_string()))?
     } else {
         image_micro_blob
     };
@@ -287,13 +287,13 @@ async fn process_file(db: &Database, folder_id: i64, path: &Path) -> catchlight_
     }
 
     if matches!(media_type, MediaType::Screenshot)
-        && let Ok(screenshot_type) = catchlight_ai::classify_screenshot(&path)
+        && let Ok(screenshot_type) = lightframe_ai::classify_screenshot(&path)
     {
         let _ = db.set_screenshot_type(media_id, screenshot_type.label());
     }
 
     if let (Some(lat), Some(lon)) = (media.latitude, media.longitude)
-        && let Some(loc) = catchlight_geo::reverse_geocode(lat, lon)
+        && let Some(loc) = lightframe_geo::reverse_geocode(lat, lon)
     {
         let country = loc.country.as_deref().unwrap_or("");
         let city = loc.city.as_deref().unwrap_or("");
@@ -328,7 +328,7 @@ mod tests {
 
     #[tokio::test]
     async fn discover_nonexistent_directory_returns_empty() {
-        let files = discover_files(Path::new("/nonexistent/catchlight/scan-test"))
+        let files = discover_files(Path::new("/nonexistent/lightframe/scan-test"))
             .await
             .unwrap();
         assert!(files.is_empty());

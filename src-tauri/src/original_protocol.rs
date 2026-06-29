@@ -1,6 +1,6 @@
 use crate::state::AppState;
-use catchlight_db::WatchedFolder;
 use http::{StatusCode, header};
+use lightframe_db::WatchedFolder;
 use std::path::{Path, PathBuf};
 use tauri::http::Response;
 
@@ -304,9 +304,9 @@ fn error_response(status: StatusCode, message: &str) -> Response<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use catchlight_core::config::AppConfig;
-    use catchlight_db::Database;
     use http::StatusCode;
+    use lightframe_core::config::AppConfig;
+    use lightframe_db::Database;
     use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
 
@@ -324,7 +324,7 @@ mod tests {
             scanning: Arc::new(AtomicBool::new(false)),
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: crate::thumb_cache::ThumbCache::new(),
-            ai: Arc::new(tokio::sync::Mutex::new(catchlight_ai::AiDispatcher::new())),
+            ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
         }
     }
 
@@ -591,7 +591,7 @@ mod tests {
             scanning: Arc::new(AtomicBool::new(false)),
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: crate::thumb_cache::ThumbCache::new(),
-            ai: Arc::new(tokio::sync::Mutex::new(catchlight_ai::AiDispatcher::new())),
+            ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
         };
 
         let dir = tempfile::tempdir().unwrap();

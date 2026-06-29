@@ -17,7 +17,7 @@ describe("changeTheme", () => {
     changeTheme("light");
     expect(getSnapshot().theme).toBe("light");
     expect(document.documentElement.classList.contains("light")).toBe(true);
-    expect(localStorage.getItem("catchlight-theme")).toBe("light");
+    expect(localStorage.getItem("lightframe-theme")).toBe("light");
   });
 
   it("applies dark theme class to document root", () => {
@@ -29,6 +29,6 @@ describe("changeTheme", () => {
   it("persists system theme preference", () => {
     changeTheme("system");
     expect(getSnapshot().theme).toBe("system");
-    expect(localStorage.getItem("catchlight-theme")).toBe("system");
+    expect(localStorage.getItem("lightframe-theme")).toBe("system");
   });
 });

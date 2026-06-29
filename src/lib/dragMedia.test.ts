@@ -9,7 +9,7 @@ import {
 describe("dragMedia", () => {
   describe("DRAG_MEDIA_MIME", () => {
     it("uses the expected custom MIME type", () => {
-      expect(DRAG_MEDIA_MIME).toBe("application/x-catchlight-media-ids");
+      expect(DRAG_MEDIA_MIME).toBe("application/x-lightframe-media-ids");
     });
   });
 
