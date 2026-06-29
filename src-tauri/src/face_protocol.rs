@@ -456,7 +456,8 @@ mod tests {
         let file = outside.path().join("secret.jpg");
         write_test_jpeg(&file, 100, 100);
 
-        let face_id = insert_face_for_media_path(&state, watched.path(), &file, [0.0, 0.0, 50.0, 50.0]);
+        let face_id =
+            insert_face_for_media_path(&state, watched.path(), &file, [0.0, 0.0, 50.0, 50.0]);
 
         let resp = handle(&state, &format!("/{face_id}"));
         assert_eq!(resp.status(), StatusCode::FORBIDDEN);

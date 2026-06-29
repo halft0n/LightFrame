@@ -187,9 +187,7 @@ fn components_equal(a: std::path::Component<'_>, b: std::path::Component<'_>) ->
             (Component::Prefix(pa), Component::Prefix(pb)) => {
                 pa.as_os_str().eq_ignore_ascii_case(pb.as_os_str())
             }
-            (Component::Normal(na), Component::Normal(nb)) => {
-                na.eq_ignore_ascii_case(nb)
-            }
+            (Component::Normal(na), Component::Normal(nb)) => na.eq_ignore_ascii_case(nb),
             _ => false,
         }
     }

@@ -443,11 +443,7 @@ mod tests {
         let harness = TestHarness::new();
         let result = regenerate_thumbnails_for_media(&harness.state, 999_999);
         assert!(result.is_err());
-        assert!(
-            result
-                .unwrap_err()
-                .contains("media 999999 not found")
-        );
+        assert!(result.unwrap_err().contains("media 999999 not found"));
     }
 
     #[test]

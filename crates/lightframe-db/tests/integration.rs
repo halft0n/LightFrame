@@ -1646,16 +1646,24 @@ fn location_groups_and_media_by_location() {
     assert_eq!(tokyo_group.count, 2);
     assert!(tokyo_group.sample_media_id == tokyo_id || tokyo_group.sample_media_id > 0);
 
-    let tokyo_media = db.get_media_by_location("日本", Some("东京"), 10, 0).unwrap();
+    let tokyo_media = db
+        .get_media_by_location("日本", Some("东京"), 10, 0)
+        .unwrap();
     assert_eq!(tokyo_media.len(), 2);
 
     let usa_no_city = db.get_media_by_location("USA", None, 10, 0).unwrap();
     assert_eq!(usa_no_city.len(), 1);
 
-    assert!(db.get_media_by_location("日本", Some("京都"), 10, 0).unwrap().is_empty());
+    assert!(
+        db.get_media_by_location("日本", Some("京都"), 10, 0)
+            .unwrap()
+            .is_empty()
+    );
 
     db.update_media_location(tokyo_id, "横滨", "日本").unwrap();
-    let tokyo_after = db.get_media_by_location("日本", Some("东京"), 10, 0).unwrap();
+    let tokyo_after = db
+        .get_media_by_location("日本", Some("东京"), 10, 0)
+        .unwrap();
     assert_eq!(tokyo_after.len(), 1);
     assert_eq!(
         db.get_media_by_location("日本", Some("横滨"), 10, 0)
@@ -1704,7 +1712,8 @@ fn location_stats_and_geo_queries() {
     let no_gps_id = db
         .upsert_media(fid, &sample_media("/photos/no_gps.jpg"))
         .unwrap();
-    db.update_media_location(no_gps_id, "Berlin", "Germany").unwrap();
+    db.update_media_location(no_gps_id, "Berlin", "Germany")
+        .unwrap();
 
     let stats = db.get_location_stats().unwrap();
     assert_eq!(stats.total_with_gps, 2);
@@ -1858,7 +1867,8 @@ fn find_similar_media_ranks_by_embedding_similarity() {
         .upsert_media(fid, &sample_media("/photos/different.jpg"))
         .unwrap();
 
-    db.store_clip_embedding(target_id, &[1.0, 0.0, 0.0]).unwrap();
+    db.store_clip_embedding(target_id, &[1.0, 0.0, 0.0])
+        .unwrap();
     db.store_clip_embedding(similar_id, &[0.95, 0.05, 0.0])
         .unwrap();
     db.store_clip_embedding(dissimilar_id, &[0.0, 1.0, 0.0])
@@ -1882,8 +1892,10 @@ fn get_media_by_type_and_count() {
     let db = create_test_db();
     let fid = insert_folder_id(&db, "/photos");
 
-    db.upsert_media(fid, &sample_media("/photos/a.jpg")).unwrap();
-    db.upsert_media(fid, &sample_media("/photos/b.jpg")).unwrap();
+    db.upsert_media(fid, &sample_media("/photos/a.jpg"))
+        .unwrap();
+    db.upsert_media(fid, &sample_media("/photos/b.jpg"))
+        .unwrap();
     let mut video = sample_media("/photos/v.mp4");
     video.media_type = MediaType::Video;
     db.upsert_media(fid, &video).unwrap();
@@ -2197,8 +2209,11 @@ fn smart_album_media_query_and_delete() {
     let db = create_test_db();
     let fid = insert_folder_id(&db, "/photos");
 
-    db.upsert_media(fid, &sample_media("/photos/fav.jpg")).unwrap();
-    let fav_id = db.upsert_media(fid, &sample_media("/photos/fav2.jpg")).unwrap();
+    db.upsert_media(fid, &sample_media("/photos/fav.jpg"))
+        .unwrap();
+    let fav_id = db
+        .upsert_media(fid, &sample_media("/photos/fav2.jpg"))
+        .unwrap();
     db.toggle_favorite(fav_id).unwrap();
 
     let rule = SmartAlbumRule {

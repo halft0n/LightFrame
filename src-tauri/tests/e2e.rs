@@ -1,8 +1,8 @@
+use chrono::NaiveDateTime;
 use image::{ImageBuffer, Rgb, RgbImage};
 use lightframe_app::export_edited_image;
 use lightframe_core::media::{MediaFile, MediaType, ThumbnailSize};
 use lightframe_db::{Database, SmartAlbumRule};
-use chrono::NaiveDateTime;
 use lightframe_indexer::{
     classify_extension, is_media_change_event, is_media_remove_event, is_media_rename_event,
     scan_folder,
@@ -525,8 +525,16 @@ async fn e2e_soft_delete_and_permanent_delete_by_id() {
     env.scan().await;
 
     let items = env.db.get_all_media(10, 0).unwrap();
-    let id_a = items.iter().find(|m| m.filename == "keep-by-id.png").unwrap().id;
-    let id_b = items.iter().find(|m| m.filename == "trash-by-id.png").unwrap().id;
+    let id_a = items
+        .iter()
+        .find(|m| m.filename == "keep-by-id.png")
+        .unwrap()
+        .id;
+    let id_b = items
+        .iter()
+        .find(|m| m.filename == "trash-by-id.png")
+        .unwrap()
+        .id;
 
     env.db.set_deleted(id_b, true).unwrap();
     let deleted = env.db.list_deleted_media().unwrap();
@@ -579,7 +587,10 @@ async fn e2e_smart_album_crud() {
     env.scan().await;
 
     let items = env.db.get_all_media(10, 0).unwrap();
-    let fav_item = items.iter().find(|m| m.filename == "smart-fav.png").unwrap();
+    let fav_item = items
+        .iter()
+        .find(|m| m.filename == "smart-fav.png")
+        .unwrap();
     env.db.toggle_favorite(fav_item.id).unwrap();
 
     let rule = SmartAlbumRule {
@@ -608,8 +619,7 @@ async fn e2e_smart_album_crud() {
 
     env.db.delete_smart_album(album.id).unwrap();
     assert!(
-        !env
-            .db
+        !env.db
             .list_smart_albums()
             .unwrap()
             .iter()
@@ -625,7 +635,11 @@ async fn e2e_memories_generation() {
     for i in 0..5 {
         let path = env.write_png(&format!("mem-{i}.png"), 60 + i);
         env.scan().await;
-        let mut media = env.db.get_media_by_path(&path.to_string_lossy()).unwrap().unwrap();
+        let mut media = env
+            .db
+            .get_media_by_path(&path.to_string_lossy())
+            .unwrap()
+            .unwrap();
         media.created_at = Some(dt + chrono::Duration::hours(i as i64));
         media.latitude = Some(31.2304);
         media.longitude = Some(121.4737);
@@ -655,7 +669,11 @@ async fn e2e_timeline_cursor_pagination() {
         env.scan().await;
         let date = format!("2024-06-{:02} 10:00:00", 10 + i);
         let parsed = NaiveDateTime::parse_from_str(&date, "%Y-%m-%d %H:%M:%S").unwrap();
-        let mut media = env.db.get_media_by_path(&path.to_string_lossy()).unwrap().unwrap();
+        let mut media = env
+            .db
+            .get_media_by_path(&path.to_string_lossy())
+            .unwrap()
+            .unwrap();
         media.created_at = Some(parsed);
         env.db.upsert_media(env.folder_id, &media).unwrap();
     }
