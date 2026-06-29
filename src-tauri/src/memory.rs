@@ -63,6 +63,7 @@ fn read_sysinfo() -> Option<MemorySnapshot> {
     })
 }
 
+#[cfg(any(target_os = "linux", test))]
 fn parse_kb(raw: &str) -> Option<u64> {
     raw.split_whitespace().next().and_then(|s| s.parse().ok())
 }

@@ -3,10 +3,12 @@
 use crate::Result;
 use std::path::PathBuf;
 
+#[allow(dead_code)]
 pub struct MftScanner {
     volume: char,
 }
 
+#[allow(dead_code)]
 pub struct MftEntry {
     pub path: PathBuf,
     pub size: u64,
@@ -30,6 +32,7 @@ impl MftScanner {
     }
 }
 
+#[allow(dead_code)]
 pub struct UsnJournal {
     volume: char,
 }
@@ -45,11 +48,13 @@ impl UsnJournal {
     }
 }
 
+#[allow(dead_code)]
 pub struct UsnChange {
     pub path: PathBuf,
     pub reason: UsnReason,
 }
 
+#[allow(dead_code)]
 pub enum UsnReason {
     Created,
     Deleted,

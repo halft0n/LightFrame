@@ -174,12 +174,14 @@ mod tests {
     }
 
     fn insert_face_media(state: &AppState, dir: &std::path::Path, bbox: [f32; 4]) -> (i64, i64) {
+        let canonical_dir =
+            strip_extended_prefix(std::fs::canonicalize(dir).expect("canonicalize dir"));
         let folder_id = state
             .db
-            .add_watched_folder(dir.to_str().unwrap())
+            .add_watched_folder(canonical_dir.to_str().unwrap())
             .expect("add folder")
             .id;
-        let file = dir.join("face_source.jpg");
+        let file = canonical_dir.join("face_source.jpg");
         write_test_jpeg(&file, 200, 200);
         let media = MediaFile {
             id: 0,
@@ -243,12 +245,13 @@ mod tests {
     fn handle_missing_media_file_returns_404() {
         let state = test_state();
         let dir = tempfile::tempdir().unwrap();
+        let canonical_dir = strip_extended_prefix(std::fs::canonicalize(dir.path()).unwrap());
         let folder_id = state
             .db
-            .add_watched_folder(dir.path().to_str().unwrap())
+            .add_watched_folder(canonical_dir.to_str().unwrap())
             .unwrap()
             .id;
-        let missing_path = dir.path().join("gone.jpg");
+        let missing_path = canonical_dir.join("gone.jpg");
         let media = MediaFile {
             id: 0,
             path: missing_path.to_string_lossy().to_string(),
