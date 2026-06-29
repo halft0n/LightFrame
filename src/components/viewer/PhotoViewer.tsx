@@ -94,9 +94,11 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   const [rotation, setRotation] = useState(0);
   const [closing, setClosing] = useState(false);
   const [currentImageLoaded, setCurrentImageLoaded] = useState(false);
+  const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const filmstripRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const printTargetRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
 
   const requestClose = useCallback(() => {
@@ -332,14 +334,63 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
     setCurrentImageLoaded(true);
   }, []);
 
+  const isVideo = media?.media_type === "Video";
+
   const handleShare = useCallback(async () => {
-    if (!media || !navigator.share) return;
+    if (!media) return;
+
     try {
-      await navigator.share({ title: media.filename, text: media.filename });
+      if (media.media_type !== "Video") {
+        const url = getOriginalUrl(media.path);
+        const response = await fetch(url);
+        const blob = await response.blob();
+        const file = new File([blob], media.filename, {
+          type: blob.type || "image/jpeg",
+        });
+
+        if (typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: media.filename });
+          return;
+        }
+      }
+
+      if (typeof navigator.share === "function") {
+        await navigator.share({ title: media.filename, text: media.filename });
+      }
     } catch {
       // User cancelled or share unavailable
     }
   }, [media]);
+
+  const handlePrint = useCallback(() => {
+    if (!media || isVideo) return;
+    window.print();
+  }, [media, isVideo]);
+
+  const handleCopyImage = useCallback(async () => {
+    if (!media || isVideo || !navigator.clipboard?.write) return;
+
+    try {
+      const url = getOriginalUrl(media.path);
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const type = blob.type || "image/png";
+      await navigator.clipboard.write([new ClipboardItem({ [type]: blob })]);
+      setCopyFeedback(t("viewer.copySuccess"));
+      window.setTimeout(() => setCopyFeedback(null), 2000);
+    } catch (error) {
+      console.error("Copy failed:", error);
+      setCopyFeedback(t("viewer.copyFailed"));
+      window.setTimeout(() => setCopyFeedback(null), 2000);
+    }
+  }, [media, isVideo, t]);
+
+  const canShare =
+    typeof navigator.share === "function" ||
+    (typeof navigator.canShare === "function" && media?.media_type !== "Video");
+
+  const canCopy =
+    !isVideo && typeof navigator.clipboard?.write === "function" && "ClipboardItem" in window;
 
   const handleZoomChange = useCallback((value: number) => {
     setZoom(value);
@@ -369,7 +420,6 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
     .filter(Boolean)
     .join(" ");
 
-  const isVideo = media?.media_type === "Video";
   const imageSrc = media
     ? useOriginal
       ? getOriginalUrl(media.path)
@@ -477,12 +527,35 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
           >
             {t("viewer.info")}
           </button>
+          {!isVideo && (
+            <button
+              type="button"
+              onClick={handlePrint}
+              className="rounded-lg px-3 py-1.5 text-sm text-neutral-300 transition hover:bg-white/10"
+              title={t("viewer.print")}
+              aria-label={t("viewer.print")}
+            >
+              🖨
+            </button>
+          )}
+          {!isVideo && (
+            <button
+              type="button"
+              onClick={() => void handleCopyImage()}
+              disabled={!canCopy}
+              className="rounded-lg px-3 py-1.5 text-sm text-neutral-300 transition hover:bg-white/10 disabled:opacity-30"
+              title={copyFeedback ?? t("viewer.copy")}
+              aria-label={t("viewer.copy")}
+            >
+              ⧉
+            </button>
+          )}
           <button
             type="button"
             onClick={() => void handleShare()}
-            disabled={!media || typeof navigator.share !== "function"}
+            disabled={!media || !canShare}
             className="rounded-lg px-3 py-1.5 text-sm text-neutral-300 transition hover:bg-white/10 disabled:opacity-30"
-            title={t("viewer.share")}
+            title={canShare ? t("viewer.share") : t("viewer.shareUnavailable")}
             aria-label={t("viewer.share")}
           >
             ↗
@@ -621,6 +694,12 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
           onClose={() => setEditorOpen(false)}
           onSaved={() => void handleEditorSaved()}
         />
+      )}
+
+      {!isVideo && media && (
+        <div ref={printTargetRef} className="photo-print-target hidden print:flex" aria-hidden="true">
+          <img src={getOriginalUrl(media.path)} alt={media.filename} />
+        </div>
       )}
     </div>
   );

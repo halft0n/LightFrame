@@ -6,14 +6,60 @@ use lightframe_db::Database;
 use lightframe_indexer::{classify_extension, scan_folder as discover_files};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::Ordering;
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use tracing::{Instrument, error, info, warn};
+
+const PROGRESS_EMIT_INTERVAL: Duration = Duration::from_millis(500);
+const PROGRESS_EMIT_FILE_INTERVAL: i64 = 50;
 
 fn emit_progress(app: &AppHandle, status: &ScanStatus) {
     let payload = status.snapshot();
     if let Err(e) = app.emit("scan-progress", &payload) {
         warn!("failed to emit scan-progress: {e}");
+    }
+}
+
+struct ProgressThrottler {
+    last_emit: Mutex<Instant>,
+}
+
+impl ProgressThrottler {
+    fn new() -> Self {
+        Self {
+            last_emit: Mutex::new(
+                Instant::now()
+                    .checked_sub(PROGRESS_EMIT_INTERVAL)
+                    .unwrap_or_else(Instant::now),
+            ),
+        }
+    }
+
+    fn maybe_emit(&self, app: &AppHandle, status: &ScanStatus, force: bool) {
+        if force {
+            emit_progress(app, status);
+            if let Ok(mut last) = self.last_emit.lock() {
+                *last = Instant::now();
+            }
+            return;
+        }
+
+        let scanned = status.snapshot().scanned;
+        let emit_by_count = scanned % PROGRESS_EMIT_FILE_INTERVAL == 0;
+        let emit_by_time = self
+            .last_emit
+            .lock()
+            .map(|last| last.elapsed() >= PROGRESS_EMIT_INTERVAL)
+            .unwrap_or(true);
+
+        if emit_by_count || emit_by_time {
+            emit_progress(app, status);
+            if let Ok(mut last) = self.last_emit.lock() {
+                *last = Instant::now();
+            }
+        }
     }
 }
 
@@ -77,12 +123,14 @@ pub async fn run_scan(
     .await?;
     scan_status.set_total(files.len() as i64);
     scan_status.set_status("scanning");
-    emit_progress(app, &scan_status);
+    let progress = Arc::new(ProgressThrottler::new());
+    progress.maybe_emit(app, &scan_status, true);
 
     stream::iter(files.into_iter().map(|path| {
         let db = Arc::clone(&db);
         let scan_status = scan_status.clone();
         let app = app.clone();
+        let progress = Arc::clone(&progress);
         async move {
             if let Err(e) = process_file(&db, folder_id, &path).await {
                 warn!(path = %path.display(), "failed to process file: {e}");
@@ -91,7 +139,7 @@ pub async fn run_scan(
             if scanned % 100 == 0 {
                 memory::log_memory("scan_progress");
             }
-            emit_progress(&app, &scan_status);
+            progress.maybe_emit(&app, &scan_status, false);
         }
     }))
     .buffer_unordered(concurrency)
@@ -103,7 +151,7 @@ pub async fn run_scan(
     })?;
     db.set_folder_scan_status(folder_id, "idle")?;
     scan_status.set_status("complete");
-    emit_progress(app, &scan_status);
+    progress.maybe_emit(app, &scan_status, true);
     memory::log_memory("scan_end");
     info!(
         folder_id,

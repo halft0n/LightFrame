@@ -517,3 +517,29 @@ input:focus:not(:focus-visible) {
   white-space: nowrap;
   border-width: 0;
 }
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  .photo-print-target,
+  .photo-print-target * {
+    visibility: visible !important;
+  }
+
+  .photo-print-target {
+    position: fixed;
+    inset: 0;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+    background: white !important;
+  }
+
+  .photo-print-target img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+}

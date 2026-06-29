@@ -241,6 +241,64 @@ describe("PhotoViewer", () => {
     expect(screen.getByText("180°")).toBeInTheDocument();
   });
 
+  it("shows print and copy buttons for photos", async () => {
+    render(<PhotoViewer mediaId={1} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("打印")).toBeInTheDocument();
+      expect(screen.getByLabelText("复制图片")).toBeInTheDocument();
+    });
+  });
+
+  it("calls window.print when print button clicked", async () => {
+    const printSpy = vi.spyOn(window, "print").mockImplementation(() => {});
+    const user = userEvent.setup();
+    render(<PhotoViewer mediaId={1} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("打印")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByLabelText("打印"));
+    expect(printSpy).toHaveBeenCalled();
+    printSpy.mockRestore();
+  });
+
+  it("copies image to clipboard when copy button clicked", async () => {
+    vi.stubGlobal(
+      "ClipboardItem",
+      class {
+        constructor(public items: Record<string, Blob>) {}
+      },
+    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      blob: () => Promise.resolve(new Blob(["img"], { type: "image/jpeg" })),
+    }));
+
+    Object.defineProperty(window.navigator, "clipboard", {
+      configurable: true,
+      value: {
+        write: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+
+    const user = userEvent.setup();
+    render(<PhotoViewer mediaId={1} />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("复制图片")).toBeEnabled();
+    });
+
+    await user.click(screen.getByLabelText("复制图片"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("复制图片")).toHaveAttribute(
+        "title",
+        "图片已复制到剪贴板",
+      );
+    });
+  });
+
   it("rotates counter-clockwise with Shift+R", async () => {
     render(<PhotoViewer mediaId={1} />);
 

@@ -1305,39 +1305,12 @@ pub async fn detect_faces(
     state: State<'_, AppState>,
     media_id: i64,
 ) -> Result<Vec<FaceInfo>, String> {
-    let media = state
-        .db
-        .get_media_by_id(media_id)
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("media {media_id} not found"))?;
-
-    let path = std::path::Path::new(&media.path);
-    if !path.is_file() {
-        return Err(format!("media file not found: {}", media.path));
+    {
+        let mut ai = state.ai.lock().await;
+        ai.ensure_python().await.map_err(|e| e.to_string())?;
     }
 
-    let mut ai = state.ai.lock().await;
-    ai.ensure_python().await.map_err(|e| e.to_string())?;
-
-    let faces = ai
-        .detect_faces_in_image(path)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    if !faces.is_empty() {
-        let inputs: Vec<lightframe_db::FaceDetectionInput> = faces
-            .iter()
-            .map(|f| lightframe_db::FaceDetectionInput {
-                bbox: f.bbox,
-                confidence: f.confidence,
-                embedding: f.embedding.clone(),
-            })
-            .collect();
-        state
-            .db
-            .store_face_detections(media_id, &inputs)
-            .map_err(|e| e.to_string())?;
-    }
+    detect_and_store_faces_for_media(&state, media_id).await?;
 
     let records = state
         .db
@@ -1423,7 +1396,7 @@ pub async fn detect_faces_batch(
     }
 
     for media_id in media_ids {
-        match detect_faces_for_media(&state, media_id).await {
+        match detect_and_store_faces_for_media(&state, media_id).await {
             Ok(count) => faces_found += count,
             Err(e) => tracing::warn!(media_id, "face detection failed: {e}"),
         }
@@ -1439,7 +1412,7 @@ pub async fn detect_faces_batch(
     })
 }
 
-async fn detect_faces_for_media(state: &AppState, media_id: i64) -> Result<i64, String> {
+async fn detect_and_store_faces_for_media(state: &AppState, media_id: i64) -> Result<i64, String> {
     let media = state
         .db
         .get_media_by_id(media_id)
@@ -1546,7 +1519,7 @@ pub async fn cluster_faces(
     }
     let db = state.db.clone();
     tokio::task::spawn_blocking(move || {
-        db.clear_unnamed_person_clusters()
+        db.unassign_faces_from_unnamed_persons()
             .map_err(|e| e.to_string())?;
         let faces = db
             .get_unassigned_face_embeddings()
@@ -1574,6 +1547,9 @@ pub async fn cluster_faces(
                 avg_intra_cluster_distance: cluster.avg_intra_cluster_distance,
             });
         }
+
+        db.delete_empty_unnamed_persons()
+            .map_err(|e| e.to_string())?;
 
         Ok(results)
     })

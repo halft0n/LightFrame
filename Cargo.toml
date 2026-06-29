@@ -18,8 +18,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rusqlite = { version = "0.33", features = ["bundled", "blob"] }
 blake3 = "1"
-image = "0.25"
-
+image = { version = "0.25", features = ["avif"] }
 lightframe-core = { path = "crates/lightframe-core" }
 lightframe-db = { path = "crates/lightframe-db" }
 lightframe-indexer = { path = "crates/lightframe-indexer" }

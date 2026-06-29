@@ -9,7 +9,7 @@ lightframe-core.workspace = true
 blake3.workspace = true
 tokio.workspace = true
 tracing.workspace = true
-image = "0.25"
+image.workspace = true
 
 [[bench]]
 name = "thumb_bench"
@@ -19,3 +19,4 @@ harness = false
 tempfile = "3"
 criterion = { version = "0.5", features = ["html_reports"] }
 lightframe-core.workspace = true
+image.workspace = true

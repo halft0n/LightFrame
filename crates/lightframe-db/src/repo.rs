@@ -2705,7 +2705,10 @@ impl Database {
             .collect())
     }
 
-    pub fn clear_unnamed_person_clusters(&self) -> lightframe_core::Result<()> {
+    /// Unassign faces from unnamed persons so they can be re-clustered.
+    /// Does not delete person records — call [`Self::delete_empty_unnamed_persons`]
+    /// after re-clustering to remove orphaned shells.
+    pub fn unassign_faces_from_unnamed_persons(&self) -> lightframe_core::Result<()> {
         let conn = self.conn()?;
         conn.execute(
             "UPDATE face_detections SET person_id = NULL
@@ -2715,8 +2718,18 @@ impl Database {
             [],
         )
         .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    /// Remove unnamed person records that no longer have any assigned faces.
+    pub fn delete_empty_unnamed_persons(&self) -> lightframe_core::Result<()> {
+        let conn = self.conn()?;
         conn.execute(
-            "DELETE FROM persons WHERE name IS NULL OR TRIM(COALESCE(name, '')) = ''",
+            "DELETE FROM persons
+             WHERE (name IS NULL OR TRIM(COALESCE(name, '')) = '')
+               AND NOT EXISTS (
+                   SELECT 1 FROM face_detections WHERE person_id = persons.id
+               )",
             [],
         )
         .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
@@ -2919,10 +2932,13 @@ impl Database {
         let candidates = self.get_all_clip_embeddings()?;
         let scored = find_similar_embeddings(embedding, &candidates, threshold, limit);
 
+        let ids: Vec<i64> = scored.iter().map(|(id, _)| *id).collect();
+        let media_by_id = self.get_media_by_ids(&ids)?;
+
         let mut results = Vec::with_capacity(scored.len());
         for (id, score) in scored {
-            if let Some(media) = self.get_media_by_id(id)? {
-                results.push((media, score));
+            if let Some(media) = media_by_id.get(&id) {
+                results.push((media.clone(), score));
             }
         }
         Ok(results)

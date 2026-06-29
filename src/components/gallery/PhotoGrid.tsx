@@ -158,7 +158,13 @@ export function PhotoGrid({
     if (virtualItems.length === 0) return;
     const center = virtualItems[Math.floor(virtualItems.length / 2)];
     const centerIndex = center.index * columnCount;
-    setMediaScrollIndex(Math.min(centerIndex, Math.max(0, mediaItems.length - 1)));
+    const index = Math.min(centerIndex, Math.max(0, mediaItems.length - 1));
+
+    const timeoutId = window.setTimeout(() => {
+      setMediaScrollIndex(index);
+    }, 200);
+
+    return () => window.clearTimeout(timeoutId);
   }, [rowVirtualizer.range, columnCount, mediaItems.length]);
 
   const handleScroll = useCallback(() => {
@@ -237,7 +243,11 @@ export function PhotoGrid({
       if (e.key === "f" || e.key === "F") {
         e.preventDefault();
         void (async () => {
-          await batchToggleFavorite(selectedMediaIds, true);
+          try {
+            await batchToggleFavorite(selectedMediaIds, true);
+          } catch (error) {
+            console.error("Batch favorite failed:", error);
+          }
         })();
       }
     };

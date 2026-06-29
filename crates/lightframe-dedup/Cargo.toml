@@ -9,7 +9,7 @@ lightframe-core.workspace = true
 blake3.workspace = true
 tokio.workspace = true
 tracing.workspace = true
-image = "0.25"
+image.workspace = true
 
 [[bench]]
 name = "dedup_bench"

@@ -213,7 +213,8 @@ impl AiDispatcher {
     }
 
     /// Encode a text query into a CLIP embedding vector (512-dim, L2-normalized).
-    /// Tries the Python sidecar first; ONNX Rust path is not yet implemented.
+    /// Prefers the Python sidecar; falls back to the ONNX Rust text encoder when the
+    /// `clip` feature is enabled (BPE tokenization is not implemented in Rust yet).
     pub async fn compute_text_embedding(&self, text: &str) -> Result<Option<Vec<f32>>> {
         if text.trim().is_empty() {
             return Ok(None);

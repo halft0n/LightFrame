@@ -11,5 +11,11 @@ chrono = { version = "0.4", features = ["serde"] }
 dirs = "6"
 image.workspace = true
 
+[features]
+default = []
+# Enable AVIF decoding via image crate's optional libdav1d backend.
+avif-native = ["image/avif-native"]
+
 [dev-dependencies]
 serde_json.workspace = true
+tempfile = "3"

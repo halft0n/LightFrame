@@ -1,5 +1,4 @@
 use crate::models::{clip_model_path, model_exists};
-use image::RgbImage;
 use image::imageops::FilterType;
 use lightframe_core::Result;
 use ndarray::Array4;
@@ -138,20 +137,6 @@ impl ClipTextEncoder {
             "CLIP text encoding requires the Python sidecar (open-clip-torch)".into(),
         ))
     }
-}
-
-#[allow(dead_code)]
-fn resize_and_center_crop(img: &RgbImage, size: u32) -> RgbImage {
-    let w = img.width();
-    let h = img.height();
-    let scale = (size as f32 / w as f32).max(size as f32 / h as f32);
-    let new_w = (w as f32 * scale).round() as u32;
-    let new_h = (h as f32 * scale).round() as u32;
-    let resized = image::imageops::resize(img, new_w, new_h, FilterType::Triangle);
-
-    let x = (new_w.saturating_sub(size)) / 2;
-    let y = (new_h.saturating_sub(size)) / 2;
-    image::imageops::crop_imm(&resized, x, y, size, size).to_image()
 }
 
 #[cfg(test)]

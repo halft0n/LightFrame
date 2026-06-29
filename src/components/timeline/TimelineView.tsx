@@ -128,6 +128,7 @@ export function TimelineView() {
   const [groups, setGroups] = useState<TimelineGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
   const [cursor, setCursor] = useState<ReturnType<typeof timelineCursorFromGroups>>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -142,6 +143,7 @@ export function TimelineView() {
 
     async function loadInitial() {
       setLoading(true);
+      setError(null);
       try {
         const data = await getTimelineGroups(PAGE_SIZE);
         if (!cancelled) {
@@ -152,6 +154,9 @@ export function TimelineView() {
         }
       } catch (err) {
         console.error("Failed to load timeline groups:", err);
+        if (!cancelled) {
+          setError(t("errors.generic"));
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -161,7 +166,7 @@ export function TimelineView() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [t]);
 
   const loadMore = useCallback(async () => {
     if (loadingMore || !hasMore || !cursor) return;
@@ -177,6 +182,7 @@ export function TimelineView() {
       setHasMore(itemCount >= PAGE_SIZE);
     } catch (err) {
       console.error("Failed to load more timeline groups:", err);
+      setError(t("errors.generic"));
     } finally {
       setLoadingMore(false);
     }
@@ -240,6 +246,14 @@ export function TimelineView() {
     return (
       <div className="flex flex-1 items-center justify-center text-neutral-500">
         <p>{t("gallery.loading")}</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-1 items-center justify-center text-red-600 dark:text-red-400">
+        <p>{error}</p>
       </div>
     );
   }

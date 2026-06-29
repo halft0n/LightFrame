@@ -52,6 +52,7 @@ lightframe-thumbnail.workspace = true
 image.workspace = true
 tokio.workspace = true
 chrono = { version = "0.4", features = ["serde"] }
+notify = "7"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
