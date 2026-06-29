@@ -29,6 +29,9 @@ src-tauri/gen/schemas/
 Thumbs.db
 desktop.ini
 
+# Signing keys (NEVER commit private keys)
+.tauri-keys/
+
 # Environment
 .env
 .env.*
