@@ -2,6 +2,7 @@ pub mod scanner;
 pub mod watcher;
 
 #[cfg(target_os = "windows")]
+#[allow(dead_code)]
 mod mft;
 
 pub use watcher::{
