@@ -1,8 +1,8 @@
 # LightFrame / 影迹
 
-[![Build Status](https://github.com/halft0n/CatchLight/actions/workflows/build.yml/badge.svg)](https://github.com/halft0n/CatchLight/actions/workflows/build.yml)
-[![Latest Release](https://img.shields.io/github/v/release/halft0n/CatchLight?include_prereleases&label=release)](https://github.com/halft0n/CatchLight/releases/latest)
-[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)](https://github.com/halft0n/CatchLight/releases)
+[![Build Status](https://github.com/halft0n/LightFrame/actions/workflows/build.yml/badge.svg)](https://github.com/halft0n/LightFrame/actions/workflows/build.yml)
+[![Latest Release](https://img.shields.io/github/v/release/halft0n/LightFrame?include_prereleases&label=release)](https://github.com/halft0n/LightFrame/releases/latest)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)](https://github.com/halft0n/LightFrame/releases)
 [![Language](https://img.shields.io/badge/backend-Rust-orange?logo=rust)](https://www.rust-lang.org)
 [![Framework](https://img.shields.io/badge/framework-Tauri%202-blue?logo=tauri)](https://tauri.app)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
@@ -145,7 +145,7 @@ Contributions are welcome! Please:
 4. Keep changes focused — one feature or fix per PR
 5. Update docs when behavior changes
 
-Bug reports and feature requests: [GitHub Issues](https://github.com/halft0n/CatchLight/issues)
+Bug reports and feature requests: [GitHub Issues](https://github.com/halft0n/LightFrame/issues)
 
 ## Acknowledgements
 
@@ -171,8 +171,8 @@ LightFrame 的诞生离不开以下优秀的开源项目：
 ## Star History
 
 <p align="center">
-  <a href="https://www.star-history.com/#halft0n/CatchLight&type=Date">
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=halft0n/CatchLight&type=Date" />
+  <a href="https://www.star-history.com/#halft0n/LightFrame&type=Date">
+    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=halft0n/LightFrame&type=Date" />
   </a>
 </p>
 
