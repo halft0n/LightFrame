@@ -345,3 +345,136 @@ fn face_store_accepts_nan_and_infinity_embeddings() {
     let stored = db.get_faces_for_media(media_id).unwrap();
     assert_eq!(stored.len(), 2);
 }
+
+#[test]
+fn concurrent_readers_do_not_deadlock() {
+    let db = Arc::new(create_test_db());
+    let fid = insert_folder_id(&db, "/photos");
+
+    for i in 0..20 {
+        db.upsert_media(fid, &sample_media(&format!("/photos/read_{i}.jpg")))
+            .unwrap();
+    }
+
+    let handles: Vec<_> = (0..8)
+        .map(|_| {
+            let db = Arc::clone(&db);
+            thread::spawn(move || {
+                for _ in 0..50 {
+                    let _ = db.get_all_media(100, 0);
+                    let _ = db.get_media_count();
+                    let _ = db.list_albums();
+                    let _ = db.search_media("read", 10, 0);
+                }
+            })
+        })
+        .collect();
+
+    for handle in handles {
+        handle.join().expect("reader thread should not deadlock");
+    }
+}
+
+#[test]
+fn double_toggle_favorite_returns_to_original_state() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/a.jpg"))
+        .unwrap();
+
+    assert!(!db.is_favorite(media_id).unwrap());
+    assert!(db.toggle_favorite(media_id).unwrap());
+    assert!(!db.toggle_favorite(media_id).unwrap());
+    assert!(!db.is_favorite(media_id).unwrap());
+}
+
+#[test]
+fn delete_already_deleted_is_idempotent() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/a.jpg"))
+        .unwrap();
+
+    db.set_deleted(media_id, true).unwrap();
+    db.set_deleted(media_id, true).unwrap();
+    assert_eq!(db.list_deleted_media().unwrap().len(), 1);
+    assert!(db.get_media_by_id(media_id).unwrap().is_none());
+}
+
+#[test]
+fn restore_non_deleted_item_is_safe() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/a.jpg"))
+        .unwrap();
+
+    db.set_deleted(media_id, false).unwrap();
+    assert!(db.get_media_by_id(media_id).unwrap().is_some());
+    assert!(db.list_deleted_media().unwrap().is_empty());
+}
+
+#[test]
+fn media_with_empty_path_string() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let mut media = sample_media("");
+    media.path = String::new();
+    media.filename = "empty_path.jpg".to_string();
+
+    let media_id = db.upsert_media(fid, &media).unwrap();
+    let stored = db.get_media_by_id(media_id).unwrap().unwrap();
+    assert_eq!(stored.path, "");
+}
+
+#[test]
+fn media_with_very_long_path() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let long_path = format!("/photos/{}", "x".repeat(1000));
+    let mut media = sample_media(&long_path);
+    media.filename = "long.jpg".to_string();
+
+    let media_id = db.upsert_media(fid, &media).unwrap();
+    let stored = db.get_media_by_id(media_id).unwrap().unwrap();
+    assert_eq!(stored.path.len(), long_path.len());
+}
+
+#[test]
+fn media_with_zero_size_bytes() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let mut media = sample_media("/photos/zero.jpg");
+    media.size_bytes = 0;
+
+    let media_id = db.upsert_media(fid, &media).unwrap();
+    assert_eq!(db.get_media_by_id(media_id).unwrap().unwrap().size_bytes, 0);
+}
+
+#[test]
+fn media_with_negative_coordinates() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let mut media = sample_media("/photos/south.jpg");
+    media.latitude = Some(-33.8688);
+    media.longitude = Some(151.2093);
+
+    let media_id = db.upsert_media(fid, &media).unwrap();
+    let stored = db.get_media_by_id(media_id).unwrap().unwrap();
+    assert_eq!(stored.latitude, Some(-33.8688));
+    assert_eq!(stored.longitude, Some(151.2093));
+}
+
+#[test]
+fn operations_with_max_i64_id() {
+    let db = create_test_db();
+    let max_id = i64::MAX;
+
+    assert!(db.get_media_by_id(max_id).unwrap().is_none());
+    assert!(db.toggle_favorite(max_id).is_err());
+    assert!(db.get_media_by_ids(&[max_id]).unwrap().is_empty());
+    db.set_deleted(max_id, true).unwrap();
+    db.set_deleted(max_id, false).unwrap();
+}

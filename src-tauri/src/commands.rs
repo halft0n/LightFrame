@@ -347,6 +347,95 @@ mod command_validation_tests {
         let params = "{not valid json";
         assert!(crate::image_edit::parse_edit_params(params).is_err());
     }
+
+    #[test]
+    fn truncate_utf8_ascii_shorter_than_limit_unchanged() {
+        assert_eq!(truncate_utf8("hello", 10), "hello");
+    }
+
+    #[test]
+    fn truncate_utf8_ascii_at_limit_unchanged() {
+        assert_eq!(truncate_utf8("hello", 5), "hello");
+    }
+
+    #[test]
+    fn truncate_utf8_ascii_over_limit_truncated() {
+        assert_eq!(truncate_utf8("hello world", 5), "hello");
+    }
+
+    #[test]
+    fn truncate_utf8_cjk_truncates_at_char_boundary() {
+        assert_eq!(truncate_utf8("你好世界", 7), "你好");
+    }
+
+    #[test]
+    fn truncate_utf8_empty_string_returns_empty() {
+        assert_eq!(truncate_utf8("", 10), "");
+    }
+
+    #[test]
+    fn truncate_utf8_single_multibyte_char_limit_one_returns_empty() {
+        assert_eq!(truncate_utf8("你", 1), "");
+    }
+
+    #[test]
+    fn truncate_utf8_mixed_ascii_and_cjk() {
+        assert_eq!(truncate_utf8("ab你好cd", 5), "ab你");
+    }
+}
+
+#[cfg(test)]
+mod path_validation_tests {
+    use super::*;
+
+    fn test_db_with_watched_dir(dir: &std::path::Path) -> lightframe_db::Database {
+        let canonical =
+            crate::original_protocol::strip_extended_prefix(std::fs::canonicalize(dir).unwrap());
+        let db = lightframe_db::Database::open(std::path::Path::new(":memory:")).unwrap();
+        db.add_watched_folder(canonical.to_str().unwrap()).unwrap();
+        db
+    }
+
+    #[test]
+    fn validate_media_path_rejects_traversal() {
+        let db = lightframe_db::Database::open(std::path::Path::new(":memory:")).unwrap();
+        db.add_watched_folder("/photos").unwrap();
+
+        assert!(validate_media_path(&db, "/photos/../etc/passwd").is_err());
+        assert!(validate_media_path(&db, "..\\photos\\secret.jpg").is_err());
+    }
+
+    #[test]
+    fn validate_media_path_rejects_outside_watched_folders() {
+        let watched = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let db = test_db_with_watched_dir(watched.path());
+
+        let file = outside.path().join("secret.jpg");
+        std::fs::write(&file, b"jpeg").unwrap();
+
+        let err = validate_media_path(&db, file.to_str().unwrap()).unwrap_err();
+        assert!(err.contains("outside watched folders"));
+    }
+
+    #[test]
+    fn validate_media_path_accepts_file_under_watched_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = test_db_with_watched_dir(dir.path());
+        let file = dir.path().join("photo.jpg");
+        std::fs::write(&file, b"jpeg").unwrap();
+
+        assert!(validate_media_path(&db, &file.to_string_lossy()).is_ok());
+    }
+
+    #[test]
+    fn validate_media_path_nonexistent_file_without_traversal_is_ok() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = test_db_with_watched_dir(dir.path());
+        let missing = dir.path().join("missing.jpg");
+
+        assert!(validate_media_path(&db, &missing.to_string_lossy()).is_ok());
+    }
 }
 
 #[cfg(test)]

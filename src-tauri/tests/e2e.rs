@@ -703,3 +703,95 @@ async fn e2e_timeline_cursor_pagination() {
     }
     assert_eq!(page1_ids.len() + page2_ids.len(), 6);
 }
+
+#[tokio::test]
+async fn e2e_rescan_after_edit_preserves_edit_params() {
+    let env = TestEnv::new();
+    let path = env.write_png("edited-rescan.png", 44);
+    env.scan().await;
+
+    let media_id = env.db.get_all_media(1, 0).unwrap()[0].id;
+    let params = r#"{"exposure":0.3,"contrast":0.15}"#;
+    env.db.save_edit_params(media_id, params).unwrap();
+    assert!(env.db.has_edits(media_id).unwrap());
+
+    env.scan().await;
+
+    let stored = env.db.get_edit_params(media_id).unwrap().unwrap();
+    assert_eq!(stored, params);
+    assert!(env.db.has_edits(media_id).unwrap());
+    assert!(path.exists());
+}
+
+#[tokio::test]
+async fn e2e_dedup_scan_with_favorites_keeps_favorite_on_resolve() {
+    let env = TestEnv::new();
+    let path_a = env.write_png("dup-fav-a.png", 10);
+    let path_b = env.write_png("dup-fav-b.png", 10);
+    env.scan().await;
+
+    let items = env.db.get_all_media(10, 0).unwrap();
+    let id_a = items
+        .iter()
+        .find(|m| m.path.ends_with("dup-fav-a.png"))
+        .unwrap()
+        .id;
+    let id_b = items
+        .iter()
+        .find(|m| m.path.ends_with("dup-fav-b.png"))
+        .unwrap()
+        .id;
+
+    {
+        let mut item_a = env.db.get_media_by_id(id_a).unwrap().unwrap();
+        let mut item_b = env.db.get_media_by_id(id_b).unwrap().unwrap();
+        item_a.blake3_hash = Some("same_dedup_hash".to_string());
+        item_b.blake3_hash = Some("same_dedup_hash".to_string());
+        env.db.upsert_media(env.folder_id, &item_a).unwrap();
+        env.db.upsert_media(env.folder_id, &item_b).unwrap();
+    }
+
+    env.db.clear_duplicate_groups().unwrap();
+    let exact = env.db.find_exact_duplicates().unwrap();
+    assert_eq!(exact.len(), 1);
+    let group_id = exact[0].id;
+
+    env.db.toggle_favorite(id_a).unwrap();
+    assert!(env.db.is_favorite(id_a).unwrap());
+
+    env.db
+        .resolve_duplicate_group(group_id, id_a, true)
+        .unwrap();
+
+    assert!(env.db.get_media_by_id(id_a).unwrap().is_some());
+    assert!(env.db.is_favorite(id_a).unwrap());
+    assert!(env.db.get_media_by_id(id_b).unwrap().is_none());
+    assert!(path_a.exists());
+    assert!(path_b.exists());
+}
+
+#[tokio::test]
+async fn e2e_album_with_mixed_media_types() {
+    let env = TestEnv::new();
+    env.write_png("mixed-photo.png", 10);
+    env.write_fake_video("mixed-video.mp4");
+    env.write_raw_with_preview("mixed-raw.cr2");
+    env.scan().await;
+
+    let media = env.db.get_all_media(10, 0).unwrap();
+    let types: Vec<_> = media.iter().map(|m| m.media_type).collect();
+    assert!(types.contains(&MediaType::Photo));
+    assert!(types.contains(&MediaType::Video));
+    assert!(types.contains(&MediaType::Raw));
+
+    let album = env.db.create_album("Mixed", None).unwrap();
+    let ids: Vec<i64> = media.iter().map(|m| m.id).collect();
+    env.db.add_to_album(album.id, &ids).unwrap();
+
+    let album_media = env.db.get_album_media(album.id, 10, 0).unwrap();
+    assert_eq!(album_media.len(), 3);
+    let album_types: Vec<_> = album_media.iter().map(|m| m.media_type).collect();
+    assert!(album_types.contains(&MediaType::Photo));
+    assert!(album_types.contains(&MediaType::Video));
+    assert!(album_types.contains(&MediaType::Raw));
+}

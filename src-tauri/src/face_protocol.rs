@@ -510,4 +510,59 @@ mod tests {
             Some("*")
         );
     }
+
+    #[test]
+    fn handle_oversized_source_file_returns_413() {
+        let state = test_state();
+        let dir = tempfile::tempdir().unwrap();
+        let canonical_dir =
+            strip_extended_prefix(std::fs::canonicalize(dir.path()).expect("canonicalize dir"));
+        let folder_id = state
+            .db
+            .add_watched_folder(canonical_dir.to_str().unwrap())
+            .expect("add folder")
+            .id;
+        let file = canonical_dir.join("huge.jpg");
+        write_test_jpeg(&file, 100, 100);
+        let f = std::fs::OpenOptions::new().write(true).open(&file).unwrap();
+        f.set_len(100 * 1024 * 1024 + 1).unwrap();
+        drop(f);
+
+        let media = MediaFile {
+            id: 0,
+            path: file.to_string_lossy().to_string(),
+            filename: "huge.jpg".to_string(),
+            media_type: MediaType::Photo,
+            size_bytes: 100 * 1024 * 1024 + 1,
+            width: Some(100),
+            height: Some(100),
+            created_at: None,
+            modified_at: chrono::NaiveDateTime::default(),
+            blake3_hash: Some("hugehash".to_string()),
+            dhash: None,
+            phash: None,
+            latitude: None,
+            longitude: None,
+        };
+        let media_id = state.db.upsert_media(folder_id, &media).unwrap();
+        state
+            .db
+            .store_face_detections(
+                media_id,
+                &[FaceDetectionInput {
+                    bbox: [0.0, 0.0, 50.0, 50.0],
+                    confidence: 0.99,
+                    embedding: vec![1.0, 0.0],
+                }],
+            )
+            .unwrap();
+        let face_id = state.db.get_faces_for_media(media_id).unwrap()[0].id;
+
+        let resp = handle(&state, &format!("/{face_id}"));
+        assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+        assert_eq!(
+            String::from_utf8_lossy(resp.body()),
+            "source image too large"
+        );
+    }
 }

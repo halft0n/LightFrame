@@ -781,4 +781,62 @@ mod tests {
             resp.status()
         );
     }
+
+    #[test]
+    fn handle_double_url_encoded_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(dir.path());
+        let file = dir.path().join("double.jpg");
+        std::fs::write(&file, b"double-encoded").unwrap();
+
+        let once = encode_path_bytes(&file);
+        let twice: String = once
+            .as_bytes()
+            .iter()
+            .map(|b| format!("%{b:02X}"))
+            .collect();
+        let resp = handle(&state, &format!("/{twice}"));
+        assert!(
+            resp.status() == StatusCode::OK
+                || resp.status() == StatusCode::NOT_FOUND
+                || resp.status() == StatusCode::FORBIDDEN,
+            "double-encoded path should not crash, got {}",
+            resp.status()
+        );
+    }
+
+    #[test]
+    fn handle_very_long_url_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(dir.path());
+        let file = dir.path().join("short.jpg");
+        std::fs::write(&file, b"long-url").unwrap();
+
+        let encoded = encode_path_bytes(&file);
+        let long_request = format!("/{}{encoded}", "x".repeat(10_000));
+        let resp = handle(&state, &long_request);
+        assert!(
+            resp.status() == StatusCode::OK
+                || resp.status() == StatusCode::NOT_FOUND
+                || resp.status() == StatusCode::FORBIDDEN
+                || resp.status() == StatusCode::BAD_REQUEST,
+            "very long URL should not crash, got {}",
+            resp.status()
+        );
+    }
+
+    #[test]
+    fn handle_rapid_sequential_requests_do_not_crash() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(dir.path());
+        let file = dir.path().join("rapid.jpg");
+        std::fs::write(&file, b"rapid-data").unwrap();
+        let request = request_path_for_file(&file);
+
+        for _ in 0..20 {
+            let resp = handle(&state, &request);
+            assert_eq!(resp.status(), StatusCode::OK);
+            assert_eq!(*resp.body(), b"rapid-data".to_vec());
+        }
+    }
 }

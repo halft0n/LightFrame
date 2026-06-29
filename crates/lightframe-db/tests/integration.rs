@@ -2321,3 +2321,284 @@ fn set_folder_scan_status_updates_folder() {
     let complete = db.get_watched_folder(fid).unwrap().unwrap();
     assert_eq!(complete.scan_status, "complete");
 }
+
+fn set_deleted_at_days_ago(db: &Database, media_id: i64, days_ago: i64) {
+    let conn = db.conn().unwrap();
+    conn.execute(
+        "UPDATE media_files SET deleted_at = datetime('now', ?1) WHERE id = ?2",
+        rusqlite::params![format!("-{days_ago} days"), media_id],
+    )
+    .unwrap();
+}
+
+#[test]
+fn list_expired_deleted_media_empty_when_no_deleted_items() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    db.upsert_media(fid, &sample_media("/photos/active.jpg"))
+        .unwrap();
+
+    assert!(db.list_expired_deleted_media(30).unwrap().is_empty());
+}
+
+#[test]
+fn list_expired_deleted_media_empty_for_recently_deleted() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/recent.jpg"))
+        .unwrap();
+
+    db.set_deleted(media_id, true).unwrap();
+
+    assert!(db.list_expired_deleted_media(30).unwrap().is_empty());
+}
+
+#[test]
+fn list_expired_deleted_media_returns_items_deleted_over_30_days_ago() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/old.jpg"))
+        .unwrap();
+
+    db.set_deleted(media_id, true).unwrap();
+    set_deleted_at_days_ago(&db, media_id, 40);
+
+    let expired = db.list_expired_deleted_media(30).unwrap();
+    assert_eq!(expired.len(), 1);
+    assert_eq!(expired[0].0, "/photos/old.jpg");
+}
+
+#[test]
+fn list_expired_deleted_media_returns_path_and_blake3_hash() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let mut media = sample_media("/photos/expired.jpg");
+    media.blake3_hash = Some("expiredhash123".to_string());
+    let media_id = db.upsert_media(fid, &media).unwrap();
+
+    db.set_deleted(media_id, true).unwrap();
+    set_deleted_at_days_ago(&db, media_id, 35);
+
+    let expired = db.list_expired_deleted_media(30).unwrap();
+    assert_eq!(expired.len(), 1);
+    assert_eq!(expired[0].0, "/photos/expired.jpg");
+    assert_eq!(expired[0].1.as_deref(), Some("expiredhash123"));
+}
+
+#[test]
+fn list_expired_deleted_media_excludes_non_deleted_items() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let active_id = db
+        .upsert_media(fid, &sample_media("/photos/active.jpg"))
+        .unwrap();
+    let deleted_id = db
+        .upsert_media(fid, &sample_media("/photos/deleted.jpg"))
+        .unwrap();
+
+    db.set_deleted(deleted_id, true).unwrap();
+    set_deleted_at_days_ago(&db, deleted_id, 45);
+
+    let expired = db.list_expired_deleted_media(30).unwrap();
+    assert_eq!(expired.len(), 1);
+    assert_eq!(expired[0].0, "/photos/deleted.jpg");
+    assert!(db.get_media_by_id(active_id).unwrap().is_some());
+}
+
+#[test]
+fn list_media_hashes_by_folder_returns_hashes_for_media_in_folder() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    db.upsert_media(
+        fid,
+        &sample_media_with_hashes("/photos/a.jpg", Some("hash_a"), None, None),
+    )
+    .unwrap();
+    db.upsert_media(
+        fid,
+        &sample_media_with_hashes("/photos/b.jpg", Some("hash_b"), None, None),
+    )
+    .unwrap();
+
+    let mut hashes = db.list_media_hashes_by_folder(fid).unwrap();
+    hashes.sort();
+    assert_eq!(hashes, vec!["hash_a".to_string(), "hash_b".to_string()]);
+}
+
+#[test]
+fn list_media_hashes_by_folder_empty_for_empty_folder() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/empty");
+
+    assert!(db.list_media_hashes_by_folder(fid).unwrap().is_empty());
+}
+
+#[test]
+fn list_media_hashes_by_folder_excludes_other_folders() {
+    let db = create_test_db();
+    let f1 = insert_folder_id(&db, "/photos");
+    let f2 = insert_folder_id(&db, "/backup");
+
+    db.upsert_media(
+        f1,
+        &sample_media_with_hashes("/photos/a.jpg", Some("hash_photos"), None, None),
+    )
+    .unwrap();
+    db.upsert_media(
+        f2,
+        &sample_media_with_hashes("/backup/b.jpg", Some("hash_backup"), None, None),
+    )
+    .unwrap();
+
+    let hashes = db.list_media_hashes_by_folder(f1).unwrap();
+    assert_eq!(hashes, vec!["hash_photos".to_string()]);
+}
+
+#[test]
+fn cross_feature_delete_album_media_count_updates_on_soft_delete_and_restore() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/album.jpg"))
+        .unwrap();
+    let album = db.create_album("Trip", None).unwrap();
+    db.add_to_album(album.id, &[media_id]).unwrap();
+
+    assert_eq!(db.get_album_media(album.id, 10, 0).unwrap().len(), 1);
+
+    db.set_deleted(media_id, true).unwrap();
+    assert!(db.get_album_media(album.id, 10, 0).unwrap().is_empty());
+
+    db.set_deleted(media_id, false).unwrap();
+    assert_eq!(db.get_album_media(album.id, 10, 0).unwrap().len(), 1);
+}
+
+#[test]
+fn cross_feature_delete_favorites_excludes_deleted_and_restores() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/fav.jpg"))
+        .unwrap();
+    db.toggle_favorite(media_id).unwrap();
+    assert_eq!(db.get_favorites_count().unwrap(), 1);
+
+    db.set_deleted(media_id, true).unwrap();
+    assert!(db.get_favorites(10, 0).unwrap().is_empty());
+    assert_eq!(db.get_favorites_count().unwrap(), 0);
+
+    db.set_deleted(media_id, false).unwrap();
+    assert_eq!(db.get_favorites_count().unwrap(), 1);
+    assert_eq!(db.get_favorites(10, 0).unwrap()[0].id, media_id);
+}
+
+#[test]
+fn cross_feature_delete_dedup_resolve_after_member_deleted() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let keep_id = db
+        .upsert_media(fid, &sample_media("/photos/keep.jpg"))
+        .unwrap();
+    let remove_id = db
+        .upsert_media(fid, &sample_media("/photos/remove.jpg"))
+        .unwrap();
+    let group_id = db
+        .create_duplicate_group("exact", &[keep_id, remove_id], &[1.0, 1.0])
+        .unwrap();
+
+    db.set_deleted(remove_id, true).unwrap();
+    db.resolve_duplicate_group(group_id, keep_id, false)
+        .unwrap();
+
+    assert_eq!(db.get_duplicate_groups_count().unwrap(), 0);
+    assert!(db.get_media_by_id(keep_id).unwrap().is_some());
+    assert!(db.get_media_by_id(remove_id).unwrap().is_none());
+}
+
+#[test]
+fn cross_feature_folder_removal_updates_album_counts() {
+    let db = create_test_db();
+    let f1 = insert_folder_id(&db, "/photos");
+    let f2 = insert_folder_id(&db, "/backup");
+    let id1 = db.upsert_media(f1, &sample_media("/photos/a.jpg")).unwrap();
+    let id2 = db.upsert_media(f2, &sample_media("/backup/b.jpg")).unwrap();
+    let album = db.create_album("All", None).unwrap();
+    db.add_to_album(album.id, &[id1, id2]).unwrap();
+    assert_eq!(db.get_album_media(album.id, 10, 0).unwrap().len(), 2);
+
+    db.remove_watched_folder(f1).unwrap();
+    assert_eq!(db.get_album_media(album.id, 10, 0).unwrap().len(), 1);
+    assert_eq!(db.get_album(album.id).unwrap().unwrap().media_count, 1);
+}
+
+#[test]
+fn cross_feature_clip_delete_excludes_from_semantic_search() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let id = db
+        .upsert_media(fid, &sample_media("/photos/clip.jpg"))
+        .unwrap();
+    db.store_clip_embedding(id, &[1.0, 0.0, 0.0]).unwrap();
+
+    let before = db
+        .semantic_search_by_embedding(&[1.0, 0.0, 0.0], 0.5, 10)
+        .unwrap();
+    assert_eq!(before.len(), 1);
+
+    db.set_deleted(id, true).unwrap();
+    let after = db
+        .semantic_search_by_embedding(&[1.0, 0.0, 0.0], 0.5, 10)
+        .unwrap();
+    assert!(after.is_empty());
+}
+
+#[test]
+fn cross_feature_face_delete_excludes_from_person_media() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/face.jpg"))
+        .unwrap();
+    db.store_face_detections(
+        media_id,
+        &[FaceDetectionInput {
+            bbox: [0.0, 0.0, 10.0, 10.0],
+            confidence: 0.95,
+            embedding: vec![1.0, 0.0],
+        }],
+    )
+    .unwrap();
+    let face_id = db.get_faces_for_media(media_id).unwrap()[0].id;
+    let person_id = db.create_person(Some("Alice")).unwrap();
+    db.assign_face_to_person(face_id, person_id).unwrap();
+
+    assert_eq!(db.get_person_media(person_id, 10, 0).unwrap().len(), 1);
+
+    db.set_deleted(media_id, true).unwrap();
+    assert!(db.get_person_media(person_id, 10, 0).unwrap().is_empty());
+}
+
+#[test]
+fn cross_feature_fts_delete_excludes_from_search() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let mut media = sample_media("/photos/searchable.jpg");
+    media.filename = "unique_search_term.jpg".to_string();
+    let media_id = db.upsert_media(fid, &media).unwrap();
+
+    assert_eq!(
+        db.search_media("unique_search_term", 10, 0).unwrap().len(),
+        1
+    );
+
+    db.set_deleted(media_id, true).unwrap();
+    assert!(
+        db.search_media("unique_search_term", 10, 0)
+            .unwrap()
+            .is_empty()
+    );
+}

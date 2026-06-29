@@ -23,6 +23,7 @@ const searchMedia = vi.fn();
 const searchMediaCount = vi.fn();
 const batchDeleteMedia = vi.fn();
 const batchAddToAlbum = vi.fn();
+const batchToggleFavorite = vi.fn();
 const listAlbums = vi.fn();
 
 vi.mock("@/lib/tauri", async (importOriginal) => {
@@ -42,6 +43,8 @@ vi.mock("@/lib/tauri", async (importOriginal) => {
       batchDeleteMedia(...args),
     batchAddToAlbum: (...args: Parameters<typeof actual.batchAddToAlbum>) =>
       batchAddToAlbum(...args),
+    batchToggleFavorite: (...args: Parameters<typeof actual.batchToggleFavorite>) =>
+      batchToggleFavorite(...args),
     listAlbums: (...args: Parameters<typeof actual.listAlbums>) => listAlbums(...args),
   };
 });
@@ -115,6 +118,7 @@ function setupDefaultMocks() {
   searchMediaCount.mockResolvedValue(1);
   batchDeleteMedia.mockResolvedValue(2);
   batchAddToAlbum.mockResolvedValue(undefined);
+  batchToggleFavorite.mockResolvedValue(2);
   listAlbums.mockResolvedValue([
     { id: 10, name: "Trip", media_count: 0, created_at: "2024-01-01" },
   ]);
@@ -370,6 +374,72 @@ describe("Error recovery workflow", () => {
       await waitFor(() => {
         expect(searchMedia).toHaveBeenCalledTimes(2);
         expect(screen.queryByText("搜索失败，请重试。")).not.toBeInTheDocument();
+      });
+    } finally {
+      vi.useRealTimers();
+      setSearchQuery("");
+    }
+  });
+});
+
+describe("Multi-select batch operations workflow", () => {
+  it("batch favorites selected media", async () => {
+    render(<App />);
+
+    await waitFor(() => {
+      expect(getSnapshot().mediaItems).toHaveLength(3);
+    });
+
+    act(() => {
+      setMediaSelection([1, 2]);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/已选择 2 项/)).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(window, { key: "f" });
+
+    await waitFor(() => {
+      expect(batchToggleFavorite).toHaveBeenCalledWith([1, 2], true);
+    });
+  });
+});
+
+describe("Search view back workflow", () => {
+  it("opens viewer from search results and returns to search", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    setupViewerInvoke();
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      render(<App />);
+
+      await waitFor(() => {
+        expect(getSnapshot().mediaItems).toHaveLength(3);
+      });
+
+      const searchInput = screen.getByPlaceholderText("搜索照片…");
+      await user.type(searchInput, "sunset");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(350);
+      });
+
+      await waitFor(() => {
+        expect(getSnapshot().searchQuery).toBe("sunset");
+        expect(searchMedia).toHaveBeenCalled();
+      });
+
+      await user.click(screen.getByRole("gridcell", { name: "sunset.jpg" }));
+
+      await waitFor(() => {
+        expect(getSnapshot().viewingMediaId).toBe(1);
+      });
+
+      await user.click(screen.getByLabelText("返回"));
+
+      await waitFor(() => {
+        expect(getSnapshot().viewingMediaId).toBeNull();
+        expect(getSnapshot().searchQuery).toBe("sunset");
       });
     } finally {
       vi.useRealTimers();

@@ -697,6 +697,95 @@ mod tests {
         assert!(decode_image(&empty).is_err());
     }
 
+    fn bmp_with_declared_dimensions(width: u32, height: u32) -> Vec<u8> {
+        const FILE_LEN: u32 = 58;
+        let mut buf = vec![0u8; FILE_LEN as usize];
+        buf[0..2].copy_from_slice(b"BM");
+        buf[2..6].copy_from_slice(&FILE_LEN.to_le_bytes());
+        buf[10..14].copy_from_slice(&54u32.to_le_bytes());
+        buf[14..18].copy_from_slice(&40u32.to_le_bytes());
+        buf[18..22].copy_from_slice(&width.to_le_bytes());
+        buf[22..26].copy_from_slice(&height.to_le_bytes());
+        buf[26..28].copy_from_slice(&1u16.to_le_bytes());
+        buf[28..30].copy_from_slice(&32u16.to_le_bytes());
+        buf[54..58].copy_from_slice(&[0xFF, 0, 0, 0xFF]);
+        buf
+    }
+
+    #[test]
+    fn decode_image_rejects_oversized_dimensions() {
+        const MAX_PIXELS: u64 = 200_000_000;
+        let width = 20_000u32;
+        let height = 15_000u32;
+        assert!((width as u64) * (height as u64) > MAX_PIXELS);
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("oversized_dims.bmp");
+        std::fs::write(&path, bmp_with_declared_dimensions(width, height)).unwrap();
+
+        match decode_image(&path) {
+            Err(e) => {
+                let msg = e.to_string();
+                assert!(
+                    msg.contains("too large")
+                        || msg.contains("20000")
+                        || msg.contains("15000")
+                        || msg.contains("decode failed"),
+                    "expected dimension guard or decode error, got: {msg}"
+                );
+                if msg.contains("too large") {
+                    assert!(msg.contains("20000"));
+                    assert!(msg.contains("15000"));
+                    assert!(msg.contains(&MAX_PIXELS.to_string()));
+                }
+            }
+            Ok(decoded) => {
+                assert!(
+                    (decoded.width as u64) * (decoded.height as u64) <= MAX_PIXELS,
+                    "decode should not succeed above MAX_PIXELS"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn decode_image_normal_dimensions_passes_guard() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("normal.png");
+        let img: RgbImage =
+            ImageBuffer::from_fn(64, 64, |x, y| Rgb([(x * 4) as u8, (y * 4) as u8, 128]));
+        img.save(&path).expect("save png");
+
+        let decoded = decode_image(&path).expect("normal image should decode");
+        assert_eq!(decoded.width, 64);
+        assert_eq!(decoded.height, 64);
+    }
+
+    #[test]
+    fn decode_image_oversized_error_includes_dimension_info() {
+        const MAX_PIXELS: u64 = 200_000_000;
+        let width = 20_000u32;
+        let height = 15_000u32;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("oversized_msg.bmp");
+        std::fs::write(&path, bmp_with_declared_dimensions(width, height)).unwrap();
+
+        let err = decode_image(&path)
+            .err()
+            .expect("oversized image should fail");
+        let msg = err.to_string();
+        if msg.contains("too large") {
+            assert!(msg.contains(&format!("{width}x{height}")));
+            assert!(msg.contains(&MAX_PIXELS.to_string()));
+        } else {
+            assert!(
+                msg.contains("20000") || msg.contains("15000") || msg.contains("decode failed"),
+                "expected dimension info in error, got: {msg}"
+            );
+        }
+    }
+
     #[test]
     fn decode_heic_returns_error_without_panicking() {
         let dir = tempfile::tempdir().unwrap();
