@@ -9,30 +9,28 @@
 
 > 拾一束光，留一段时光。 Catch the light, keep the moment.
 
-CatchLight 是一款跨平台（Windows + Linux + macOS）、本地优先的照片查看与管理软件。不复制、不导入，以 Everything 级极速索引就地浏览用户现有文件夹中的照片与视频，并提供去重、截图识别等智能整理能力。
+CatchLight 是一款跨平台（Windows + Linux + macOS）、本地优先的照片查看与管理软件。不复制、不导入，以 Everything 级极速索引就地浏览用户现有文件夹中的照片与视频，并提供去重、截图识别、AI 相似搜索等智能整理能力。
 
-## New in 0.0.5
+## Screenshots
 
-- **Folder tree** — browse watched folders directly from the sidebar
-- **Thumbnail sizes** — Small / Medium / Large presets in the photo grid
-- **Search history** — quick access to your last 10 searches
-- **Photo rotation** — rotate in the viewer with `R` / `Shift+R`
-- **Batch export** — copy selected photos to any folder
-- **Smarter screenshot detection** — EXIF rules + visual feature scoring
-- **Performance** — 15 new SQL indexes, keyset pagination, SQLite tuning
-- **File watcher** — handles deletions (soft-delete) and renames automatically
-
-See [CHANGELOG.md](CHANGELOG.md) for the full release history.
+> Demo screenshots will be added before v0.1.0-beta release.
+>
+> Placeholder: [gallery](docs/screenshots/gallery.png) · [timeline](docs/screenshots/timeline.png) · [viewer](docs/screenshots/viewer.png)
 
 ## Features
 
 - **macOS Photos-style UI** — timeline, locations, albums, people, folder tree
 - **Lightning-fast indexing** — recursive walkdir + inotify file watching
 - **No import/export required** — folders are your library, zero migration cost
-- **Non-destructive editor** — curves, levels, selective color adjustments
-- **Smart deduplication** — BLAKE3 exact + DHash perceptual matching
+- **Full-text search** — SQLite FTS5 filename and metadata search
+- **Smart deduplication** — BLAKE3 exact + DHash/PHash perceptual matching with LSH
+- **Similar photos** — CLIP embedding cosine similarity (optional ONNX)
+- **Face detection** — SCRFD + ArcFace framework (optional ONNX)
 - **Screenshot detection** — rule engine with EXIF and visual scoring
+- **Non-destructive editor** — curves, levels, selective color adjustments
 - **Map view** — Leaflet map with location clustering
+- **Memories & On This Day** — timeline grouping and anniversary highlights
+- **Batch operations** — delete, favorite, export, add to album (up to 1000 items)
 - **Cross-platform** — Windows 10/11, Linux (Ubuntu 22.04+, Fedora 38+), macOS
 - **Multi-language** — 简体中文, English
 - **Privacy-first** — all local processing, no cloud uploads ([Privacy Policy](docs/PRIVACY.md))
@@ -42,8 +40,10 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 | Context | Shortcut | Action |
 |---------|----------|--------|
 | Photo grid | `Escape` | Clear selection |
+| Photo grid | `Ctrl`/`Cmd` + `A` | Select all |
 | Photo grid | `Ctrl`/`Cmd` + click | Toggle item selection |
 | Photo grid | `Shift` + click | Range selection |
+| Photo grid | `Delete` / `F` | Delete / favorite selection |
 | Photo viewer | `←` / `→` | Previous / next photo |
 | Photo viewer | `R` / `Shift+R` | Rotate clockwise / counter-clockwise |
 | Photo viewer | `Escape` | Close viewer |
@@ -53,6 +53,8 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 | Image editor | `Ctrl+Z` | Undo |
 | Image editor | `Ctrl+Shift+Z` | Redo |
 
+See [User Guide](docs/USER_GUIDE.md) for the complete shortcut reference.
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -60,9 +62,9 @@ See [CHANGELOG.md](CHANGELOG.md) for the full release history.
 | Frontend | React 19, TypeScript, Vite, TailwindCSS v4 |
 | Desktop Shell | Tauri 2.x |
 | Backend | Rust (Cargo Workspace) |
-| Database | SQLite + FTS5 |
+| Database | SQLite + FTS5 (read/write connection split) |
 | Mapping | Leaflet (react-leaflet) |
-| AI Extension | Python sidecar (optional, local JSON-RPC) |
+| AI Extension | ONNX Runtime (optional) + Python sidecar |
 
 ## Project Structure
 
@@ -93,7 +95,7 @@ CatchLight/
 - pnpm >= 9
 - Rust >= 1.77 (via [rustup](https://rustup.rs))
 - **Linux:** `libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev`
-- **Optional AI sidecar:** Python 3.10+
+- **Optional AI:** ONNX models or Python 3.10+
 
 ### Getting Started
 
@@ -106,10 +108,16 @@ pnpm tauri dev
 
 # Build for production
 pnpm tauri build
+```
 
-# Run tests
-pnpm test          # frontend (Vitest)
-cargo test         # Rust workspace
+### Running Tests
+
+```bash
+pnpm test                    # frontend (Vitest)
+cargo test --workspace       # Rust workspace
+cargo fmt --check            # formatting
+cargo clippy --workspace -- -D warnings
+npx tsc --noEmit             # TypeScript type check
 ```
 
 ## Documentation
@@ -117,13 +125,27 @@ cargo test         # Rust workspace
 | Doc | Description |
 |-----|-------------|
 | [Changelog](CHANGELOG.md) | Release history |
+| [User Guide](docs/USER_GUIDE.md) | Installation, shortcuts, troubleshooting |
+| [Beta Roadmap](docs/BETA_ROADMAP.md) | v0.1.0-beta release plan |
 | [Privacy Policy](docs/PRIVACY.md) | Data handling and privacy |
-| [Research Report](docs/0-research-report.md) | Technology research and feasibility analysis |
-| [Tech Stack Decision](docs/1-tech-stack-decision.md) | Hybrid architecture decision rationale |
-| [Requirements](docs/2-requirements.md) | Functional and non-functional requirements |
 | [Architecture](docs/3-architecture.md) | System architecture design |
-| [Detailed Design](docs/4-detailed-design.md) | Implementation-level module design |
-| [Development Plan](docs/5-development-plan.md) | 24-week phased development roadmap |
+| [Development Plan](docs/5-development-plan.md) | Phased development roadmap |
+
+## Contributing
+
+Contributions are welcome! Please:
+
+1. Fork the repository and create a feature branch
+2. Follow [conventional commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `docs:`, etc.)
+3. Run all tests locally before opening a PR:
+   ```bash
+   cargo fmt --check && cargo clippy --workspace -- -D warnings && cargo test --workspace
+   pnpm test && npx tsc --noEmit
+   ```
+4. Keep changes focused — one feature or fix per PR
+5. Update docs when behavior changes
+
+Bug reports and feature requests: [GitHub Issues](https://github.com/halft0n/CatchLight/issues)
 
 ## Acknowledgements
 

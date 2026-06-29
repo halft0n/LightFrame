@@ -17,6 +17,8 @@ tokio.workspace = true
 tracing.workspace = true
 kamadak-exif = "0.5"
 image.workspace = true
+ureq = { version = "2", default-features = false, features = ["tls"] }
+sha2 = "0.10"
 ort = { version = "2.0.0-rc.12", optional = true }
 ndarray = { version = "0.16", optional = true }
 

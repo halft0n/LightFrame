@@ -226,7 +226,8 @@ export function SearchResultsView() {
 
       {searchMode === "semantic" && aiStatus && !aiStatus.clip_available && (
         <div className="border-b border-amber-200/80 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
-          {t("search.semanticFallback")}
+          <p>{t("search.semanticFallback")}</p>
+          <p className="mt-1 text-xs opacity-90">{t("search.semanticDownloadHint")}</p>
         </div>
       )}
 

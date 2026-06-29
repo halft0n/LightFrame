@@ -37,17 +37,23 @@ function isYesterday(dateStr: string): boolean {
   );
 }
 
-function formatDateHeader(dateStr: string, locale: string, t: (key: string) => string): string {
+function formatDateHeader(
+  dateStr: string,
+  locale: string,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string {
   if (isToday(dateStr)) return t("timeline.today");
   if (isYesterday(dateStr)) return t("timeline.yesterday");
 
   const date = new Date(dateStr + "T00:00:00");
   if (locale === "zh-CN") {
     const weekday = new Intl.DateTimeFormat("zh-CN", { weekday: "long" }).format(date);
-    const year = date.getFullYear();
-    const month = date.getMonth() + 1;
-    const day = date.getDate();
-    return `${year}年${month}月${day}日 ${weekday}`;
+    return t("timeline.dateHeader", {
+      year: date.getFullYear(),
+      month: date.getMonth() + 1,
+      day: date.getDate(),
+      weekday,
+    });
   }
 
   return new Intl.DateTimeFormat("en-US", {

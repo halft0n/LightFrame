@@ -217,3 +217,31 @@ describe("Album management workflow", () => {
     });
   });
 });
+
+describe("Search workflow", () => {
+  it("updates search query and invokes backend search", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      render(<App />);
+
+      await waitFor(() => {
+        expect(getSnapshot().mediaItems).toHaveLength(3);
+      });
+
+      const searchInput = screen.getByPlaceholderText("搜索照片…");
+      await user.type(searchInput, "beach");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(350);
+      });
+
+      await waitFor(() => {
+        expect(searchMedia).toHaveBeenCalled();
+        expect(getSnapshot().searchQuery).toBe("beach");
+      });
+    } finally {
+      vi.useRealTimers();
+      setSearchQuery("");
+    }
+  });
+});

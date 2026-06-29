@@ -118,4 +118,58 @@ describe("PhotoGrid", () => {
 
     consoleSpy.mockRestore();
   });
+
+  it("clears selection on Escape key", async () => {
+    setMedia([sampleMedia, { ...sampleMedia, id: 2, filename: "beach.jpg" }], 2);
+    toggleMediaSelection(1);
+
+    render(<PhotoGrid />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/已选择 1 项/)).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => {
+      expect(getSnapshot().selectedMediaIds).toHaveLength(0);
+    });
+  });
+
+  it("selects all with Ctrl+A", async () => {
+    setMedia([sampleMedia, { ...sampleMedia, id: 2, filename: "beach.jpg" }], 2);
+
+    render(<PhotoGrid />);
+
+    fireEvent.keyDown(window, { key: "a", ctrlKey: true });
+    await waitFor(() => {
+      expect(getSnapshot().selectedMediaIds).toEqual([1, 2]);
+    });
+  });
+
+  it("selects all with Meta+A on macOS-style modifier", async () => {
+    setMedia([sampleMedia, { ...sampleMedia, id: 2, filename: "beach.jpg" }], 2);
+
+    render(<PhotoGrid />);
+
+    fireEvent.keyDown(window, { key: "a", metaKey: true });
+    await waitFor(() => {
+      expect(getSnapshot().selectedMediaIds).toEqual([1, 2]);
+    });
+  });
+
+  it("ignores keyboard shortcuts when typing in input", async () => {
+    setMedia([sampleMedia], 1);
+    toggleMediaSelection(1);
+
+    render(
+      <>
+        <PhotoGrid />
+        <input data-testid="search-input" aria-label="search" />
+      </>,
+    );
+
+    const input = screen.getByTestId("search-input");
+    fireEvent.keyDown(input, { key: "Escape" });
+    expect(getSnapshot().selectedMediaIds).toEqual([1]);
+  });
 });

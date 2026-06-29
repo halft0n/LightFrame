@@ -224,6 +224,52 @@ fn unique_export_path(dir: &std::path::Path, filename: &str) -> std::path::PathB
 }
 
 #[cfg(test)]
+mod command_validation_tests {
+    use super::*;
+
+    #[test]
+    fn check_batch_size_accepts_empty_array() {
+        assert!(check_batch_size(&[]).is_ok());
+    }
+
+    #[test]
+    fn check_batch_size_accepts_max_allowed() {
+        let ids: Vec<i64> = (1..=MAX_BATCH_SIZE as i64).collect();
+        assert!(check_batch_size(&ids).is_ok());
+    }
+
+    #[test]
+    fn check_batch_size_rejects_over_max() {
+        let ids: Vec<i64> = (0..=MAX_BATCH_SIZE as i64).collect();
+        let err = check_batch_size(&ids).unwrap_err();
+        assert!(err.contains("batch size"));
+        assert!(err.contains(&MAX_BATCH_SIZE.to_string()));
+    }
+
+    #[test]
+    fn save_edit_params_size_limit_constant() {
+        const MAX_EDIT_PARAMS_SIZE: usize = 64 * 1024;
+        let oversized = "x".repeat(MAX_EDIT_PARAMS_SIZE + 1);
+        assert!(oversized.len() > MAX_EDIT_PARAMS_SIZE);
+        let valid = "x".repeat(MAX_EDIT_PARAMS_SIZE);
+        assert_eq!(valid.len(), MAX_EDIT_PARAMS_SIZE);
+    }
+
+    #[test]
+    fn save_edit_params_parses_valid_json_under_limit() {
+        let params = r#"{"exposure":0.1,"contrast":0.2}"#;
+        assert!(params.len() < 64 * 1024);
+        crate::image_edit::parse_edit_params(params).expect("valid edit params");
+    }
+
+    #[test]
+    fn save_edit_params_rejects_invalid_json() {
+        let params = "{not valid json";
+        assert!(crate::image_edit::parse_edit_params(params).is_err());
+    }
+}
+
+#[cfg(test)]
 mod export_tests {
     use super::*;
 
@@ -476,6 +522,7 @@ pub struct ModelStatus {
     pub models_dir: String,
     pub clip_available: bool,
     pub face_available: bool,
+    pub models: Vec<catchlight_ai::ModelFileStatus>,
 }
 
 #[tauri::command]
@@ -486,7 +533,21 @@ pub async fn get_model_status() -> Result<ModelStatus, String> {
             .to_string(),
         clip_available: catchlight_ai::models::clip_model_available(),
         face_available: catchlight_ai::models::face_model_available(),
+        models: catchlight_ai::all_model_statuses(),
     })
+}
+
+#[tauri::command]
+pub async fn download_model(filename: String) -> Result<String, String> {
+    let model = catchlight_ai::model_by_filename(&filename)
+        .ok_or_else(|| format!("unknown model: {filename}"))?;
+
+    let path = tokio::task::spawn_blocking(move || catchlight_ai::download_model(model))
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())?;
+
+    Ok(path.to_string_lossy().to_string())
 }
 
 #[tauri::command]
@@ -1140,6 +1201,7 @@ pub struct PersonClusterInfo {
     pub person_id: i64,
     pub name: Option<String>,
     pub face_count: i64,
+    pub avg_intra_cluster_distance: f32,
 }
 
 const DEFAULT_FACE_CLUSTER_THRESHOLD: f32 = 0.45;
@@ -1159,9 +1221,6 @@ pub async fn cluster_faces(
             return Ok(Vec::new());
         }
 
-        db.clear_unnamed_person_clusters()
-            .map_err(|e| e.to_string())?;
-
         let clusters = catchlight_ai::cluster_face_embeddings(&faces, threshold);
         let mut results = Vec::with_capacity(clusters.len());
 
@@ -1178,6 +1237,7 @@ pub async fn cluster_faces(
                 person_id,
                 name: None,
                 face_count,
+                avg_intra_cluster_distance: cluster.avg_intra_cluster_distance,
             });
         }
 
@@ -1188,15 +1248,29 @@ pub async fn cluster_faces(
 }
 
 #[tauri::command]
-pub fn merge_persons(state: State<'_, AppState>, person_ids: Vec<i64>) -> Result<(), String> {
-    if person_ids.len() < 2 {
-        return Err("need at least two persons to merge".to_string());
+pub fn merge_persons(
+    state: State<'_, AppState>,
+    person_id_a: i64,
+    person_id_b: i64,
+) -> Result<(), String> {
+    if person_id_a == person_id_b {
+        return Err("cannot merge a person with itself".to_string());
     }
-    let target_id = person_ids[0];
-    let source_ids: Vec<i64> = person_ids[1..].to_vec();
     state
         .db
-        .merge_persons(target_id, &source_ids)
+        .merge_persons(person_id_a, &[person_id_b])
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn split_face_from_person(
+    state: State<'_, AppState>,
+    face_id: i64,
+    new_person_name: Option<String>,
+) -> Result<i64, String> {
+    state
+        .db
+        .split_face_from_person(face_id, new_person_name.as_deref())
         .map_err(|e| e.to_string())
 }
 

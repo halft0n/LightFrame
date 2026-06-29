@@ -105,8 +105,11 @@ export function AlbumListView() {
       {showCreate && (
         <div className="border-b border-neutral-200/80 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/80 px-4 py-3">
           <div className="flex max-w-md flex-col gap-2">
-            <label className="text-sm text-neutral-500 dark:text-neutral-400">{t("albums.nameLabel")}</label>
+            <label htmlFor="album-create-name" className="text-sm text-neutral-500 dark:text-neutral-400">
+              {t("albums.nameLabel")}
+            </label>
             <input
+              id="album-create-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}

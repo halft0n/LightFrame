@@ -72,4 +72,22 @@ describe("FolderManager", () => {
 
     expect(removeWatchedFolder).toHaveBeenCalledWith(1);
   });
+
+  it("renders theme selector options", () => {
+    render(<FolderManager />);
+    expect(screen.getByText("浅色")).toBeInTheDocument();
+    expect(screen.getByText("深色")).toBeInTheDocument();
+    expect(screen.getByText("跟随系统")).toBeInTheDocument();
+  });
+
+  it("changes theme when option clicked", async () => {
+    const user = userEvent.setup();
+    const { changeTheme } = await import("@/hooks/useTheme");
+    const changeThemeSpy = vi.mocked(changeTheme);
+
+    render(<FolderManager />);
+    await user.click(screen.getByRole("button", { name: "深色" }));
+
+    expect(changeThemeSpy).toHaveBeenCalledWith("dark");
+  });
 });

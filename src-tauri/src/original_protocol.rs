@@ -19,6 +19,11 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
         return error_response(StatusCode::FORBIDDEN, "path not allowed");
     }
 
+    if decoded.contains('\0') || path_contains_null_byte(&file_path) {
+        tracing::warn!(path = %file_path.display(), "original protocol: null byte in path rejected");
+        return error_response(StatusCode::BAD_REQUEST, "invalid path");
+    }
+
     let watched_folders = match state.db.list_watched_folders() {
         Ok(folders) => folders,
         Err(e) => {
@@ -59,13 +64,14 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
     match std::fs::read(&canonical) {
         Ok(bytes) => {
             let mime = guess_mime(&canonical);
-            Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, mime)
-                .header(header::CACHE_CONTROL, "max-age=3600")
-                .header("Access-Control-Allow-Origin", "*")
-                .body(bytes)
-                .unwrap()
+            finish_response(
+                Response::builder()
+                    .status(StatusCode::OK)
+                    .header(header::CONTENT_TYPE, mime)
+                    .header(header::CACHE_CONTROL, "max-age=3600")
+                    .header("Access-Control-Allow-Origin", "*"),
+                bytes,
+            )
         }
         Err(e) => {
             tracing::warn!(path = %canonical.display(), "original protocol read error: {e}");
@@ -107,6 +113,10 @@ fn path_contains_parent_dir(path: &Path) -> bool {
     path.to_string_lossy()
         .split(['/', '\\'])
         .any(|part| part == "..")
+}
+
+fn path_contains_null_byte(path: &Path) -> bool {
+    path.as_os_str().as_encoded_bytes().contains(&0)
 }
 
 fn paths_equal(a: &Path, b: &Path) -> bool {
@@ -250,13 +260,23 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8(result).unwrap_or_else(|_| s.to_string())
 }
 
+fn finish_response(builder: http::response::Builder, body: Vec<u8>) -> Response<Vec<u8>> {
+    builder.body(body).unwrap_or_else(|_| {
+        Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body(b"internal error".to_vec())
+            .expect("hardcoded response must build")
+    })
+}
+
 fn error_response(status: StatusCode, message: &str) -> Response<Vec<u8>> {
-    Response::builder()
-        .status(status)
-        .header(header::CONTENT_TYPE, "text/plain")
-        .header("Access-Control-Allow-Origin", "*")
-        .body(message.as_bytes().to_vec())
-        .unwrap()
+    finish_response(
+        Response::builder()
+            .status(status)
+            .header(header::CONTENT_TYPE, "text/plain")
+            .header("Access-Control-Allow-Origin", "*"),
+        message.as_bytes().to_vec(),
+    )
 }
 
 #[cfg(test)]
@@ -286,8 +306,10 @@ mod tests {
         }
     }
 
-    fn encode_uri_component(path: &str) -> String {
-        path.bytes()
+    fn encode_path_bytes(path: &Path) -> String {
+        path.as_os_str()
+            .as_encoded_bytes()
+            .iter()
             .map(|b| match b {
                 b'A'..=b'Z'
                 | b'a'..=b'z'
@@ -300,14 +322,14 @@ mod tests {
                 | b'*'
                 | b'\''
                 | b'('
-                | b')' => (b as char).to_string(),
+                | b')' => (*b as char).to_string(),
                 _ => format!("%{b:02X}"),
             })
             .collect()
     }
 
     fn request_path_for_file(file: &Path) -> String {
-        format!("/{}", encode_uri_component(file.to_str().unwrap()))
+        format!("/{}", encode_path_bytes(file))
     }
 
     #[test]
@@ -486,7 +508,7 @@ mod tests {
         let file = dir.path().join("test.jpg");
         std::fs::write(&file, b"jpeg-data").unwrap();
 
-        let encoded = encode_uri_component(file.to_str().unwrap());
+        let encoded = encode_path_bytes(&file);
         let request_path = format!("/localhost/{encoded}");
         let resp = handle(&state, &request_path);
 
@@ -617,5 +639,88 @@ mod tests {
 
         let resp = handle(&state, &request_path_for_file(&file));
         assert_eq!(resp.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[test]
+    fn handle_empty_path_returns_not_found_or_forbidden() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(dir.path());
+        let resp = handle(&state, "");
+        assert!(
+            resp.status() == StatusCode::NOT_FOUND || resp.status() == StatusCode::FORBIDDEN,
+            "empty path should not succeed, got {}",
+            resp.status()
+        );
+    }
+
+    #[test]
+    fn handle_url_encoded_path_segments() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(dir.path());
+        let sub = dir.path().join("my photos");
+        std::fs::create_dir_all(&sub).unwrap();
+        let file = sub.join("vacation pic.jpg");
+        std::fs::write(&file, b"encoded-path").unwrap();
+
+        let resp = handle(&state, &request_path_for_file(&file));
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(*resp.body(), b"encoded-path".to_vec());
+    }
+
+    #[test]
+    fn handle_very_long_path_in_watched_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(dir.path());
+        let nested = dir
+            .path()
+            .join("a".repeat(50))
+            .join("b".repeat(50))
+            .join("c".repeat(50));
+        std::fs::create_dir_all(&nested).unwrap();
+        let file = nested.join(format!("{}.jpg", "x".repeat(100)));
+        std::fs::write(&file, b"long-path").unwrap();
+
+        let resp = handle(&state, &request_path_for_file(&file));
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(*resp.body(), b"long-path".to_vec());
+    }
+
+    #[test]
+    fn handle_null_byte_in_path_is_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(dir.path());
+        let file = dir.path().join("safe.jpg");
+        std::fs::write(&file, b"safe").unwrap();
+
+        let mut path_with_null = dir.path().to_string_lossy().to_string();
+        path_with_null.push_str("/safe.jpg");
+        path_with_null.insert(path_with_null.find("safe").unwrap(), '\0');
+
+        let encoded: String = path_with_null
+            .bytes()
+            .map(|b| format!("%{b:02X}"))
+            .collect();
+        let resp = handle(&state, &format!("/{encoded}"));
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn handle_non_utf8_filename_in_watched_folder() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(dir.path());
+        let name = OsStr::from_bytes(b"photo_\xFF\xFE.jpg");
+        let file = dir.path().join(name);
+        std::fs::write(&file, b"non-utf8").unwrap();
+
+        let resp = handle(&state, &request_path_for_file(&file));
+        assert!(
+            resp.status() == StatusCode::OK || resp.status() == StatusCode::FORBIDDEN,
+            "non-UTF8 path must not crash or leak; got {}",
+            resp.status()
+        );
     }
 }

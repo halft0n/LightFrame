@@ -125,7 +125,148 @@ pub fn classify_screenshot(path: &Path) -> Result<ScreenshotType> {
         return Ok(ScreenshotType::Code);
     }
 
+    if is_likely_webpage_screenshot(&img, aspect_ratio) {
+        return Ok(ScreenshotType::WebPage);
+    }
+
+    if is_likely_document_screenshot(&img) {
+        return Ok(ScreenshotType::Document);
+    }
+
+    if is_likely_game_screenshot(&img) {
+        return Ok(ScreenshotType::Game);
+    }
+
     Ok(ScreenshotType::Generic)
+}
+
+fn is_likely_document_screenshot(img: &image::DynamicImage) -> bool {
+    let (width, height) = img.dimensions();
+    if width == 0 || height == 0 {
+        return false;
+    }
+
+    let rgba = img.to_rgba8();
+    let step_x = (width / 40).max(1);
+    let step_y = (height / 40).max(1);
+
+    let mut sample_count = 0_u64;
+    let mut light_count = 0_u64;
+    let mut neutral_count = 0_u64;
+
+    for y in (0..height).step_by(step_y as usize) {
+        for x in (0..width).step_by(step_x as usize) {
+            let pixel = rgba.get_pixel(x, y);
+            let r = pixel[0] as f32;
+            let g = pixel[1] as f32;
+            let b = pixel[2] as f32;
+            let brightness = (r + g + b) / 3.0;
+            let max = r.max(g).max(b);
+            let min = r.min(g).min(b);
+
+            sample_count += 1;
+            if brightness > 210.0 {
+                light_count += 1;
+            }
+            if max - min < 18.0 && brightness > 160.0 {
+                neutral_count += 1;
+            }
+        }
+    }
+
+    if sample_count == 0 {
+        return false;
+    }
+
+    let light_ratio = light_count as f64 / sample_count as f64;
+    let neutral_ratio = neutral_count as f64 / sample_count as f64;
+    light_ratio >= 0.55 && neutral_ratio >= 0.35
+}
+
+fn is_likely_game_screenshot(img: &image::DynamicImage) -> bool {
+    let (width, height) = img.dimensions();
+    if width == 0 || height == 0 {
+        return false;
+    }
+
+    let rgba = img.to_rgba8();
+    let step_x = (width / 48).max(1);
+    let step_y = (height / 48).max(1);
+
+    let mut sample_count = 0_u64;
+    let mut saturated_count = 0_u64;
+    let mut high_contrast_count = 0_u64;
+
+    for y in (0..height).step_by(step_y as usize) {
+        for x in (0..width).step_by(step_x as usize) {
+            let pixel = rgba.get_pixel(x, y);
+            let r = pixel[0] as f32;
+            let g = pixel[1] as f32;
+            let b = pixel[2] as f32;
+            let max = r.max(g).max(b);
+            let min = r.min(g).min(b);
+            let brightness = (r + g + b) / 3.0;
+
+            sample_count += 1;
+            if max > 40.0 && (max - min) / max > 0.45 {
+                saturated_count += 1;
+            }
+            if brightness > 30.0 && brightness < 220.0 && max - min > 60.0 {
+                high_contrast_count += 1;
+            }
+        }
+    }
+
+    if sample_count == 0 {
+        return false;
+    }
+
+    let saturated_ratio = saturated_count as f64 / sample_count as f64;
+    let contrast_ratio = high_contrast_count as f64 / sample_count as f64;
+    saturated_ratio >= 0.35 && contrast_ratio >= 0.40
+}
+
+fn is_likely_webpage_screenshot(img: &image::DynamicImage, aspect_ratio: f64) -> bool {
+    if !(1.2..=2.2).contains(&aspect_ratio) {
+        return false;
+    }
+
+    let (width, height) = img.dimensions();
+    if width == 0 || height == 0 {
+        return false;
+    }
+
+    let top_rows = ((height as f32 * 0.06).max(8.0) as u32).min(height);
+    if !is_uniform_band(img, 0, top_rows) {
+        return false;
+    }
+
+    let content_start = top_rows.saturating_add(1);
+    if content_start >= height || is_uniform_band(img, content_start, height) {
+        return false;
+    }
+
+    let rgba = img.to_rgba8();
+    let mut top_light = 0_u64;
+    let mut top_samples = 0_u64;
+
+    for y in 0..top_rows {
+        for x in (0..width).step_by((width / 32).max(1) as usize) {
+            let pixel = rgba.get_pixel(x, y);
+            let brightness = (pixel[0] as u32 + pixel[1] as u32 + pixel[2] as u32) as f64 / 3.0;
+            top_samples += 1;
+            if brightness > 180.0 {
+                top_light += 1;
+            }
+        }
+    }
+
+    if top_samples == 0 {
+        return false;
+    }
+
+    let top_light_ratio = top_light as f64 / top_samples as f64;
+    top_light_ratio >= 0.55
 }
 
 fn is_likely_code_screenshot(img: &image::DynamicImage) -> bool {
@@ -489,6 +630,51 @@ mod tests {
     }
 
     #[test]
+    fn classify_bright_neutral_image_as_document() {
+        // Square aspect avoids webpage heuristic (requires 1.2–2.2).
+        let mut img = RgbaImage::new(1200, 1200);
+        for (_, _, pixel) in img.enumerate_pixels_mut() {
+            *pixel = Rgba([245, 245, 242, 255]);
+        }
+        let path = temp_png("document_like.png", &img);
+        let result = classify_screenshot(&path).unwrap();
+        assert_eq!(result, ScreenshotType::Document);
+    }
+
+    #[test]
+    fn classify_saturated_image_as_game() {
+        let mut img = RgbaImage::new(1920, 1080);
+        for (x, y, pixel) in img.enumerate_pixels_mut() {
+            let channel = ((x + y) % 3) as u8;
+            *pixel = match channel {
+                0 => Rgba([220, 40, 40, 255]),
+                1 => Rgba([40, 200, 80, 255]),
+                _ => Rgba([40, 80, 220, 255]),
+            };
+        }
+        let path = temp_png("game_like.png", &img);
+        let result = classify_screenshot(&path).unwrap();
+        assert_eq!(result, ScreenshotType::Game);
+    }
+
+    #[test]
+    fn classify_browser_like_image_as_webpage() {
+        let mut img = RgbaImage::new(1440, 900);
+        let top_rows = (900_f32 * 0.06).max(8.0) as u32;
+        for (x, y, pixel) in img.enumerate_pixels_mut() {
+            if y < top_rows {
+                *pixel = Rgba([245, 245, 245, 255]);
+            } else {
+                let v = 180 + ((x * 17 + y * 31) % 60) as u8;
+                *pixel = Rgba([v, v.saturating_sub(5), v.saturating_sub(10), 255]);
+            }
+        }
+        let path = temp_png("webpage_like.png", &img);
+        let result = classify_screenshot(&path).unwrap();
+        assert_eq!(result, ScreenshotType::WebPage);
+    }
+
+    #[test]
     fn screenshot_type_label_roundtrip() {
         assert_eq!(ScreenshotType::Code.label(), "code");
         assert_eq!(
@@ -605,15 +791,16 @@ mod tests {
 
     #[test]
     fn score_ultrawide_resolution_with_status_bars() {
-        let with_bars = screenshot_like_image(3440, 1440, true, true);
-        let without_bars = screenshot_like_image(3440, 1440, false, false);
+        // Use 2560×1440 — a known common resolution so status-bar heuristics apply.
+        let with_bars = screenshot_like_image(2560, 1440, true, true);
+        let without_bars = screenshot_like_image(2560, 1440, false, false);
         let path_with = temp_png("ultrawide_with.png", &with_bars);
         let path_without = temp_png("ultrawide_without.png", &without_bars);
-        let score_with = detect_screenshot(&path_with, 3440, 1440).unwrap();
-        let score_without = detect_screenshot(&path_without, 3440, 1440).unwrap();
+        let score_with = detect_screenshot(&path_with, 2560, 1440).unwrap();
+        let score_without = detect_screenshot(&path_without, 2560, 1440).unwrap();
         assert!(
             score_with.confidence > score_without.confidence,
-            "ultrawide with status bars should gain visual signals, with={} without={}",
+            "1440p with status bars should gain visual signals, with={} without={}",
             score_with.confidence,
             score_without.confidence
         );

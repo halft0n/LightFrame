@@ -27,7 +27,22 @@ pub struct PersonCluster {
     pub person_id: i64,
     pub face_ids: Vec<i64>,
     pub centroid: Vec<f32>,
+    pub avg_intra_cluster_distance: f32,
 }
+
+fn avg_intra_cluster_distance(face_embeddings: &[(i64, Vec<f32>)], centroid: &[f32]) -> f32 {
+    if face_embeddings.is_empty() {
+        return 0.0;
+    }
+
+    let sum: f32 = face_embeddings
+        .iter()
+        .map(|(_, emb)| 1.0 - cosine_similarity(emb, centroid))
+        .sum();
+    sum / face_embeddings.len() as f32
+}
+
+type FaceClusterState = (Vec<i64>, Vec<f32>, Vec<Vec<f32>>);
 
 /// Simple agglomerative clustering based on embedding cosine similarity.
 pub fn cluster_face_embeddings(faces: &[(i64, Vec<f32>)], threshold: f32) -> Vec<PersonCluster> {
@@ -35,13 +50,13 @@ pub fn cluster_face_embeddings(faces: &[(i64, Vec<f32>)], threshold: f32) -> Vec
         return Vec::new();
     }
 
-    let mut clusters: Vec<(Vec<i64>, Vec<f32>)> = Vec::new();
+    let mut clusters: Vec<FaceClusterState> = Vec::new();
 
     for (face_id, embedding) in faces {
         let mut best_cluster = None;
         let mut best_sim = 0.0f32;
 
-        for (i, (_, centroid)) in clusters.iter().enumerate() {
+        for (i, (_, centroid, _)) in clusters.iter().enumerate() {
             let sim = cosine_similarity(embedding, centroid);
             if sim > threshold && sim > best_sim {
                 best_cluster = Some(i);
@@ -51,6 +66,7 @@ pub fn cluster_face_embeddings(faces: &[(i64, Vec<f32>)], threshold: f32) -> Vec
 
         if let Some(idx) = best_cluster {
             clusters[idx].0.push(*face_id);
+            clusters[idx].2.push(embedding.clone());
             let n = clusters[idx].0.len() as f32;
             for (j, v) in embedding.iter().enumerate() {
                 if j < clusters[idx].1.len() {
@@ -58,17 +74,25 @@ pub fn cluster_face_embeddings(faces: &[(i64, Vec<f32>)], threshold: f32) -> Vec
                 }
             }
         } else {
-            clusters.push((vec![*face_id], embedding.clone()));
+            clusters.push((vec![*face_id], embedding.clone(), vec![embedding.clone()]));
         }
     }
 
     clusters
         .into_iter()
         .enumerate()
-        .map(|(i, (face_ids, centroid))| PersonCluster {
-            person_id: i as i64 + 1,
-            face_ids,
-            centroid,
+        .map(|(i, (face_ids, centroid, embeddings))| {
+            let paired: Vec<(i64, Vec<f32>)> = face_ids
+                .iter()
+                .zip(embeddings.iter())
+                .map(|(id, emb)| (*id, emb.clone()))
+                .collect();
+            PersonCluster {
+                person_id: i as i64 + 1,
+                face_ids,
+                centroid: centroid.clone(),
+                avg_intra_cluster_distance: avg_intra_cluster_distance(&paired, &centroid),
+            }
         })
         .collect()
 }

@@ -2784,6 +2784,66 @@ impl Database {
         Ok(())
     }
 
+    pub fn split_face_from_person(
+        &self,
+        face_id: i64,
+        new_person_name: Option<&str>,
+    ) -> catchlight_core::Result<i64> {
+        let conn = self.conn()?;
+
+        let old_person_id: Option<i64> = conn
+            .query_row(
+                "SELECT person_id FROM face_detections WHERE id = ?1",
+                params![face_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?
+            .flatten();
+
+        let new_person_id = self.create_person(new_person_name)?;
+
+        let updated = conn
+            .execute(
+                "UPDATE face_detections SET person_id = ?1 WHERE id = ?2",
+                params![new_person_id, face_id],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        if updated == 0 {
+            conn.execute("DELETE FROM persons WHERE id = ?1", params![new_person_id])
+                .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+            return Err(catchlight_core::Error::Database(format!(
+                "face {face_id} not found"
+            )));
+        }
+
+        for person_id in [Some(new_person_id), old_person_id].into_iter().flatten() {
+            conn.execute(
+                "UPDATE persons SET face_count = (
+                     SELECT COUNT(*) FROM face_detections WHERE person_id = ?1
+                 ) WHERE id = ?1",
+                params![person_id],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+            let remaining: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM face_detections WHERE person_id = ?1",
+                    params![person_id],
+                    |row| row.get(0),
+                )
+                .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+            if remaining == 0 {
+                conn.execute("DELETE FROM persons WHERE id = ?1", params![person_id])
+                    .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+            }
+        }
+
+        Ok(new_person_id)
+    }
+
     pub fn save_edit_params(&self, media_id: i64, params: &str) -> catchlight_core::Result<()> {
         let conn = self.conn()?;
         let updated = conn

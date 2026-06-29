@@ -47,10 +47,33 @@ pub fn check_ai_status() -> AiStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard};
+
+    fn env_lock() -> MutexGuard<'static, ()> {
+        static LOCK: Mutex<()> = Mutex::new(());
+        LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
 
     #[test]
     fn check_ai_status_returns_struct() {
         let status = check_ai_status();
         assert!(!status.status_message.is_empty());
+    }
+
+    #[test]
+    fn check_ai_status_when_models_missing() {
+        let _guard = env_lock();
+        unsafe {
+            std::env::set_var("CATCHLIGHT_CLIP_MODEL", "/nonexistent/clip.onnx");
+            std::env::set_var("CATCHLIGHT_FACE_DETECT_MODEL", "/nonexistent/face.onnx");
+        }
+        let status = check_ai_status();
+        assert!(!status.clip_available);
+        assert!(!status.face_available);
+        assert!(status.status_message.contains("ONNX") || status.status_message.contains("models"));
+        unsafe {
+            std::env::remove_var("CATCHLIGHT_CLIP_MODEL");
+            std::env::remove_var("CATCHLIGHT_FACE_DETECT_MODEL");
+        }
     }
 }

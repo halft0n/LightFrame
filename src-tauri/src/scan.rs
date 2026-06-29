@@ -377,4 +377,56 @@ mod tests {
         assert_eq!(files.len(), 1);
         assert!(files[0].extension().and_then(|e| e.to_str()) == Some("jpg"));
     }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn discover_symlink_to_media_is_not_followed() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("real.jpg");
+        fs::write(&target, b"real").unwrap();
+        let link = dir.path().join("link.jpg");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        let files = discover_files(dir.path()).await.unwrap();
+        assert!(
+            files.iter().any(|p| p.file_name().unwrap() == "real.jpg"),
+            "real file should be discovered"
+        );
+        assert!(
+            !files.iter().any(|p| p.file_name().unwrap() == "link.jpg"),
+            "symlinks are not indexed (follow_links=false)"
+        );
+    }
+
+    #[tokio::test]
+    #[cfg(unix)]
+    async fn discover_unreadable_subdirectory_is_skipped_gracefully() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("visible.jpg"), b"ok").unwrap();
+
+        let restricted = dir.path().join("restricted");
+        fs::create_dir(&restricted).unwrap();
+        fs::write(restricted.join("hidden.jpg"), b"hidden").unwrap();
+        let mut perms = fs::metadata(&restricted).unwrap().permissions();
+        perms.set_mode(0o000);
+        fs::set_permissions(&restricted, perms).unwrap();
+
+        let files = discover_files(dir.path()).await.unwrap();
+        assert!(
+            files
+                .iter()
+                .any(|p| p.file_name().unwrap() == "visible.jpg"),
+            "should still discover files in readable directories"
+        );
+        assert!(
+            !files.iter().any(|p| p.file_name().unwrap() == "hidden.jpg"),
+            "unreadable subdirectory should be skipped"
+        );
+
+        let mut restore = fs::metadata(&restricted).unwrap().permissions();
+        restore.set_mode(0o755);
+        let _ = fs::set_permissions(&restricted, restore);
+    }
 }

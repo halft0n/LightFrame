@@ -77,3 +77,38 @@ fn blake3_hash_nonexistent_file() {
     let result = catchlight_dedup::file_hash(std::path::Path::new("/nonexistent/file.bin"));
     assert!(result.is_err());
 }
+
+#[test]
+fn hamming_distance_all_zero_hashes() {
+    assert_eq!(hamming_distance(0, 0), 0);
+    assert_eq!(hamming_distance(0, 1), 1);
+    assert_eq!(hamming_distance(0, 0xFFFF), 16);
+}
+
+#[test]
+fn hamming_distance_all_ones_hashes() {
+    let ones = u64::MAX;
+    assert_eq!(hamming_distance(ones, ones), 0);
+    assert_eq!(hamming_distance(ones, 0), 64);
+    assert_eq!(hamming_distance(ones, ones >> 1), 1);
+}
+
+#[test]
+fn perceptual_similarity_at_max_distance_boundary() {
+    assert!(is_perceptually_similar(0, u64::MAX, 64));
+    assert!(!is_perceptually_similar(0, u64::MAX, 63));
+}
+
+#[test]
+fn single_hash_self_comparison_is_identical() {
+    let hash = 0x1234_5678_9ABC_DEF0u64;
+    assert_eq!(hamming_distance(hash, hash), 0);
+    assert!(is_perceptually_similar(hash, hash, 0));
+    assert!(is_perceptually_similar(hash, hash, 64));
+}
+
+#[test]
+fn single_element_hamming_is_zero() {
+    let only = 0xAAAA_BBBB_CCCC_DDDDu64;
+    assert_eq!(hamming_distance(only, only), 0);
+}

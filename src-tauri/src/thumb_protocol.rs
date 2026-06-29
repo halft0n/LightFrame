@@ -122,23 +122,34 @@ fn content_type_for(size: ThumbnailSize) -> &'static str {
     }
 }
 
+fn finish_response(builder: http::response::Builder, body: Vec<u8>) -> Response<Vec<u8>> {
+    builder.body(body).unwrap_or_else(|_| {
+        Response::builder()
+            .status(StatusCode::INTERNAL_SERVER_ERROR)
+            .body(b"internal error".to_vec())
+            .expect("hardcoded response must build")
+    })
+}
+
 fn ok_response(bytes: Vec<u8>, content_type: &str) -> Response<Vec<u8>> {
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, content_type)
-        .header(header::CACHE_CONTROL, "max-age=31536000, immutable")
-        .header("Access-Control-Allow-Origin", "*")
-        .body(bytes)
-        .unwrap()
+    finish_response(
+        Response::builder()
+            .status(StatusCode::OK)
+            .header(header::CONTENT_TYPE, content_type)
+            .header(header::CACHE_CONTROL, "max-age=31536000, immutable")
+            .header("Access-Control-Allow-Origin", "*"),
+        bytes,
+    )
 }
 
 fn error_response(status: StatusCode, message: &str) -> Response<Vec<u8>> {
-    Response::builder()
-        .status(status)
-        .header(header::CONTENT_TYPE, "text/plain")
-        .header("Access-Control-Allow-Origin", "*")
-        .body(message.as_bytes().to_vec())
-        .unwrap()
+    finish_response(
+        Response::builder()
+            .status(status)
+            .header(header::CONTENT_TYPE, "text/plain")
+            .header("Access-Control-Allow-Origin", "*"),
+        message.as_bytes().to_vec(),
+    )
 }
 
 #[cfg(test)]
@@ -353,5 +364,26 @@ mod tests {
     fn strip_scheme_path_handles_windows_style_localhost_prefix() {
         assert_eq!(strip_scheme_path("/localhost/42/small"), "42/small");
         assert_eq!(strip_scheme_path("//localhost//42//small"), "42//small");
+    }
+
+    #[test]
+    fn handle_negative_media_id_not_found() {
+        let state = test_state();
+        let resp = handle(&state, "/-1/small");
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn handle_zero_media_id_not_found() {
+        let state = test_state();
+        let resp = handle(&state, "/0/small");
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[test]
+    fn handle_path_traversal_in_media_id_segment_returns_400() {
+        let state = test_state();
+        let resp = handle(&state, "/../1/small");
+        assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     }
 }

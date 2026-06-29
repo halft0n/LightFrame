@@ -147,6 +147,18 @@ export interface ModelStatus {
   models_dir: string;
   clip_available: boolean;
   face_available: boolean;
+  models: ModelFileStatus[];
+}
+
+export interface ModelFileStatus {
+  name: string;
+  filename: string;
+  url: string;
+  size_mb: number;
+  description: string;
+  installed: boolean;
+  file_size_bytes: number | null;
+  sha256_verified: boolean | null;
 }
 
 export type ScreenshotCategory =
@@ -192,6 +204,7 @@ export interface PersonClusterInfo {
   person_id: number;
   name: string | null;
   face_count: number;
+  avg_intra_cluster_distance: number;
 }
 
 export function getThumbnailUrl(id: number, size: "small" | "large" | "micro" = "small"): string {
@@ -514,6 +527,10 @@ export async function getModelStatus(): Promise<ModelStatus> {
   return invoke<ModelStatus>("get_model_status");
 }
 
+export async function downloadModel(filename: string): Promise<string> {
+  return invoke<string>("download_model", { filename });
+}
+
 export async function openModelsDir(): Promise<void> {
   return invoke("open_models_dir");
 }
@@ -576,7 +593,21 @@ export async function clusterFaces(threshold?: number): Promise<PersonClusterInf
 }
 
 export async function mergePersons(personIds: number[]): Promise<void> {
-  return invoke("merge_persons", { personIds });
+  if (personIds.length < 2) return;
+  const targetId = personIds[0]!;
+  for (const sourceId of personIds.slice(1)) {
+    await invoke("merge_persons", { personIdA: targetId, personIdB: sourceId });
+  }
+}
+
+export async function splitFaceFromPerson(
+  faceId: number,
+  newPersonName?: string,
+): Promise<number> {
+  return invoke<number>("split_face_from_person", {
+    faceId,
+    newPersonName: newPersonName ?? null,
+  });
 }
 
 export async function saveEdit(mediaId: number, params: string): Promise<void> {
