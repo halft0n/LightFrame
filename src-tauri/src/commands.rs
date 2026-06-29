@@ -186,12 +186,13 @@ pub fn batch_export(
 }
 
 fn sanitize_filename(name: &str) -> String {
-    let base = std::path::Path::new(name)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("unnamed");
-
-    base.replace(['/', '\\'], "_")
+    let base = name.rsplit(['/', '\\']).next().unwrap_or("unnamed");
+    let base = if base.is_empty() || base == "." || base == ".." {
+        "unnamed"
+    } else {
+        base
+    };
+    base.to_string()
 }
 
 fn unique_export_path(dir: &std::path::Path, filename: &str) -> std::path::PathBuf {
@@ -231,8 +232,9 @@ mod export_tests {
         assert_eq!(sanitize_filename("../../outside.jpg"), "outside.jpg");
         assert_eq!(sanitize_filename("normal.jpg"), "normal.jpg");
         assert_eq!(sanitize_filename("sub/file.jpg"), "file.jpg");
-        // Backslashes are replaced so the name cannot escape the output directory.
-        assert_eq!(sanitize_filename("..\\..\\evil.png"), ".._.._evil.png");
+        assert_eq!(sanitize_filename("..\\..\\evil.png"), "evil.png");
+        assert_eq!(sanitize_filename(""), "unnamed");
+        assert_eq!(sanitize_filename(".."), "unnamed");
     }
 
     #[test]

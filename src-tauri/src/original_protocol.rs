@@ -32,7 +32,7 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
     }
 
     let canonical = match std::fs::canonicalize(&file_path) {
-        Ok(p) => p,
+        Ok(p) => strip_extended_prefix(p),
         Err(e) => {
             tracing::warn!("original protocol: canonicalize failed: {e}");
             return error_response(StatusCode::NOT_FOUND, "file not found");
@@ -147,6 +147,17 @@ fn components_equal(a: std::path::Component<'_>, b: std::path::Component<'_>) ->
     }
 }
 
+fn strip_extended_prefix(p: PathBuf) -> PathBuf {
+    #[cfg(windows)]
+    {
+        let s = p.to_string_lossy();
+        if let Some(stripped) = s.strip_prefix("\\\\?\\") {
+            return PathBuf::from(stripped);
+        }
+    }
+    p
+}
+
 fn strip_scheme_path(request_path: &str) -> &str {
     let mut path = request_path.trim_start_matches('/');
     if let Some(rest) = path.strip_prefix("localhost/") {
@@ -258,8 +269,10 @@ mod tests {
     use std::sync::atomic::AtomicBool;
 
     fn test_state_with_watched_dir(dir: &Path) -> AppState {
+        let canonical_dir = std::fs::canonicalize(dir).unwrap_or_else(|_| dir.to_path_buf());
+        let canonical_dir = strip_extended_prefix(canonical_dir);
         let db = Arc::new(Database::open(Path::new(":memory:")).expect("in-memory db"));
-        db.add_watched_folder(dir.to_str().unwrap())
+        db.add_watched_folder(canonical_dir.to_str().unwrap())
             .expect("add watched folder");
         AppState {
             db,
@@ -509,7 +522,13 @@ mod tests {
     fn handle_special_characters_in_path() {
         let dir = tempfile::tempdir().unwrap();
         let state = test_state_with_watched_dir(dir.path());
-        let file = dir.path().join("file#1?test&.jpg");
+        // Avoid ? on Windows — it's illegal in NTFS filenames
+        let name = if cfg!(windows) {
+            "file#1_test&.jpg"
+        } else {
+            "file#1?test&.jpg"
+        };
+        let file = dir.path().join(name);
         std::fs::write(&file, b"special").unwrap();
 
         let resp = handle(&state, &request_path_for_file(&file));
