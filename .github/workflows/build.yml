@@ -167,7 +167,7 @@ jobs:
             echo "::warning::Build failed (likely signing issue) — retrying without updater signing"
             unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
             cp src-tauri/tauri.conf.json src-tauri/tauri.conf.json.bak
-            jq 'del(.plugins.updater.pubkey)' src-tauri/tauri.conf.json > _tmp.json && mv _tmp.json src-tauri/tauri.conf.json
+            jq 'del(.plugins.updater)' src-tauri/tauri.conf.json > _tmp.json && mv _tmp.json src-tauri/tauri.conf.json
             pnpm tauri build
             mv src-tauri/tauri.conf.json.bak src-tauri/tauri.conf.json
           fi
@@ -185,7 +185,7 @@ jobs:
             echo "::warning::Build failed (likely signing issue) — retrying without updater signing"
             unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
             cp src-tauri/tauri.conf.json src-tauri/tauri.conf.json.bak
-            jq 'del(.plugins.updater.pubkey)' src-tauri/tauri.conf.json > _tmp.json && mv _tmp.json src-tauri/tauri.conf.json
+            jq 'del(.plugins.updater)' src-tauri/tauri.conf.json > _tmp.json && mv _tmp.json src-tauri/tauri.conf.json
             pnpm tauri build --target ${{ matrix.target }}
             mv src-tauri/tauri.conf.json.bak src-tauri/tauri.conf.json
           fi
