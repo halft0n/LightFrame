@@ -293,5 +293,11 @@
   "editor.levels.inputWhite": "输入白点",
   "editor.levels.gamma": "伽马",
   "editor.levels.outputBlack": "输出黑点",
-  "editor.levels.outputWhite": "输出白点"
+  "editor.levels.outputWhite": "输出白点",
+  "errors.notFound": "资源未找到",
+  "errors.database": "数据库错误，请重试",
+  "errors.forbidden": "没有访问权限",
+  "errors.tooLarge": "文件过大",
+  "errors.batchTooLarge": "批量操作数量超出限制",
+  "errors.generic": "操作失败，请重试"
 }

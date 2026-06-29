@@ -7,6 +7,9 @@ mod thumb_cache;
 mod thumb_protocol;
 mod watcher;
 
+#[doc(hidden)]
+pub use image_edit::export_edited_image;
+
 use state::AppState;
 use tauri::Manager;
 use tracing_subscriber::EnvFilter;

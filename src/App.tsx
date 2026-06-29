@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { MainContent } from "@/components/layout/MainContent";
 import { useTranslation } from "@/i18n/useTranslation";
@@ -30,11 +30,11 @@ export default function App() {
   const [searchFocused, setSearchFocused] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastAutoRescanRef = useRef(0);
+  const lastRescanRef = useRef(0);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const lastHistoryQueryRef = useRef("");
 
-  const RESCAN_COOLDOWN_MS = 30_000;
+  const RESCAN_COOLDOWN_MS = 5 * 60 * 1000;
 
   useEffect(() => {
     setInputValue(searchQuery);
@@ -144,42 +144,42 @@ export default function App() {
     };
   }, []);
 
+  const handleVisibilityChange = useCallback(() => {
+    if (document.hidden) return;
+
+    const now = Date.now();
+    if (now - lastRescanRef.current < RESCAN_COOLDOWN_MS) return;
+
+    const { watchedFolders } = getSnapshot();
+    if (watchedFolders.length === 0) return;
+
+    const foldersToRescan = watchedFolders.filter((folder) => {
+      if (folder.scan_status === "scanning") return false;
+      if (!folder.last_scan) return true;
+      const lastScan = new Date(folder.last_scan).getTime();
+      return now - lastScan > RESCAN_COOLDOWN_MS;
+    });
+
+    if (foldersToRescan.length === 0) return;
+
+    lastRescanRef.current = now;
+
+    void Promise.all(
+      foldersToRescan.map(async (folder) => {
+        updateFolder(folder.id, { scan_status: "scanning" });
+        try {
+          await scanFolder(folder.id);
+        } catch {
+          updateFolder(folder.id, { scan_status: "error" });
+        }
+      }),
+    );
+  }, []);
+
   useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.visibilityState !== "visible") return;
-
-      const now = Date.now();
-      if (now - lastAutoRescanRef.current < RESCAN_COOLDOWN_MS) return;
-
-      const { watchedFolders } = getSnapshot();
-      if (watchedFolders.length === 0) return;
-
-      const foldersToRescan = watchedFolders.filter((folder) => {
-        if (folder.scan_status === "scanning") return false;
-        if (!folder.last_scan) return true;
-        const lastScan = new Date(folder.last_scan).getTime();
-        return now - lastScan > RESCAN_COOLDOWN_MS;
-      });
-
-      if (foldersToRescan.length === 0) return;
-
-      lastAutoRescanRef.current = now;
-
-      void Promise.all(
-        foldersToRescan.map(async (folder) => {
-          updateFolder(folder.id, { scan_status: "scanning" });
-          try {
-            await scanFolder(folder.id);
-          } catch {
-            updateFolder(folder.id, { scan_status: "error" });
-          }
-        }),
-      );
-    };
-
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, []);
+  }, [handleVisibilityChange]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-neutral-50 text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100">

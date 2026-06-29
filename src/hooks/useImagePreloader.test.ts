@@ -103,7 +103,7 @@ describe("useImagePreloader", () => {
     }
   }
 
-  it("does not preload until current image is loaded", async () => {
+  it("does not preload until current image is loaded", () => {
     renderHook(() =>
       useImagePreloader({
         mediaId: 1,
@@ -113,9 +113,7 @@ describe("useImagePreloader", () => {
       }),
     );
 
-    await waitFor(() => {
-      expect(invoke).not.toHaveBeenCalledWith("get_media_by_id", expect.anything());
-    });
+    expect(invoke).not.toHaveBeenCalledWith("get_media_by_id", expect.anything());
     expect(createdImages).toHaveLength(0);
   });
 

@@ -184,6 +184,35 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   }, []);
 
   useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const focusableSelector =
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+
+    const handleTabKey = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+
+      const focusable = dialog.querySelectorAll(focusableSelector);
+      if (focusable.length === 0) return;
+
+      const first = focusable[0] as HTMLElement;
+      const last = focusable[focusable.length - 1] as HTMLElement;
+
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+
+    dialog.addEventListener("keydown", handleTabKey);
+    return () => dialog.removeEventListener("keydown", handleTabKey);
+  }, []);
+
+  useEffect(() => {
     const el = filmstripRef.current;
     if (!el) return;
     const active = el.querySelector(`[data-id="${mediaId}"]`);

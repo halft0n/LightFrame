@@ -1009,18 +1009,19 @@ pub async fn find_similar_photos(
         .find_similar_media(media_id, SIMILAR_THRESHOLD, limit)
         .map_err(|e| e.to_string())?;
 
+    let ids: Vec<i64> = similar.iter().map(|(id, _)| *id).collect();
+    let media_map = state.db.get_media_by_ids(&ids).map_err(|e| e.to_string())?;
+
     let mut results = Vec::with_capacity(similar.len());
     for (id, score) in similar {
-        let media = state
-            .db
-            .get_media_by_id(id)
-            .map_err(|e| e.to_string())?
+        let media = media_map
+            .get(&id)
             .ok_or_else(|| format!("media {id} not found"))?;
         results.push(SimilarPhoto {
             media_id: id,
             similarity: score,
-            file_name: media.filename,
-            file_path: media.path,
+            file_name: media.filename.clone(),
+            file_path: media.path.clone(),
         });
     }
 
@@ -1149,12 +1150,15 @@ pub async fn cluster_faces(
     let threshold = threshold.unwrap_or(DEFAULT_FACE_CLUSTER_THRESHOLD);
     let db = state.db.clone();
     tokio::task::spawn_blocking(move || {
-        let faces = db.get_all_face_embeddings().map_err(|e| e.to_string())?;
+        let faces = db
+            .get_unassigned_face_embeddings()
+            .map_err(|e| e.to_string())?;
         if faces.is_empty() {
             return Ok(Vec::new());
         }
 
-        db.clear_person_clusters().map_err(|e| e.to_string())?;
+        db.clear_unnamed_person_clusters()
+            .map_err(|e| e.to_string())?;
 
         let clusters = catchlight_ai::cluster_face_embeddings(&faces, threshold);
         let mut results = Vec::with_capacity(clusters.len());

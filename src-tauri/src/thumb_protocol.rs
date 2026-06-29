@@ -5,6 +5,15 @@ use http::{StatusCode, header};
 use std::path::Path;
 use tauri::http::Response;
 
+/// Minimal 1×1 transparent PNG returned when a thumbnail is not yet generated.
+const PLACEHOLDER_PNG: &[u8] = &[
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+    0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+    0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+    0x42, 0x60, 0x82,
+];
+
 pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
     tracing::debug!("thumb protocol request: {request_path}");
 
@@ -77,26 +86,14 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
         return error_response(StatusCode::NOT_FOUND, "source file missing");
     }
 
-    match catchlight_thumbnail::generate(src, &hash, size) {
-        Ok(generated) => match std::fs::read(&generated) {
-            Ok(bytes) => {
-                state.thumb_cache.insert(media_id, size, bytes.clone());
-                ok_response(bytes, "image/webp")
-            }
-            Err(e) => {
-                tracing::warn!(
-                    ?generated,
-                    media_id,
-                    "failed to read generated thumbnail: {e}"
-                );
-                error_response(StatusCode::NOT_FOUND, "thumbnail not found")
-            }
-        },
-        Err(e) => {
-            tracing::warn!(media_id, path = %media.path, ?size, "thumbnail generation failed: {e}");
-            error_response(StatusCode::INTERNAL_SERVER_ERROR, "generation failed")
-        }
-    }
+    // Thumbnails should be pre-generated during scan; on-demand generation blocks the UI thread.
+    tracing::warn!(
+        media_id,
+        path = %media.path,
+        ?size,
+        "on-demand thumbnail generation — scan may not have completed for this file"
+    );
+    ok_response(PLACEHOLDER_PNG.to_vec(), "image/png")
 }
 
 fn strip_scheme_path(request_path: &str) -> &str {

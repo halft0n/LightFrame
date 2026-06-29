@@ -293,5 +293,11 @@
   "editor.levels.inputWhite": "Input White",
   "editor.levels.gamma": "Gamma",
   "editor.levels.outputBlack": "Output Black",
-  "editor.levels.outputWhite": "Output White"
+  "editor.levels.outputWhite": "Output White",
+  "errors.notFound": "Resource not found",
+  "errors.database": "Database error, please try again",
+  "errors.forbidden": "Access denied",
+  "errors.tooLarge": "File too large",
+  "errors.batchTooLarge": "Batch operation exceeds limit",
+  "errors.generic": "Operation failed, please try again"
 }

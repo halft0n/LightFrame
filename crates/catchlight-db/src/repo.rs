@@ -214,7 +214,7 @@ fn build_smart_album_filter(rule: &SmartAlbumRule) -> (String, Vec<Box<dyn rusql
 }
 
 fn smart_album_media_count(db: &Database, rule: &SmartAlbumRule) -> catchlight_core::Result<i64> {
-    let conn = db.conn()?;
+    let conn = db.read_conn()?;
     batch_smart_album_media_counts(&conn, std::slice::from_ref(rule))?
         .into_iter()
         .next()
@@ -410,7 +410,7 @@ impl Database {
     }
 
     pub fn get_micro_thumb(&self, media_id: i64) -> catchlight_core::Result<Option<Vec<u8>>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let result: Option<Option<Vec<u8>>> = conn
             .query_row(
                 "SELECT micro_thumb FROM media_files WHERE id = ?1",
@@ -429,7 +429,7 @@ impl Database {
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
         // Legacy OFFSET pagination — prefer `get_media_page` for large datasets.
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
@@ -486,7 +486,7 @@ impl Database {
         limit: i64,
         cursor: Option<(String, i64)>,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let (sql, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match cursor {
             None => (
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
@@ -525,7 +525,7 @@ impl Database {
     }
 
     pub fn get_media_count(&self) -> catchlight_core::Result<i64> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         conn.query_row(
             "SELECT COUNT(*) FROM media_files WHERE is_deleted = 0",
             [],
@@ -540,7 +540,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
@@ -564,7 +564,7 @@ impl Database {
     }
 
     pub fn get_media_count_by_folder(&self, folder_id: i64) -> catchlight_core::Result<i64> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         conn.query_row(
             "SELECT COUNT(*) FROM media_files WHERE folder_id = ?1 AND is_deleted = 0",
             params![folder_id],
@@ -579,7 +579,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
@@ -600,7 +600,7 @@ impl Database {
     }
 
     pub fn get_media_count_by_type(&self, media_type: &str) -> catchlight_core::Result<i64> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         conn.query_row(
             "SELECT COUNT(*) FROM media_files WHERE media_type = ?1 AND is_deleted = 0",
             params![media_type],
@@ -629,7 +629,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let (sql, params): (&str, Vec<Box<dyn rusqlite::ToSql>>) = match screenshot_type {
             Some(st) => (
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
@@ -672,7 +672,7 @@ impl Database {
         &self,
         screenshot_type: Option<&str>,
     ) -> catchlight_core::Result<i64> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         match screenshot_type {
             Some(st) => conn.query_row(
                 "SELECT COUNT(*) FROM media_files
@@ -691,7 +691,7 @@ impl Database {
     }
 
     pub fn list_watched_folders(&self) -> catchlight_core::Result<Vec<WatchedFolder>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT w.id, w.path, COALESCE(COUNT(m.id), 0) as media_count, w.last_scan_at as last_scan, w.scan_status
@@ -711,7 +711,7 @@ impl Database {
     }
 
     pub fn get_watched_folder(&self, id: i64) -> catchlight_core::Result<Option<WatchedFolder>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         conn.query_row(
             "SELECT w.id, w.path, COALESCE(COUNT(m.id), 0) as media_count, w.last_scan_at as last_scan, w.scan_status
              FROM watched_folders w
@@ -794,7 +794,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<TimelineGroup>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
@@ -836,7 +836,7 @@ impl Database {
     }
 
     pub fn get_media_neighbors(&self, id: i64) -> catchlight_core::Result<MediaNeighbors> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
 
         let prev_id: Option<i64> = conn
             .query_row(
@@ -872,7 +872,7 @@ impl Database {
     }
 
     pub fn get_media_by_id(&self, id: i64) -> catchlight_core::Result<Option<MediaFile>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         conn.query_row(
             "SELECT id, path, filename, media_type, size_bytes, width, height,
                     created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
@@ -884,8 +884,47 @@ impl Database {
         .map_err(|e| catchlight_core::Error::Database(e.to_string()))
     }
 
+    pub fn get_media_by_ids(
+        &self,
+        ids: &[i64],
+    ) -> catchlight_core::Result<std::collections::HashMap<i64, MediaFile>> {
+        if ids.is_empty() {
+            return Ok(std::collections::HashMap::new());
+        }
+
+        let conn = self.read_conn()?;
+        let placeholders: Vec<String> = ids
+            .iter()
+            .enumerate()
+            .map(|(i, _)| format!("?{}", i + 1))
+            .collect();
+        let sql = format!(
+            "SELECT id, path, filename, media_type, size_bytes, width, height,
+                    created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+             FROM media_files
+             WHERE is_deleted = 0 AND id IN ({})",
+            placeholders.join(", ")
+        );
+        let params: Vec<&dyn rusqlite::ToSql> =
+            ids.iter().map(|id| id as &dyn rusqlite::ToSql).collect();
+
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(params.as_slice(), |row| {
+                let media = Self::map_media_row(row)?;
+                Ok((media.id, media))
+            })
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<_, _>>()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))
+    }
+
     pub fn get_media_by_path(&self, path: &str) -> catchlight_core::Result<Option<MediaFile>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         conn.query_row(
             "SELECT id, path, filename, media_type, size_bytes, width, height,
                     created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
@@ -901,7 +940,7 @@ impl Database {
         &self,
         media_id: i64,
     ) -> catchlight_core::Result<Option<(String, Option<String>, i64)>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         conn.query_row(
             "SELECT path, blake3_hash, is_deleted FROM media_files WHERE id = ?1",
             params![media_id],
@@ -1063,24 +1102,51 @@ impl Database {
         let mut uf = UnionFind::new(candidates.iter().map(|(id, _, _)| *id));
         let mut pair_similarities: std::collections::HashMap<(i64, i64), f64> =
             std::collections::HashMap::new();
+        let mut seen_pairs: std::collections::HashSet<(usize, usize)> =
+            std::collections::HashSet::new();
 
-        for i in 0..candidates.len() {
-            for j in (i + 1)..candidates.len() {
-                let (id_a, dhash_a, phash_a) = candidates[i];
-                let (id_b, dhash_b, phash_b) = candidates[j];
-                if let Some(sim) =
-                    perceptual_pair_match(dhash_a, dhash_b, phash_a, phash_b, threshold)
-                {
-                    uf.union(id_a, id_b);
-                    let key = if id_a <= id_b {
-                        (id_a, id_b)
-                    } else {
-                        (id_b, id_a)
-                    };
-                    pair_similarities.insert(key, sim);
-                }
+        // LSH bucketing by high 16 bits (with adjacent bucket for near-matches).
+        let mut dhash_buckets: std::collections::HashMap<u16, Vec<usize>> =
+            std::collections::HashMap::new();
+        let mut phash_buckets: std::collections::HashMap<u16, Vec<usize>> =
+            std::collections::HashMap::new();
+
+        for (idx, (_, dhash, phash)) in candidates.iter().enumerate() {
+            if let Some(dh) = dhash {
+                let key = (*dh >> 48) as u16;
+                dhash_buckets.entry(key).or_default().push(idx);
+                dhash_buckets
+                    .entry(key.wrapping_add(1))
+                    .or_default()
+                    .push(idx);
+            }
+            if let Some(ph) = phash {
+                let key = (*ph >> 48) as u16;
+                phash_buckets.entry(key).or_default().push(idx);
+                phash_buckets
+                    .entry(key.wrapping_add(1))
+                    .or_default()
+                    .push(idx);
             }
         }
+
+        Self::compare_perceptual_bucket_pairs(
+            &candidates,
+            dhash_buckets.values(),
+            threshold,
+            &mut seen_pairs,
+            &mut uf,
+            &mut pair_similarities,
+        );
+
+        Self::compare_perceptual_bucket_pairs(
+            &candidates,
+            phash_buckets.values(),
+            threshold,
+            &mut seen_pairs,
+            &mut uf,
+            &mut pair_similarities,
+        );
 
         let mut components: std::collections::HashMap<i64, Vec<i64>> =
             std::collections::HashMap::new();
@@ -1125,10 +1191,46 @@ impl Database {
         Ok(groups)
     }
 
+    fn compare_perceptual_bucket_pairs<'a>(
+        candidates: &[PerceptualCandidate],
+        bucket_groups: impl IntoIterator<Item = &'a Vec<usize>>,
+        threshold: u32,
+        seen_pairs: &mut std::collections::HashSet<(usize, usize)>,
+        uf: &mut UnionFind,
+        pair_similarities: &mut std::collections::HashMap<(i64, i64), f64>,
+    ) {
+        for indices in bucket_groups {
+            for i in 0..indices.len() {
+                for j in (i + 1)..indices.len() {
+                    let a = indices[i];
+                    let b = indices[j];
+                    let pair = if a < b { (a, b) } else { (b, a) };
+                    if !seen_pairs.insert(pair) {
+                        continue;
+                    }
+
+                    let (id_a, dhash_a, phash_a) = candidates[a];
+                    let (id_b, dhash_b, phash_b) = candidates[b];
+                    if let Some(sim) =
+                        perceptual_pair_match(dhash_a, dhash_b, phash_a, phash_b, threshold)
+                    {
+                        uf.union(id_a, id_b);
+                        let key = if id_a <= id_b {
+                            (id_a, id_b)
+                        } else {
+                            (id_b, id_a)
+                        };
+                        pair_similarities.insert(key, sim);
+                    }
+                }
+            }
+        }
+    }
+
     fn exact_duplicate_member_ids(
         &self,
     ) -> catchlight_core::Result<std::collections::HashSet<i64>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT DISTINCT dm.media_id
@@ -1153,7 +1255,7 @@ impl Database {
         &self,
         exclude_ids: &std::collections::HashSet<i64>,
     ) -> catchlight_core::Result<Vec<PerceptualCandidate>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, dhash, phash FROM media_files
@@ -1186,7 +1288,7 @@ impl Database {
         &self,
         group_id: i64,
     ) -> catchlight_core::Result<Option<DuplicateGroup>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT dg.id, dg.match_type, dg.created_at,
@@ -1243,7 +1345,7 @@ impl Database {
     }
 
     pub fn list_duplicate_groups(&self) -> catchlight_core::Result<Vec<DuplicateGroupDetail>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT dg.id, dg.match_type, dg.created_at,
@@ -1341,13 +1443,16 @@ impl Database {
     }
 
     pub fn get_duplicate_groups_count(&self) -> catchlight_core::Result<i64> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         conn.query_row("SELECT COUNT(*) FROM duplicate_groups", [], |row| {
             row.get(0)
         })
         .map_err(|e| catchlight_core::Error::Database(e.to_string()))
     }
 
+    /// Resolve a duplicate group by keeping the winner and optionally soft-deleting the others.
+    /// Note: when `delete_files` is true, `set_deleted` only sets `is_deleted = 1`; it does NOT
+    /// remove files from disk.
     pub fn resolve_duplicate_group(
         &self,
         group_id: i64,
@@ -1418,7 +1523,7 @@ impl Database {
     }
 
     pub fn list_deleted_media(&self) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
@@ -1567,7 +1672,7 @@ impl Database {
     }
 
     pub fn get_location_groups(&self) -> catchlight_core::Result<Vec<LocationGroup>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT country, city, COUNT(*) AS cnt, MIN(id) AS sample_id
@@ -1600,7 +1705,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
@@ -1692,7 +1797,7 @@ impl Database {
     }
 
     pub fn list_albums(&self) -> catchlight_core::Result<Vec<Album>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT a.id, a.name, a.description, a.cover_media_id,
@@ -1714,7 +1819,7 @@ impl Database {
     }
 
     pub fn get_album(&self, id: i64) -> catchlight_core::Result<Option<Album>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         conn.query_row(
             "SELECT a.id, a.name, a.description, a.cover_media_id,
                     COALESCE(COUNT(ai.media_id), 0) AS media_count,
@@ -1768,7 +1873,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT m.id, m.path, m.filename, m.media_type, m.size_bytes, m.width, m.height,
@@ -1845,7 +1950,7 @@ impl Database {
     }
 
     pub fn list_smart_albums(&self) -> catchlight_core::Result<Vec<SmartAlbum>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, name, icon, rule_json, 0 AS media_count, created_at
@@ -1895,7 +2000,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let rule_json: String = conn
             .query_row(
                 "SELECT rule_json FROM smart_albums WHERE id = ?1",
@@ -1936,7 +2041,7 @@ impl Database {
     }
 
     pub fn get_on_this_day_media(&self, limit: i64) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let count: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM media_files
@@ -2088,7 +2193,7 @@ impl Database {
     }
 
     pub fn list_memories(&self) -> catchlight_core::Result<Vec<Memory>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT m.id, m.title, m.subtitle, m.cover_media_id,
@@ -2115,7 +2220,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT mf.id, mf.path, mf.filename, mf.media_type, mf.size_bytes, mf.width, mf.height,
@@ -2141,7 +2246,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
@@ -2162,7 +2267,7 @@ impl Database {
     }
 
     pub fn get_favorites_count(&self) -> catchlight_core::Result<i64> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         conn.query_row(
             "SELECT COUNT(*) FROM media_files WHERE is_favorite = 1 AND is_deleted = 0",
             [],
@@ -2172,7 +2277,7 @@ impl Database {
     }
 
     pub fn is_favorite(&self, media_id: i64) -> catchlight_core::Result<bool> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let result: i64 = conn
             .query_row(
                 "SELECT is_favorite FROM media_files WHERE id = ?1 AND is_deleted = 0",
@@ -2196,7 +2301,7 @@ impl Database {
             return Ok(Vec::new());
         }
 
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT m.id, m.path, m.filename, m.media_type, m.size_bytes, m.width, m.height,
@@ -2223,7 +2328,7 @@ impl Database {
             return Ok(0);
         }
 
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         conn.query_row(
             "SELECT COUNT(*)
              FROM media_fts f
@@ -2236,7 +2341,7 @@ impl Database {
     }
 
     pub fn get_location_stats(&self) -> catchlight_core::Result<LocationStats> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
 
         let total_with_gps: i64 = conn
             .query_row(
@@ -2296,7 +2401,7 @@ impl Database {
     }
 
     pub fn list_persons(&self) -> catchlight_core::Result<Vec<Person>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, name, face_count, cover_face_id, created_at
@@ -2341,7 +2446,7 @@ impl Database {
         limit: i64,
         offset: i64,
     ) -> catchlight_core::Result<Vec<MediaFile>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT DISTINCT mf.id, mf.path, mf.filename, mf.media_type, mf.size_bytes,
@@ -2382,7 +2487,7 @@ impl Database {
     }
 
     pub fn get_all_face_embeddings(&self) -> catchlight_core::Result<Vec<(i64, Vec<f32>)>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, face_embedding FROM face_detections
@@ -2404,8 +2509,51 @@ impl Database {
             .collect())
     }
 
-    pub fn get_person_face_count(&self, person_id: i64) -> catchlight_core::Result<i64> {
+    pub fn get_unassigned_face_embeddings(&self) -> catchlight_core::Result<Vec<(i64, Vec<f32>)>> {
+        let conn = self.read_conn()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT fd.id, fd.face_embedding FROM face_detections fd
+                 LEFT JOIN persons p ON fd.person_id = p.id
+                 WHERE fd.face_embedding IS NOT NULL
+                   AND (fd.person_id IS NULL OR p.name IS NULL OR TRIM(p.name) = '')",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                let id: i64 = row.get(0)?;
+                let blob: Vec<u8> = row.get(1)?;
+                Ok((id, blob_to_f32_vec(&blob)))
+            })
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        Ok(rows
+            .filter_map(|r| r.ok())
+            .filter(|(_, emb)| !emb.is_empty())
+            .collect())
+    }
+
+    pub fn clear_unnamed_person_clusters(&self) -> catchlight_core::Result<()> {
         let conn = self.conn()?;
+        conn.execute(
+            "UPDATE face_detections SET person_id = NULL
+             WHERE person_id IN (
+                 SELECT id FROM persons WHERE name IS NULL OR TRIM(COALESCE(name, '')) = ''
+             )",
+            [],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        conn.execute(
+            "DELETE FROM persons WHERE name IS NULL OR TRIM(COALESCE(name, '')) = ''",
+            [],
+        )
+        .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn get_person_face_count(&self, person_id: i64) -> catchlight_core::Result<i64> {
+        let conn = self.read_conn()?;
         conn.query_row(
             "SELECT COUNT(*) FROM face_detections WHERE person_id = ?1",
             params![person_id],
@@ -2450,7 +2598,7 @@ impl Database {
     }
 
     pub fn get_persons_count(&self) -> catchlight_core::Result<i64> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         conn.query_row("SELECT COUNT(*) FROM persons", [], |row| row.get(0))
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))
     }
@@ -2476,7 +2624,7 @@ impl Database {
     }
 
     pub fn get_clip_embedding(&self, media_id: i64) -> catchlight_core::Result<Option<Vec<f32>>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let blob: Option<Vec<u8>> = conn
             .query_row(
                 "SELECT clip_embedding FROM media_embeddings WHERE media_id = ?1",
@@ -2490,7 +2638,7 @@ impl Database {
     }
 
     pub fn get_all_clip_embeddings(&self) -> catchlight_core::Result<Vec<(i64, Vec<f32>)>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT media_id, clip_embedding FROM media_embeddings
@@ -2572,7 +2720,7 @@ impl Database {
         &self,
         media_id: i64,
     ) -> catchlight_core::Result<Vec<FaceDetectionRecord>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
                 "SELECT id, media_id, bbox_x, bbox_y, bbox_w, bbox_h, confidence, person_id
@@ -2655,7 +2803,7 @@ impl Database {
     }
 
     pub fn get_edit_params(&self, media_id: i64) -> catchlight_core::Result<Option<String>> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         conn.query_row(
             "SELECT edit_params FROM media_files WHERE id = ?1",
             params![media_id],
@@ -2684,7 +2832,7 @@ impl Database {
     }
 
     pub fn has_edits(&self, media_id: i64) -> catchlight_core::Result<bool> {
-        let conn = self.conn()?;
+        let conn = self.read_conn()?;
         let value: Option<String> = conn
             .query_row(
                 "SELECT edit_params FROM media_files WHERE id = ?1",

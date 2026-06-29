@@ -7,6 +7,7 @@ import {
 } from "@/lib/tauri";
 import { openViewer } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
+import { localizeError } from "@/lib/errors";
 
 interface SimilarPhotosPanelProps {
   mediaId: number;
@@ -26,12 +27,12 @@ export function SimilarPhotosPanel({ mediaId, onClose }: SimilarPhotosPanelProps
       const results = await findSimilarPhotos(mediaId, 24);
       setPhotos(results);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(localizeError(e, t));
       setPhotos([]);
     } finally {
       setLoading(false);
     }
-  }, [mediaId]);
+  }, [mediaId, t]);
 
   useEffect(() => {
     void loadSimilar();
@@ -44,10 +45,10 @@ export function SimilarPhotosPanel({ mediaId, onClose }: SimilarPhotosPanelProps
       await computeClipEmbedding(mediaId);
       await loadSimilar();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(localizeError(e, t));
       setLoading(false);
     }
-  }, [mediaId, loadSimilar]);
+  }, [mediaId, loadSimilar, t]);
 
   return (
     <aside

@@ -81,7 +81,7 @@ describe("SimilarPhotosPanel", () => {
 
     render(<SimilarPhotosPanel mediaId={1} onClose={() => {}} />);
     await waitFor(() => {
-      expect(screen.getByText("CLIP unavailable")).toBeInTheDocument();
+      expect(screen.getByText("操作失败，请重试")).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: "重试" })).toBeInTheDocument();
   });
