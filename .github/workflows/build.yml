@@ -126,6 +126,7 @@ jobs:
 
       - name: Verify version alignment
         if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           CONF_VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | head -1 | cut -d'"' -f4)
@@ -155,17 +156,49 @@ jobs:
 
       - name: Build (native target)
         if: "!contains(matrix.label, 'arm64')"
+        shell: bash
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: pnpm tauri build
+          _SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          _SIGNING_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$_SIGNING_KEY" ]; then
+            export TAURI_SIGNING_PRIVATE_KEY="$_SIGNING_KEY"
+            export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${_SIGNING_PASSWORD:-}"
+            echo "::notice::Attempting build with updater signing"
+            if pnpm tauri build; then
+              echo "::notice::Build with signing succeeded"
+            else
+              echo "::warning::Build with signing failed — rebuilding without signing"
+              unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+              pnpm tauri build
+            fi
+          else
+            echo "::notice::Building without updater signing (no key configured)"
+            pnpm tauri build
+          fi
 
       - name: Build (cross-compile arm64)
         if: contains(matrix.label, 'arm64')
+        shell: bash
         env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: pnpm tauri build --target ${{ matrix.target }}
+          _SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          _SIGNING_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -n "$_SIGNING_KEY" ]; then
+            export TAURI_SIGNING_PRIVATE_KEY="$_SIGNING_KEY"
+            export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${_SIGNING_PASSWORD:-}"
+            echo "::notice::Attempting build with updater signing"
+            if pnpm tauri build --target ${{ matrix.target }}; then
+              echo "::notice::Build with signing succeeded"
+            else
+              echo "::warning::Build with signing failed — rebuilding without signing"
+              unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
+              pnpm tauri build --target ${{ matrix.target }}
+            fi
+          else
+            echo "::notice::Building without updater signing (no key configured)"
+            pnpm tauri build --target ${{ matrix.target }}
+          fi
 
       - name: Collect release artifacts
         shell: bash
@@ -174,16 +207,16 @@ jobs:
           LABEL="${{ matrix.label }}"
           mkdir -p release-artifacts
 
-          # Search in the correct workspace target directory
           SEARCH_DIR="target/release/bundle"
+          BIN_DIR="target/release"
           if [[ "$LABEL" == *"arm64"* ]]; then
             SEARCH_DIR="target/${{ matrix.target }}/release/bundle"
+            BIN_DIR="target/${{ matrix.target }}/release"
           fi
 
           echo "Searching for artifacts in: $SEARCH_DIR"
 
           if [ -d "$SEARCH_DIR" ]; then
-            # Collect platform-specific installers (not raw binaries)
             for f in $(find "$SEARCH_DIR" -type f \( -name "*.msi" -o -name "*-setup.exe" -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.dmg" \) 2>/dev/null); do
               BASENAME="$(basename "$f")"
               EXT="${BASENAME##*.}"
@@ -192,14 +225,27 @@ jobs:
               echo "  => release-artifacts/${NEW_NAME}"
             done
 
-            # Collect updater bundles and signatures when signing keys are configured
-            if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
-              mkdir -p "release-artifacts/updater/${LABEL}"
-              for f in $(find "$SEARCH_DIR" -type f \( -name "*.sig" -o -name "*.nsis.zip" -o -name "*.app.tar.gz" -o -name "*.AppImage.tar.gz" \) 2>/dev/null); do
-                BASENAME="$(basename "$f")"
-                cp "$f" "release-artifacts/updater/${LABEL}/${BASENAME}"
-                echo "  => release-artifacts/updater/${LABEL}/${BASENAME}"
-              done
+            # Windows portable: copy standalone exe
+            if [[ "$LABEL" == windows-* ]]; then
+              EXE_PATH="${BIN_DIR}/lightframe-app.exe"
+              if [ -f "$EXE_PATH" ]; then
+                cp "$EXE_PATH" "release-artifacts/LightFrame-${VERSION}-${LABEL}-portable.exe"
+                echo "  => release-artifacts/LightFrame-${VERSION}-${LABEL}-portable.exe"
+              fi
+            fi
+
+            # Collect updater bundles and signatures if present
+            mkdir -p "release-artifacts/updater/${LABEL}"
+            FOUND_SIG=0
+            for f in $(find "$SEARCH_DIR" -type f \( -name "*.sig" -o -name "*.nsis.zip" -o -name "*.app.tar.gz" -o -name "*.AppImage.tar.gz" \) 2>/dev/null); do
+              BASENAME="$(basename "$f")"
+              cp "$f" "release-artifacts/updater/${LABEL}/${BASENAME}"
+              echo "  => release-artifacts/updater/${LABEL}/${BASENAME}"
+              FOUND_SIG=1
+            done
+            if [ "$FOUND_SIG" -eq 0 ]; then
+              rmdir "release-artifacts/updater/${LABEL}" 2>/dev/null || true
+              rmdir "release-artifacts/updater" 2>/dev/null || true
             fi
           else
             echo "WARNING: Bundle directory not found: $SEARCH_DIR"
@@ -318,7 +364,9 @@ jobs:
             ### Downloads
             | Platform | Architecture | File |
             |----------|-------------|------|
-            | Windows | amd64 | `.msi` / `.exe` |
+            | Windows | amd64 | `.msi` / `-setup.exe` (installer) / `-portable.exe` (no install) |
             | Linux | amd64 | `.deb` / `.rpm` / `.AppImage` |
             | macOS | amd64 | `.dmg` |
             | macOS | arm64 | `.dmg` |
+            
+            > **Windows portable**: Requires WebView2 runtime (pre-installed on Windows 10/11). No installation needed — just run the `.exe`.

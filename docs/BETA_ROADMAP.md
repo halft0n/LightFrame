@@ -1,9 +1,9 @@
 # LightFrame v0.1.0-beta Roadmap
 
-> **Current version:** v0.0.11  
+> **Current version:** v0.0.12  
 > **Last updated:** 2026-06-29
 
-## Current Status (v0.0.11)
+## Current Status (v0.0.12)
 
 ### Core (Phase 1–2) — ✅ Complete
 
@@ -26,7 +26,7 @@
 - ✅ Database read/write split
 - ✅ LSH-based dedup optimization
 
-### Beta features (v0.0.9–v0.0.11) — ✅ Implemented
+### Beta features (v0.0.9–v0.0.12) — ✅ Implemented
 
 - ✅ CLIP model auto-download with progress bar (`download_model` + `model-download-progress` event)
 - ✅ Semantic search fully functional (Rust ONNX + `semantic_search` IPC + search UI mode toggle)
@@ -104,7 +104,7 @@ When `raw-decode` is enabled, `decode_image()` tries full RAW decode first and f
 | Criterion | Status | Notes |
 |-----------|--------|-------|
 | All tests passing on Windows, macOS, Linux | ⚠️ Partial | CI: Ubuntu + Windows on every PR; macOS on tag builds only |
-| Rust + frontend test suite green | ✅ | **385** Rust + **314** frontend = **699** tests (v0.0.11) |
+| Rust + frontend test suite green | ✅ | **534** Rust + **509** frontend = **1043** tests (v0.0.12) |
 | <3s cold start time | ⬜ Unverified | Target from roadmap; needs release-build measurement |
 | <100MB memory usage for 10K photos | ⬜ Unverified | Needs profiling on real library |
 | 10万+ library performance targets | ⬜ Pending | Criterion benches exist; soak test on 100K+ library not done |
@@ -117,7 +117,7 @@ When `raw-decode` is enabled, `decode_image()` tries full RAW decode first and f
 
 ## Updated Development Plan — Remaining Work to v0.1.0-beta
 
-Below is the execution plan for what remains after v0.0.11. Effort estimates assume **single developer, full-time**.
+Below is the execution plan for what remains after v0.0.12. Effort estimates assume **single developer, full-time**.
 
 | # | Item | Priority | Effort | Dependencies | Blocks v0.1.0-beta? |
 |---|------|----------|--------|--------------|---------------------|
@@ -132,7 +132,7 @@ Below is the execution plan for what remains after v0.0.11. Effort estimates ass
 
 ```mermaid
 flowchart LR
-    A[v0.0.11 current] --> B[10万+ perf soak test]
+    A[v0.0.12 current] --> B[10万+ perf soak test]
     B --> C{Perf OK?}
     C -->|No| D[W21 optimization sprint]
     C -->|Yes| E[Purchase certs]
@@ -147,7 +147,7 @@ flowchart LR
 
 ### Phase 4 mapping (from `5-development-plan.md`)
 
-| Week | Task | v0.0.11 status |
+| Week | Task | v0.0.12 status |
 |------|------|----------------|
 | W21 Performance | 10万+压测、瓶颈优化 | ⬜ Not started (unit benches only) |
 | W22 Packaging | Win/Linux/macOS installers | ✅ CI matrix (deb/rpm/AppImage/msi/nsis/dmg) |

@@ -2,7 +2,7 @@
 
 > **文档版本**：v1.2  
 > **更新日期**：2026-06-29  
-> **当前版本**：v0.0.11（Phase 4 进行中）  
+> **当前版本**：v0.0.12（Phase 4 进行中）  
 > **产品名称**：影迹 / LightFrame  
 > **技术栈**：Tauri 2.x + Rust + React 19 + TypeScript + Python AI 扩展（可选）  
 > **开发模式**：单人全职  
@@ -426,11 +426,11 @@ LightFrame/
 
 ---
 
-### Phase 4：打磨发布（4 周）— ⚠️ 部分完成（v0.0.11）
+### Phase 4：打磨发布（4 周）— ⚠️ 部分完成（v0.0.12）
 
 **目标**：10 万+ 性能达标，三平台安装包，自动更新，Beta 发布。
 
-**实现摘要（2026-06-29，v0.0.11）：**
+**实现摘要（2026-06-29，v0.0.12）：**
 - ✅ CI 矩阵构建：Windows (msi/nsis) + Linux (deb/rpm/AppImage) + macOS (dmg amd64/arm64)
 - ✅ Tauri 自动更新：`tauri-plugin-updater`、签名公钥、`UpdateChecker` UI、CI 生成 `latest.json`
 - ✅ 地图 / 幻灯片 / 打印分享 / 缩略图重建 / 语义搜索 / 人脸聚类 UI（v0.0.9–v0.0.11 增量）
@@ -743,13 +743,13 @@ flowchart TB
 | i18n | 关键 UI 字符串无缺失 key |
 | Store | 选择状态、相簿操作 |
 
-**当前测试规模（v0.0.11，2026-06-29）：**
+**当前测试规模（v0.0.12，2026-06-29）：**
 
 | 层级 | 数量 | 命令 |
 |------|------|------|
-| Rust workspace | **385** | `cargo test --workspace` |
-| React (Vitest) | **314**（40 文件） | `pnpm test` |
-| **合计** | **699** | CI 每 PR 运行 |
+| Rust workspace | **534** | `cargo test --workspace` |
+| React (Vitest) | **509**（51 文件） | `pnpm test` |
+| **合计** | **1043** | CI 每 PR 运行 |
 
 **运行命令**：
 
@@ -844,7 +844,7 @@ jobs:
 
 | 版本 | 范围 | 说明 | 状态 |
 |------|------|------|------|
-| v0.0.11 | Phase 0–3 + Phase 4 功能增量 | 地图/幻灯片/更新器/语义搜索/人脸 UI 等 | ✅ 当前 |
+| v0.0.12 | Phase 0–3 + Phase 4 功能增量 | 地图/幻灯片/更新器/语义搜索/人脸 UI 等 | ✅ 当前 |
 | v0.1.0-beta | Phase 4 完成 | 签名/公证、10万+压测、P0 bug 清零 | ⬜ 目标 |
 | v0.2.0 | Beta 反馈 + HEIC/libheif 可选包 | 体验修复 | 计划中 |
 | v0.3.0 | RAW 预览增强、GPU 加速、MFT/USN 生产化 | 性能增强 | 计划中 |
