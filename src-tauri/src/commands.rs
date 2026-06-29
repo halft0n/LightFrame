@@ -31,10 +31,11 @@ fn validate_media_path(db: &lightframe_db::Database, path: &str) -> Result<(), S
         return Err("invalid path".to_string());
     }
     let folders = db.list_watched_folders().map_err(|e| e.to_string())?;
-    if let Ok(canonical) = file_path.canonicalize()
-        && !crate::original_protocol::path_is_in_watched_folders(&canonical, &folders)
-    {
-        return Err("path outside watched folders".to_string());
+    if let Ok(raw_canonical) = file_path.canonicalize() {
+        let canonical = crate::original_protocol::strip_extended_prefix(raw_canonical);
+        if !crate::original_protocol::path_is_in_watched_folders(&canonical, &folders) {
+            return Err("path outside watched folders".to_string());
+        }
     }
     Ok(())
 }
