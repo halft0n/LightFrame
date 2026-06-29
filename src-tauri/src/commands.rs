@@ -37,6 +37,25 @@ pub struct DedupScanResult {
 }
 
 #[tauri::command]
+pub fn get_log_directory() -> String {
+    crate::logging::log_directory()
+        .to_string_lossy()
+        .to_string()
+}
+
+#[tauri::command]
+pub fn get_log_files() -> Vec<crate::logging::LogFileInfo> {
+    crate::logging::list_log_files()
+}
+
+#[tauri::command]
+pub fn cleanup_logs() -> Result<(), String> {
+    let dir = crate::logging::log_directory();
+    crate::logging::cleanup_logs(&dir);
+    Ok(())
+}
+
+#[tauri::command]
 pub fn get_app_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }

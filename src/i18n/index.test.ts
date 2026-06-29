@@ -14,14 +14,14 @@ describe("i18n", () => {
   });
 
   it("translates keys in zh-CN", () => {
-    expect(t("app.title")).toBe("拾光");
+    expect(t("app.title")).toBe("影迹");
     expect(t("sidebar.allPhotos")).toBe("所有照片");
   });
 
   it("switches to English", () => {
     setLocale("en");
     expect(getLocale()).toBe("en");
-    expect(t("app.title")).toBe("CatchLight");
+    expect(t("app.title")).toBe("LightFrame");
     expect(t("sidebar.allPhotos")).toBe("All Photos");
   });
 

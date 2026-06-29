@@ -28,7 +28,7 @@ export GDK_BACKEND="${GDK_BACKEND:-x11}"
 export WEBKIT_DISABLE_DMABUF_RENDERER="${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
 
 echo "============================================"
-echo "  CatchLight Dev Server"
+echo "  LightFrame Dev Server"
 echo "  DISPLAY=$DISPLAY"
 echo "  GDK_BACKEND=$GDK_BACKEND"
 echo "============================================"

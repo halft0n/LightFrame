@@ -1,7 +1,7 @@
 {
-  "productName": "CatchLight",
+  "productName": "LightFrame",
   "version": "0.0.10",
-  "identifier": "com.catchlight.app",
+  "identifier": "com.lightframe.app",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "CatchLight · 拾光",
+        "title": "LightFrame · 影迹",
         "width": 1280,
         "height": 800,
         "minWidth": 900,

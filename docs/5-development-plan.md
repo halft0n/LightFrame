@@ -1,8 +1,8 @@
-# CatchLight（拾光）详细开发计划
+# LightFrame（影迹）详细开发计划
 
 > **文档版本**：v1.1  
 > **更新日期**：2026-06-28  
-> **产品名称**：拾光 / CatchLight  
+> **产品名称**：影迹 / LightFrame  
 > **技术栈**：Tauri 2.x + Rust + React 19 + TypeScript + Python AI 扩展（可选）  
 > **开发模式**：单人全职  
 > **总工期估算**：24 周（Phase 0–4）  

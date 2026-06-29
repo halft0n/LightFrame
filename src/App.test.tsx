@@ -185,7 +185,7 @@ describe("App", () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByText("欢迎使用 拾光")).toBeInTheDocument();
+      expect(screen.getByText("欢迎使用 影迹")).toBeInTheDocument();
     });
   });
 });

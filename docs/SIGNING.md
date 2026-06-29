@@ -1,6 +1,6 @@
-# Windows Code Signing for CatchLight
+# Windows Code Signing for LightFrame
 
-CatchLight release builds are currently **unsigned**. This document explains how to set up Authenticode signing for the Tauri desktop app in local builds and CI.
+LightFrame release builds are currently **unsigned**. This document explains how to set up Authenticode signing for the Tauri desktop app in local builds and CI.
 
 ## Why Sign?
 
@@ -60,7 +60,7 @@ After `pnpm tauri build`, sign the executable and installer with `signtool` (Win
 signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a "src-tauri\target\release\catchlight.exe"
 
 # NSIS installer (sign after bundling)
-signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a "src-tauri\target\release\bundle\nsis\CatchLight_*-setup.exe"
+signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a "src-tauri\target\release\bundle\nsis\LightFrame_*-setup.exe"
 ```
 
 Use `/f your-cert.pfx /p cert-password` instead of `/a` when selecting a specific certificate.

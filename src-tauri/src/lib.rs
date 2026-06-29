@@ -1,5 +1,6 @@
 mod commands;
 mod image_edit;
+mod logging;
 mod original_protocol;
 mod scan;
 mod state;
@@ -12,12 +13,9 @@ pub use image_edit::export_edited_image;
 
 use state::AppState;
 use tauri::Manager;
-use tracing_subscriber::EnvFilter;
 
 pub fn run() {
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env())
-        .init();
+    let _guard = logging::init_logging();
 
     let app_state = AppState::new().expect("failed to initialize application state");
 
@@ -26,6 +24,12 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
         .manage(app_state)
+        .on_window_event(|_window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                let log_dir = crate::logging::log_directory();
+                crate::logging::cleanup_logs(&log_dir);
+            }
+        })
         .setup(|app| {
             let handle = app.handle().clone();
             let state = app.state::<AppState>();
@@ -117,6 +121,9 @@ pub fn run() {
             commands::revert_edit,
             commands::export_edited,
             commands::has_edits,
+            commands::get_log_directory,
+            commands::get_log_files,
+            commands::cleanup_logs,
         ])
         .register_uri_scheme_protocol("thumb", |ctx, request| {
             let state = ctx.app_handle().state::<AppState>();
@@ -127,5 +134,5 @@ pub fn run() {
             original_protocol::handle(&state, request.uri().path())
         })
         .run(tauri::generate_context!())
-        .expect("error while running CatchLight");
+        .expect("error while running LightFrame");
 }

@@ -248,7 +248,7 @@ fn guess_mime(path: &Path) -> &'static str {
         Some("webp") => "image/webp",
         Some("bmp") => "image/bmp",
         Some("tiff" | "tif") => "image/tiff",
-        // SVG scripts don't execute when loaded via <img> src, which is how CatchLight renders them.
+        // SVG scripts don't execute when loaded via <img> src, which is how LightFrame renders them.
         // If embedding context changes (e.g. <object> or innerHTML), sanitize SVGs first.
         Some("svg") => "image/svg+xml",
         Some("heic" | "heif") => "image/heif",

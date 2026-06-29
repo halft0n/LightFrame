@@ -2,7 +2,7 @@
 name = "catchlight-db"
 version.workspace = true
 edition.workspace = true
-description = "SQLite database layer for CatchLight"
+description = "SQLite database layer for LightFrame"
 
 [dependencies]
 catchlight-core.workspace = true

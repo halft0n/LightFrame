@@ -1,14 +1,14 @@
 # Privacy Policy
 
-CatchLight is a **local-first** photo manager. Your photos, videos, and metadata never leave your device unless you explicitly export or share them.
+LightFrame is a **local-first** photo manager. Your photos, videos, and metadata never leave your device unless you explicitly export or share them.
 
 ## Data storage
 
-All indexed data — file paths, thumbnails, EXIF metadata, albums, and search indexes — is stored in a SQLite database on your computer. CatchLight does not operate any cloud backend or sync service.
+All indexed data — file paths, thumbnails, EXIF metadata, albums, and search indexes — is stored in a SQLite database on your computer. LightFrame does not operate any cloud backend or sync service.
 
 ## No telemetry
 
-CatchLight does not collect usage analytics, crash reports, or personal information. There are no tracking pixels, no account system, and no phone-home behavior.
+LightFrame does not collect usage analytics, crash reports, or personal information. There are no tracking pixels, no account system, and no phone-home behavior.
 
 ## AI features
 
@@ -25,8 +25,8 @@ The only network activity is:
 - **Map tiles** (optional) — Leaflet may load map tiles from OpenStreetMap when you use the location view
 - **Update checks** — as described above
 
-You can use CatchLight fully offline except for map tiles and update checks.
+You can use LightFrame fully offline except for map tiles and update checks.
 
 ## Your control
 
-Because everything is local, you control your data completely. Uninstalling CatchLight removes the application; your original photo files are never modified or deleted unless you explicitly choose to do so within the app.
+Because everything is local, you control your data completely. Uninstalling LightFrame removes the application; your original photo files are never modified or deleted unless you explicitly choose to do so within the app.

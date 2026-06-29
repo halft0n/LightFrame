@@ -1,4 +1,4 @@
-"""CatchLight AI sidecar — JSON-RPC server for ML/vision tasks."""
+"""LightFrame AI sidecar — JSON-RPC server for ML/vision tasks."""
 
 __version__ = "0.1.0"
 

@@ -1,4 +1,4 @@
-# CatchLight v0.1.0-beta Roadmap
+# LightFrame v0.1.0-beta Roadmap
 
 ## Current Status (v0.0.10)
 

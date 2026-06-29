@@ -1,8 +1,8 @@
-# CatchLight（拾光）需求规格说明书
+# LightFrame（影迹）需求规格说明书
 
 > **文档版本**：v1.0  
 > **更新日期**：2026-06-28  
-> **产品名称**：拾光 / CatchLight  
+> **产品名称**：影迹 / LightFrame  
 > **技术栈**：Tauri 2.x + Rust + React + Python AI 扩展（可选）  
 > **状态**：需求定义阶段
 

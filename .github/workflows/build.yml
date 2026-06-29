@@ -170,7 +170,7 @@ jobs:
             for f in $(find "$SEARCH_DIR" -type f \( -name "*.msi" -o -name "*-setup.exe" -o -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.dmg" \) 2>/dev/null); do
               BASENAME="$(basename "$f")"
               EXT="${BASENAME##*.}"
-              NEW_NAME="CatchLight-${VERSION}-${LABEL}.${EXT}"
+              NEW_NAME="LightFrame-${VERSION}-${LABEL}.${EXT}"
               cp "$f" "release-artifacts/${NEW_NAME}"
               echo "  => release-artifacts/${NEW_NAME}"
             done
@@ -212,7 +212,7 @@ jobs:
           files: artifacts/**/*
           generate_release_notes: true
           body: |
-            ## CatchLight ${{ github.ref_name }}
+            ## LightFrame ${{ github.ref_name }}
 
             ### Downloads
             | Platform | Architecture | File |

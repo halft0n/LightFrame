@@ -1,4 +1,4 @@
-# CatchLight / 拾光
+# LightFrame / 影迹
 
 [![Build Status](https://github.com/halft0n/CatchLight/actions/workflows/build.yml/badge.svg)](https://github.com/halft0n/CatchLight/actions/workflows/build.yml)
 [![Latest Release](https://img.shields.io/github/v/release/halft0n/CatchLight?include_prereleases&label=release)](https://github.com/halft0n/CatchLight/releases/latest)
@@ -9,7 +9,7 @@
 
 > 拾一束光，留一段时光。 Catch the light, keep the moment.
 
-CatchLight 是一款跨平台（Windows + Linux + macOS）、本地优先的照片查看与管理软件。不复制、不导入，以 Everything 级极速索引就地浏览用户现有文件夹中的照片与视频，并提供去重、截图识别、AI 相似搜索等智能整理能力。
+LightFrame 是一款跨平台（Windows + Linux + macOS）、本地优先的照片查看与管理软件。不复制、不导入，以 Everything 级极速索引就地浏览用户现有文件夹中的照片与视频，并提供去重、截图识别、AI 相似搜索等智能整理能力。
 
 ## Screenshots
 
@@ -149,7 +149,7 @@ Bug reports and feature requests: [GitHub Issues](https://github.com/halft0n/Cat
 
 ## Acknowledgements
 
-CatchLight 的诞生离不开以下优秀的开源项目：
+LightFrame 的诞生离不开以下优秀的开源项目：
 
 | Project | Usage |
 |---------|-------|

@@ -6,7 +6,7 @@ resolver = "2"
 version = "0.0.10"
 edition = "2024"
 license = "MIT"
-authors = ["CatchLight Contributors"]
+authors = ["LightFrame Contributors"]
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }

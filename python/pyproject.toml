@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "catchlight-ai"
 version = "0.1.0"
-description = "CatchLight AI sidecar — JSON-RPC server for ML/vision tasks"
+description = "LightFrame AI sidecar — JSON-RPC server for ML/vision tasks"
 requires-python = ">=3.10"
 dependencies = [
     "Pillow>=10.0.0",

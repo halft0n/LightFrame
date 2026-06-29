@@ -1,5 +1,5 @@
 {
-  "app.title": "拾光",
+  "app.title": "影迹",
   "common.notAvailable": "—",
   "sidebar.navigation": "主导航",
   "sidebar.openMenu": "打开菜单",
@@ -61,7 +61,7 @@
   "deleted.permanentDelete": "永久删除",
   "deleted.notice": "照片将在删除30天后永久清除",
   "deleted.confirmPermanent": "此操作不可撤销，确定要永久删除该照片吗？",
-  "main.welcome": "欢迎使用 拾光",
+  "main.welcome": "欢迎使用 影迹",
   "main.addFolder": "添加文件夹开始浏览照片",
   "settings.folders": "监控文件夹",
   "settings.addFolder": "添加文件夹",

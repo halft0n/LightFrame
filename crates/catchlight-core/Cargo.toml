@@ -2,7 +2,7 @@
 name = "catchlight-core"
 version.workspace = true
 edition.workspace = true
-description = "Core types, traits, and shared utilities for CatchLight"
+description = "Core types, traits, and shared utilities for LightFrame"
 
 [dependencies]
 serde.workspace = true

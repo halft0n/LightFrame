@@ -11,7 +11,7 @@ beforeEach(() => {
 describe("MainContent", () => {
   it("renders welcome message in Chinese", () => {
     render(<MainContent />);
-    expect(screen.getByText("欢迎使用 拾光")).toBeInTheDocument();
+    expect(screen.getByText("欢迎使用 影迹")).toBeInTheDocument();
   });
 
   it("renders add folder hint in Chinese", () => {
@@ -22,7 +22,7 @@ describe("MainContent", () => {
   it("renders in English when locale is en", () => {
     setLocale("en");
     render(<MainContent />);
-    expect(screen.getByText("Welcome to CatchLight")).toBeInTheDocument();
+    expect(screen.getByText("Welcome to LightFrame")).toBeInTheDocument();
     expect(screen.getByText("Add a folder to start browsing photos")).toBeInTheDocument();
   });
 

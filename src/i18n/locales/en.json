@@ -1,5 +1,5 @@
 {
-  "app.title": "CatchLight",
+  "app.title": "LightFrame",
   "common.notAvailable": "—",
   "sidebar.navigation": "Main navigation",
   "sidebar.openMenu": "Open menu",
@@ -61,7 +61,7 @@
   "deleted.permanentDelete": "Delete Permanently",
   "deleted.notice": "Photos will be permanently deleted after 30 days",
   "deleted.confirmPermanent": "This action cannot be undone. Permanently delete this photo?",
-  "main.welcome": "Welcome to CatchLight",
+  "main.welcome": "Welcome to LightFrame",
   "main.addFolder": "Add a folder to start browsing photos",
   "settings.folders": "Watched Folders",
   "settings.addFolder": "Add Folder",

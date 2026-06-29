@@ -191,7 +191,7 @@ describe("Sidebar", () => {
     const onClose = vi.fn();
     render(<Sidebar isMobile mobileOpen onMobileClose={onClose} />);
 
-    expect(screen.getByText("拾光")).toBeInTheDocument();
+    expect(screen.getByText("影迹")).toBeInTheDocument();
     expect(screen.getByLabelText("关闭侧边栏")).toBeInTheDocument();
   });
 });

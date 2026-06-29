@@ -1,4 +1,4 @@
-# CatchLight 技术路线决策报告
+# LightFrame 技术路线决策报告
 
 > **决策日期：2026-06-28**
 > **决策结论：混合方案 — Rust + Tauri + React + Python AI 扩展**
