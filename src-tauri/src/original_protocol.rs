@@ -33,15 +33,23 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
         }
     };
 
-    if !path_is_in_watched_folders(&file_path, &watched_folders) {
-        return error_response(StatusCode::FORBIDDEN, "path not allowed");
-    }
-
     let canonical = match std::fs::canonicalize(&file_path) {
         Ok(p) => strip_extended_prefix(p),
-        Err(e) => {
-            tracing::warn!("original protocol: canonicalize failed: {e}");
-            return error_response(StatusCode::NOT_FOUND, "file not found");
+        Err(_) => {
+            // File doesn't exist — distinguish 403 vs 404 by checking parent
+            let parent_in_watched = file_path
+                .parent()
+                .and_then(|p| std::fs::canonicalize(p).ok())
+                .map(strip_extended_prefix)
+                .map(|cp| path_is_in_watched_folders(&cp, &watched_folders))
+                .unwrap_or(false)
+                || path_is_in_watched_folders(&file_path, &watched_folders);
+
+            return if parent_in_watched {
+                error_response(StatusCode::NOT_FOUND, "file not found")
+            } else {
+                error_response(StatusCode::FORBIDDEN, "path not allowed")
+            };
         }
     };
 
