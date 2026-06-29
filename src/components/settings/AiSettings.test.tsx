@@ -49,7 +49,7 @@ beforeEach(() => {
 describe("AiSettings", () => {
   it("shows model availability status", async () => {
     getModelStatus.mockResolvedValue({
-      models_dir: "/home/user/.local/share/catchlight/models",
+      models_dir: "/home/user/.local/share/lightframe/models",
       clip_available: true,
       face_available: false,
       models: sampleModels,

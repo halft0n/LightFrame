@@ -12,7 +12,7 @@
 
 ## 文档说明
 
-本文档是 CatchLight 项目的**执行级开发计划**，在需求规格与架构设计基础上，给出开源方案评估、分阶段路线图、里程碑验收、风险应对、任务依赖与质量保证策略。工作量估算基于**单人全职开发**（每周约 35–40 有效工时），已计入联调、自测与文档同步时间。
+本文档是 LightFrame 项目的**执行级开发计划**，在需求规格与架构设计基础上，给出开源方案评估、分阶段路线图、里程碑验收、风险应对、任务依赖与质量保证策略。工作量估算基于**单人全职开发**（每周约 35–40 有效工时），已计入联调、自测与文档同步时间。
 
 ---
 
@@ -20,7 +20,7 @@
 
 ### 1.1 综合对比表
 
-以下对比基于 CatchLight 需求规格（P0–P2 功能全集）与调研报告结论，评分采用 1–5 分制（5 为最优）。
+以下对比基于 LightFrame 需求规格（P0–P2 功能全集）与调研报告结论，评分采用 1–5 分制（5 为最优）。
 
 | 维度 | iPhotron | Lap | FlyPhotos |
 |------|----------|-----|-----------|
@@ -31,7 +31,7 @@
 | **社区活跃度** | ★★★☆☆ ~184 Stars，更新中等 | ★★☆☆☆ 社区较小，Issues 响应慢 | ★★★☆☆ Windows 生态活跃，跨平台无 |
 | **二次开发可行性** | ★★★☆☆ 功能多但需换栈重写 | ★★☆☆☆ GPL 限制 + 缺核心差异化功能 | ★★☆☆☆ 仅适合借鉴性能模式，无法 fork |
 
-#### 功能覆盖度明细（相对 CatchLight 需求）
+#### 功能覆盖度明细（相对 LightFrame 需求）
 
 | 需求类别 | iPhotron | Lap | FlyPhotos |
 |----------|----------|-----|-----------|
@@ -65,7 +65,7 @@
 |--------|------|
 | **Fork 可行性** | 技术栈最接近（Tauri + Rust），但 **GPL-3.0** 要求衍生作品开源且传染性强，与商业/闭源分发目标冲突；直接 copy 代码存在法律风险 |
 | **工作量估算** | 在 Lap 基础上补齐去重/截图/MFT/时间线/地图：约 **18–22 周**（含 GPL 合规重构若仅「参考思路」则 **+0 周**） |
-| **风险** | 单文件巨石模块难维护；缺少 CatchLight 核心差异化；Vue → React 迁移成本高；社区支持弱，上游 merge 困难 |
+| **风险** | 单文件巨石模块难维护；缺少 LightFrame 核心差异化；Vue → React 迁移成本高；社区支持弱，上游 merge 困难 |
 | **结论** | **不推荐 Fork**。借鉴 IPC 分层、ProcessingBudget、thumb:// 协议、CLIP 管线等**设计模式**（洁净室实现） |
 
 #### 1.2.3 FlyPhotos
@@ -81,7 +81,7 @@
 
 ```mermaid
 flowchart LR
-    A[CatchLight 目标] --> B{技术栈}
+    A[LightFrame 目标] --> B{技术栈}
     B -->|Tauri+Rust+React| C[自研为主]
     C --> D[iPhotron: UX/功能参考]
     C --> E[Lap: 架构模式参考]
@@ -104,7 +104,7 @@ flowchart LR
 
 #### 1.3.1 iPhotron
 
-| 模块 | 可借鉴内容 | CatchLight 对应实现 |
+| 模块 | 可借鉴内容 | LightFrame 对应实现 |
 |------|-----------|-------------------|
 | **Folder-native 设计** | 监控文件夹 = 图库入口，JSON manifest 管理虚拟相簿 | `watched_folders` 表 + 侧边栏文件夹树 |
 | **SQL keyset 分页** | 大库游标分页，避免 OFFSET 性能退化 | `lightframe-db` 中 `keyset_paginate(taken_at, id)` |
@@ -113,7 +113,7 @@ flowchart LR
 
 #### 1.3.2 Lap
 
-| 模块 | 可借鉴内容 | CatchLight 对应实现 |
+| 模块 | 可借鉴内容 | LightFrame 对应实现 |
 |------|-----------|-------------------|
 | **Tauri IPC 分层** | commands 按域拆分，state 注入 | `src-tauri/src/commands/{index,media,album}.rs` |
 | **ProcessingBudget** | 并发任务预算，防止 CPU/IO 过载 | `lightframe-core::task_scheduler` |
@@ -123,7 +123,7 @@ flowchart LR
 
 #### 1.3.3 FlyPhotos
 
-| 模块 | 可借鉴内容 | CatchLight 对应实现 |
+| 模块 | 可借鉴内容 | LightFrame 对应实现 |
 |------|-----------|-------------------|
 | **Preview/HQ 双轨缓存** | 低分辨率即时显示，高分辨率后台升级 | micro/small 即时 + large/HQ 异步 |
 | **Burst 预取** | 查看器切换时预加载相邻 N 张 | viewer 组件 ±3 张预取 |
@@ -145,7 +145,7 @@ flowchart LR
 
 ```mermaid
 gantt
-    title CatchLight 开发路线图（24 周）
+    title LightFrame 开发路线图（24 周）
     dateFormat YYYY-MM-DD
     axisFormat W%W
 
@@ -189,7 +189,7 @@ gantt
 **目录结构（目标）**：
 
 ```
-CatchLight/
+LightFrame/
 ├── src/                    # React 前端
 ├── src-tauri/              # Tauri 主 crate
 ├── crates/
@@ -644,7 +644,7 @@ flowchart TB
 
 ```mermaid
 gantt
-    title CatchLight 任务依赖（单人开发）
+    title LightFrame 任务依赖（单人开发）
     dateFormat YYYY-MM-DD
 
     section Phase0
@@ -838,5 +838,5 @@ jobs:
 
 ---
 
-> **拾光 / CatchLight** — 拾一束光，留一段时光。  
-> Catch the light, keep the moment.
+> **影迹 / LightFrame** — 每一帧光影，都是时间的印迹。  
+> Every frame of light is a trace of time.

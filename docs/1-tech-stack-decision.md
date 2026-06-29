@@ -48,7 +48,7 @@
 
 ```
 ┌─────────────────────────────────────────────────┐
-│           CatchLight / 拾光                      │
+│           LightFrame / 影迹                      │
 ├─────────────────────────────────────────────────┤
 │                                                  │
 │  ┌──────────────────────────────────────────┐    │
@@ -151,7 +151,7 @@ Rust 核心启动
 
 ```bash
 # 方式 1: 内置安装引导 (推荐)
-# CatchLight 设置页面 → AI 扩展 → 一键安装
+# LightFrame 设置页面 → AI 扩展 → 一键安装
 # 内部执行:
 pip install lightframe-ai  # 包含 CLIP/InsightFace/Tesseract 等
 
@@ -181,9 +181,9 @@ pip install lightframe-ai[full]  # 包含所有可选模型
 | **iPhotron** (Python+Qt) | Folder-native 设计、SQL keyset 分页、扫描契约 | 架构思路参考 |
 | **FlyPhotos** (.NET) | Preview/HQ 双轨缓存、Burst 预取 | 性能优化技巧参考 |
 
-**许可证注意**：Lap 为 GPL-3.0，不可直接使用其代码。CatchLight 代码需完全独立编写。
+**许可证注意**：Lap 为 GPL-3.0，不可直接使用其代码。LightFrame 代码需完全独立编写。
 
 ---
 
-> **拾光 / CatchLight** — Catch the light, keep the moment.
+> **影迹 / LightFrame** — Every frame of light is a trace of time.
 > 技术路线：Rust + Tauri + React + Python AI 扩展

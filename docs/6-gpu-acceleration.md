@@ -273,7 +273,7 @@ gpu-ai-directml = ["ort/directml"]
 |------|------|----------|
 | DirectML 在旧 GPU 上性能差或初始化失败 | AI 推理变慢 | 捕获 EP 初始化错误 → 自动降级 CPU；设置页显示当前 EP |
 | Linux 未安装 NVIDIA 驱动 / cuDNN | CUDA EP 不可用 | `ComputeContext::detect()` 运行时探测；跳过 CUDA，使用 CPU |
-| 模型体积（CLIP ViT-B/32 ~350 MB） | 首次安装包过大 | 小模型（InsightFace ~15 MB）随包分发；CLIP 首次使用时下载至 `~/.catchlight/models/` |
+| 模型体积（CLIP ViT-B/32 ~350 MB） | 首次安装包过大 | 小模型（InsightFace ~15 MB）随包分发；CLIP 首次使用时下载至 `~/.lightframe/models/` |
 | GPU 与缩略图 CPU 任务争抢 | 滚动卡顿 | `ProcessingBudget.ai = 1` 互斥；P0 可见区域缩略图优先于 P2 AI 批量 |
 | `ort` 预编译 binary 与系统 GLIBC 不兼容 | Linux CI / 旧发行版崩溃 | CI 使用 ubuntu-latest；文档注明 Ubuntu 22.04+ / Fedora 38+ |
 | wgpu batch 延期导致期望落空 | 用户预期 GPU 加速缩略图 | ADR 明确 Phase 2 缩略图走 CPU SIMD；v0.3.0 里程碑见 [开发计划](./5-development-plan.md) |

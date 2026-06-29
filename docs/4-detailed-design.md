@@ -10,7 +10,7 @@
 
 ## 文档说明
 
-本文档在需求规格说明书基础上，给出 CatchLight 各核心模块的**实现级设计**，包含设计决策、接口定义（伪代码/Rust trait）、流程图及方案对比，供开发直接参照执行。
+本文档在需求规格说明书基础上，给出 LightFrame 各核心模块的**实现级设计**，包含设计决策、接口定义（伪代码/Rust trait）、流程图及方案对比，供开发直接参照执行。
 
 **设计原则**：
 
@@ -521,7 +521,7 @@ async fn fanotify_loop(mount_path: &Path, tx: mpsc::Sender<FileChange>) -> Resul
 | 权限 | 普通用户 | root / CAP_SYS_ADMIN |
 | watch 上限 | 有（~8192 默认） | 按 mount，无 per-dir 限制 |
 | 粒度 | 目录级 | 文件系统级 |
-| **CatchLight 默认** | ✅ | 高级设置可选 |
+| **LightFrame 默认** | ✅ | 高级设置可选 |
 
 ### 1.5 通用降级方案
 
@@ -608,13 +608,13 @@ async fn apply_file_change(change: FileChange, db: &DbPool) -> Result<()> {
 }
 ```
 
-**对比 iPhotron vs Lap vs CatchLight**：
+**对比 iPhotron vs Lap vs LightFrame**：
 
 | 项目 | 增量键 | 重命名检测 |
 |------|--------|------------|
 | iPhotron | size + mtime | 路径变更 → 重新索引 |
 | Lap | mtime 目录同步 | 路径更新 |
-| **CatchLight** | size + mtime | **platform_id 优先关联** |
+| **LightFrame** | size + mtime | **platform_id 优先关联** |
 
 #### 1.6.3 删除/移动/重命名检测
 
@@ -807,7 +807,7 @@ pub fn reverse_geocode(lat: f64, lon: f64) -> Option<GeoLocation> {
 | KD-Tree | ✅ 内置 | O(log n) | **< 0.1 ms** |
 | R-tree (rstar) | Lap 用于 POI | O(log n) | 适合矩形范围查询 |
 
-CatchLight 单点反向编码用 **rrgeo KD-Tree**；地图聚类标记可用 **rstar** 做视口内查询（P2）。
+LightFrame 单点反向编码用 **rrgeo KD-Tree**；地图聚类标记可用 **rstar** 做视口内查询（P2）。
 
 #### 2.3.4 地点聚合策略
 
@@ -945,7 +945,7 @@ pub enum ThumbLevel { Micro, Small, Large }
 **参考 Lap**：`{key[0..2]}/{key}.webp` 避免单目录过多文件。
 
 ```
-~/.catchlight/cache/thumbs/
+~/.lightframe/cache/thumbs/
 ├── small/
 │   ├── a3/
 │   │   └── a3f2b8c9d1e04567.webp
@@ -1100,7 +1100,7 @@ fn handle_thumb_request(request: &HttpRequest) -> HttpResponse {
 | 未生成 + small/large | 返回 micro 放大版或低分辨率占位；后台完成后前端刷新 |
 | 生成失败 | 1×1 透明 WebP + `X-LightFrame-Error: corrupt` |
 
-**对比 Lap thumb://**：Lap 按 album 分 cache；CatchLight 按全局 hash 分片，**跨相簿复用**。
+**对比 Lap thumb://**：Lap 按 album 分 cache；LightFrame 按全局 hash 分片，**跨相簿复用**。
 
 ---
 
@@ -1112,7 +1112,7 @@ fn handle_thumb_request(request: &HttpRequest) -> HttpResponse {
 
 三级架构参考调研报告 3.4，对比 Recasa（仅感知哈希）与 Lap（仅 BLAKE3）：
 
-| 级别 | CatchLight | Recasa | Lap |
+| 级别 | LightFrame | Recasa | Lap |
 |------|------------|--------|-----|
 | L1 文件 | BLAKE3 | — | BLAKE3 |
 | L2 视觉 | DHash + PHash | PHash | — |
@@ -1369,7 +1369,7 @@ async fn clip_classify(img: &DynamicImage) -> (String, f32) {
 #### 5.4.1 文件位置
 
 ```
-~/.catchlight/models/
+~/.lightframe/models/
 ├── clip-vit-b32-visual.onnx      (~350 MB)
 ├── clip-vit-b32-text-embeds.bin  (预计算文本向量，~1 MB)
 ├── manifest.json
@@ -1844,7 +1844,7 @@ notification:
 | 决策点 | 选定 | 对比 |
 |--------|------|------|
 | 格式 | **JSON** | vs TOML（需求文档示例）→ **JSON 与前端共享 schema 更简单** |
-| 位置 | `~/.catchlight/config.json` | 方案 C |
+| 位置 | `~/.lightframe/config.json` | 方案 C |
 | 迁移 | 版本号 + migration 链 | NFR-072 |
 
 ### 9.2 配置文件格式
@@ -2020,7 +2020,7 @@ clear_thumb_cache(level?) -> ()
 | 进程模型 | 按需单进程 + 超时自动退出 | vs 常驻守护（占内存）→ **AI 功能低频，按需启动** |
 | Python 版本 | 内嵌 Python 3.11+（可选系统 Python） | vs PyO3 嵌入（编译复杂）→ **子进程隔离更稳定** |
 | 安装方式 | Settings UI 一键安装 / 手动 venv | vs 随主程序打包（+500MB）→ **按需安装不膨胀** |
-| 模型管理 | Python 侧管理，共享 `~/.catchlight/models/` | Rust 侧已有基础模型；Python 追加高级模型 |
+| 模型管理 | Python 侧管理，共享 `~/.lightframe/models/` | Rust 侧已有基础模型；Python 追加高级模型 |
 
 ### 10.2 架构总览
 
@@ -2556,7 +2556,7 @@ class FaceClusterModule:
 ```mermaid
 flowchart TD
     A[用户点击 Settings → AI 扩展 → 启用] --> B{检测 Python ≥ 3.11?}
-    B -->|系统已有| C[创建 venv: ~/.catchlight/python-env/]
+    B -->|系统已有| C[创建 venv: ~/.lightframe/python-env/]
     B -->|未找到| D[提示下载 Python 或使用内嵌 Python]
     D --> C
     C --> E[pip install -r requirements.txt]
@@ -2800,7 +2800,7 @@ fn apply_edits(img: DynamicImage, params: &EditParams) -> DynamicImage;
 ```json
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "CatchLight EditParams",
+  "title": "LightFrame EditParams",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -2929,9 +2929,9 @@ CREATE TABLE media_edits (
 
 ## 附录 A：开源方案设计对照表
 
-| 能力 | iPhotron | Lap | FlyPhotos | **CatchLight** |
+| 能力 | iPhotron | Lap | FlyPhotos | **LightFrame** |
 |------|----------|-----|-----------|----------------|
-| 索引位置 | 库内 `.iPhoto/global_index.db` | 集中 `~/.local/share/...` | 内存+SQLite | **集中 `~/.catchlight/library.db`** |
+| 索引位置 | 库内 `.iPhoto/global_index.db` | 集中 `~/.local/share/...` | 内存+SQLite | **集中 `~/.lightframe/library.db`** |
 | 快速索引 | walkdir | WalkDir + mtime | 递归扫描 | **MFT/USN + inotify** |
 | micro 缩略图 | 16×16 DB BLOB | — | — | **64×64 DB BLOB** |
 | 磁盘缩略图 | 512 JPG | 分片 JPG + thumb:// | 三级 Preview/HQ | **256/1024 WebP + thumb://** |
@@ -2991,4 +2991,4 @@ ALTER TABLE media_files ADD COLUMN clip_embed BLOB;
 
 ---
 
-*CatchLight（拾光）— 拾一束光，留一段时光。Catch the light, keep the moment.*
+*LightFrame（影迹）— 每一帧光影，都是时间的印迹。Every frame of light is a trace of time.*

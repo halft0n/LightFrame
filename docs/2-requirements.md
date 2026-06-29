@@ -10,7 +10,7 @@
 
 ## 文档说明
 
-本文档定义 CatchLight（拾光）照片查看与管理软件的功能需求、非功能需求、数据存储策略及用户交互规范。所有需求项均分配唯一编号，格式为 `FR-xxx`（功能需求）、`NFR-xxx`（非功能需求）、`DSR-xxx`（数据存储需求）、`FMT-xxx`（格式支持）、`UX-xxx`（用户交互需求）。
+本文档定义 LightFrame（影迹）照片查看与管理软件的功能需求、非功能需求、数据存储策略及用户交互规范。所有需求项均分配唯一编号，格式为 `FR-xxx`（功能需求）、`NFR-xxx`（非功能需求）、`DSR-xxx`（数据存储需求）、`FMT-xxx`（格式支持）、`UX-xxx`（用户交互需求）。
 
 **优先级定义**：
 
@@ -27,7 +27,7 @@
 
 ### 1.1 一句话定义
 
-**CatchLight（拾光）是一款跨平台、本地优先的照片查看与管理软件——不复制、不导入，以 Everything 级极速索引就地浏览用户现有文件夹中的照片与视频，并提供去重、截图识别等智能整理能力。**
+**LightFrame（影迹）是一款跨平台、本地优先的照片查看与管理软件——不复制、不导入，以 Everything 级极速索引就地浏览用户现有文件夹中的照片与视频，并提供去重、截图识别等智能整理能力。**
 
 ### 1.2 目标用户画像
 
@@ -41,7 +41,7 @@
 
 ### 1.3 与竞品的定位差异
 
-| 维度 | macOS 照片 | digiKam | iPhotron | Lap | **CatchLight（拾光）** |
+| 维度 | macOS 照片 | digiKam | iPhotron | Lap | **LightFrame（影迹）** |
 |------|-----------|---------|----------|-----|------------------------|
 | **平台** | 仅 macOS/iOS | Win/Mac/Linux | Win/Mac/Linux | 跨平台 | **Win + Linux** |
 | **文件策略** | 导入到图库包，可能复制 | 导入数据库 | 就地索引，不复制 | 文件夹优先 | **就地索引，不复制** |
@@ -253,7 +253,7 @@
 
 | 编号 | 需求描述 | 验收标准 |
 |------|----------|----------|
-| **FR-200** | 用户删除照片时，文件移入系统回收站（Windows/macOS）或移至 `~/.catchlight/trash/`（Linux） | 索引标记 `is_deleted=1`，`deleted_at` 记录时间 |
+| **FR-200** | 用户删除照片时，文件移入系统回收站（Windows/macOS）或移至 `~/.lightframe/trash/`（Linux） | 索引标记 `is_deleted=1`，`deleted_at` 记录时间 |
 | **FR-201** | 「最近删除」视图展示 30 天内删除的照片 | 按删除时间降序 |
 | **FR-202** | 用户可恢复（从回收站还原）或永久删除 | 恢复后 `is_deleted=0`；永久删除从磁盘移除并清除索引 |
 | **FR-203** | 超过 30 天自动永久删除 | 应用启动时及每日定时任务执行清理 |
@@ -381,7 +381,7 @@
 |------|----------|----------|
 | **FR-400** | 支持基础编辑：**裁剪**、**旋转**（90° 倍数）、**水平/垂直翻转** | 编辑在预览中实时显示 |
 | **FR-401** | 编辑为非破坏性的：原始文件不被修改 | 所有调整参数存储为 sidecar 文件 |
-| **FR-402** | Sidecar 格式：JSON 文件，命名 `{原文件名}.catchlight.json`，与原图同目录 | 示例见 [4.3 Sidecar 格式](#43-sidecar-格式) |
+| **FR-402** | Sidecar 格式：JSON 文件，命名 `{原文件名}.lightframe.json`，与原图同目录 | 示例见 [4.3 Sidecar 格式](#43-sidecar-格式) |
 | **FR-403** | 应用启动时加载 sidecar 并叠加显示 | 删除 sidecar 即恢复原始 |
 | **FR-404** | 「导出副本」：将编辑结果渲染为新文件（用户选择路径） | 不覆盖原文件 |
 | **FR-405** | 批量旋转（P3 后期）：选中多张统一旋转 | — |
@@ -430,7 +430,7 @@
 | **NFR-030** | **不修改原始文件**，除非用户明确执行删除/导出/移动操作 | 索引、缩略图、sidecar 均为附加数据 |
 | **NFR-031** | 索引数据库可完全删除并重建，不影响原始照片 | 「重建索引」功能 |
 | **NFR-032** | 数据库写入使用 WAL 模式，崩溃不损坏 | SQLite PRAGMA journal_mode=WAL |
-| **NFR-033** | 定期自动备份用户相簿/配置（可选） | 备份到 `~/.catchlight/backups/` |
+| **NFR-033** | 定期自动备份用户相簿/配置（可选） | 备份到 `~/.lightframe/backups/` |
 
 ### 3.5 隐私
 
@@ -463,7 +463,7 @@
 | 编号 | 需求描述 | 验收标准 |
 |------|----------|----------|
 | **NFR-070** | 崩溃自动恢复：重启后从未完成索引处继续 | 索引任务持久化 checkpoint |
-| **NFR-071** | 结构化日志：`~/.catchlight/logs/` 按日滚动 | 可提交 issue 时导出 |
+| **NFR-071** | 结构化日志：`~/.lightframe/logs/` 按日滚动 | 可提交 issue 时导出 |
 | **NFR-072** | 数据库 schema 版本迁移 | 应用内 migration |
 
 ---
@@ -479,9 +479,9 @@
 | **用户配置** | 监控目录、主题、语言、窗口状态 | ❌ 需备份 | 见方案对比 |
 | **相簿 manifest** | 用户相簿元数据 | ⚠️ 部分可重建 | 见方案对比 |
 | **Sidecar 编辑** | 非破坏性编辑参数 | ❌ 用户数据 | 与原图同目录 |
-| **AI 模型** | CLIP/InsightFace ONNX | ✅ 可重新下载 | `~/.catchlight/models/` |
-| **日志** | 运行日志 | ✅ 可删除 | `~/.catchlight/logs/` |
-| **回收站** | Linux 删除文件副本 | — | `~/.catchlight/trash/` |
+| **AI 模型** | CLIP/InsightFace ONNX | ✅ 可重新下载 | `~/.lightframe/models/` |
+| **日志** | 运行日志 | ✅ 可删除 | `~/.lightframe/logs/` |
+| **回收站** | Linux 删除文件副本 | — | `~/.lightframe/trash/` |
 
 ### 4.2 三种存储方案对比
 
@@ -490,8 +490,8 @@
 所有索引、缓存、配置存储于固定全局目录。
 
 ```
-~/.catchlight/                    # Linux
-%APPDATA%/CatchLight/             # Windows
+~/.lightframe/                    # Linux
+%APPDATA%/LightFrame/             # Windows
 ├── config.toml                   # 用户配置
 ├── library.db                    # SQLite 主数据库
 ├── cache/
@@ -513,16 +513,16 @@
 
 #### 方案 B：分散存储
 
-每张照片库目录下创建 `.catchlight/` 隐藏子目录，索引与缓存跟随照片位置。
+每张照片库目录下创建 `.lightframe/` 隐藏子目录，索引与缓存跟随照片位置。
 
 ```
 D:/Photos/
 ├── 2024/
 │   ├── IMG_001.jpg
-│   └── .catchlight/
+│   └── .lightframe/
 │       ├── index.db              # 该目录子索引
 │       └── cache/thumbs/...
-└── .catchlight/                  # 根级 manifest
+└── .lightframe/                  # 根级 manifest
     └── library.manifest.json     # 汇总引用
 ```
 
@@ -538,7 +538,7 @@ D:/Photos/
 **全局索引集中 + 相簿 manifest 分散/集中 + 缩略图集中缓存**
 
 ```
-~/.catchlight/                    # 全局集中
+~/.lightframe/                    # 全局集中
 ├── config.toml
 ├── library.db                    # 统一 SQLite（所有监控目录）
 ├── cache/thumbs/                 # 缩略图集中（或按 hash 分片）
@@ -549,7 +549,7 @@ D:/Photos/
 
 # 可选：sidecar 编辑文件跟随原图
 D:/Photos/IMG_001.jpg
-D:/Photos/IMG_001.jpg.catchlight.json
+D:/Photos/IMG_001.jpg.lightframe.json
 ```
 
 | 优点 | 缺点 |
@@ -566,15 +566,15 @@ D:/Photos/IMG_001.jpg.catchlight.json
 1. **搜索与去重**：10 万+ 库的 FTS5 全文搜索、BLAKE3 去重、相似度计算依赖全局视图，单一 SQLite 数据库最高效。
 2. **索引性能**：MFT/USN 扫描结果直接写入 central DB，无需合并多库。
 3. **缓存效率**：缩略图按 BLAKE3 hash 命名，集中存储天然去重（同一文件多处硬链接仅一份缓存）。
-4. **用户迁移**：`~/.catchlight/` 整体复制即可迁移全部配置与索引；重建索引亦可完全恢复。
+4. **用户迁移**：`~/.lightframe/` 整体复制即可迁移全部配置与索引；重建索引亦可完全恢复。
 5. **Sidecar 分散**：编辑参数跟随原文件，符合非破坏性编辑语义，不增加全局 DB 负担。
 
 **路径规范（方案 C 最终定义）**：
 
 | 平台 | 全局目录 |
 |------|----------|
-| Windows | `%APPDATA%\CatchLight\` |
-| Linux | `$XDG_DATA_HOME/catchlight/` 或 `~/.catchlight/` |
+| Windows | `%APPDATA%\LightFrame\` |
+| Linux | `$XDG_DATA_HOME/lightframe/` 或 `~/.lightframe/` |
 
 **DSR-001**：应用首次启动时创建全局目录结构，若不存在则初始化空数据库。  
 **DSR-002**：缩略图缓存文件名 `{blake3_hex_prefix_16}.webp`，三级分目录存储。  
@@ -637,7 +637,7 @@ D:/Photos/IMG_001.jpg.catchlight.json
 1. **索引阶段**：识别扩展名，提取 ExifTool 元数据（相机、镜头、拍摄时间）。
 2. **预览阶段**：优先提取 RAW 内嵌 JPEG 预览生成缩略图及 large 预览。
 3. **查看阶段**：显示嵌入预览；无嵌入预览时显示「请使用外部 RAW 编辑器」。
-4. **不做 RAW 显影**：CatchLight 不是 RAW 编辑器，不提供完整 demosaic 渲染（P3 以后不计划）。
+4. **不做 RAW 显影**：LightFrame 不是 RAW 编辑器，不提供完整 demosaic 渲染（P3 以后不计划）。
 
 ### 5.3 视频格式
 
@@ -818,4 +818,4 @@ D:/Photos/IMG_001.jpg.catchlight.json
 
 ---
 
-*CatchLight（拾光）— 拾一束光，留一段时光。Catch the light, keep the moment.*
+*LightFrame（影迹）— 每一帧光影，都是时间的印迹。Every frame of light is a trace of time.*

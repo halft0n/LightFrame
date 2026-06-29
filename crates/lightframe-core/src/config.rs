@@ -45,8 +45,7 @@ impl Default for AppConfig {
 pub fn data_dir() -> PathBuf {
     dirs::data_local_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        // Keep "catchlight" for backward compatibility with existing user data.
-        .join("catchlight")
+        .join("lightframe")
 }
 
 pub fn config_path() -> PathBuf {
@@ -116,9 +115,9 @@ mod tests {
     }
 
     #[test]
-    fn data_dir_ends_with_catchlight() {
+    fn data_dir_ends_with_lightframe() {
         let dir = data_dir();
-        assert!(dir.ends_with("catchlight"));
+        assert!(dir.ends_with("lightframe"));
     }
 
     #[test]

@@ -27,12 +27,12 @@
 
 | 属性 | 说明 |
 |------|------|
-| **中文名** | **拾光** |
-| **英文名** | **CatchLight** |
-| **含义** | 中文"拾取光影 × 拾取时光"双关；英文为摄影术语"眼神光"（拍摄人像时眼中反射的光点），catch=拾取, light=光，中英语义完美对应 |
-| **特点** | 诗意独特，有中国文化底蕴；CatchLight 是正式摄影术语，体现专业性 |
-| **中文 Slogan** | "拾一束光，留一段时光" |
-| **英文 Slogan** | "Catch the light, keep the moment" |
+| **中文名** | **影迹** |
+| **英文名** | **LightFrame** |
+| **含义** | 中文"影迹"指光影在时间中留下的痕迹；英文 Light + Frame = 光影 + 帧，强调每张照片都是时间的印迹 |
+| **特点** | 诗意独特，有中国文化底蕴；LightFrame 体现每帧光影与时间印迹的产品理念 |
+| **中文 Slogan** | "每一帧光影，都是时间的印迹" |
+| **英文 Slogan** | "Every frame of light is a trace of time." |
 
 ---
 
@@ -575,7 +575,7 @@ CREATE VIRTUAL TABLE media_fts USING fts5(
 
 ```
 缩略图存储:
-  ~/.catchlight/cache/thumbs/
+  ~/.lightframe/cache/thumbs/
     ├── micro/    (64x64)    用于网格快速滚动
     ├── small/    (256x256)  用于相簿浏览
     └── large/    (1024x1024) 用于预览
@@ -596,7 +596,7 @@ CREATE VIRTUAL TABLE media_fts USING fts5(
 
 ### 4.1 核心功能对标 macOS 照片
 
-| macOS 照片功能 | 拾光实现方案 | 优先级 |
+| macOS 照片功能 | 影迹实现方案 | 优先级 |
 |----------------|-------------|--------|
 | **图库** (所有照片时间线) | SQLite 按 `taken_at` 排序 + 虚拟滚动 | P0 |
 | **回忆** | 自动按日期+地点聚类生成 | P2 |
@@ -858,4 +858,4 @@ sudo dnf install webkit2gtk4.1-devel gtk3-devel \
 
 ---
 
-> **拾光 / CatchLight** — 拾一束光，留一段时光。Catch the light, keep the moment.
+> **影迹 / LightFrame** — 每一帧光影，都是时间的印迹。Every frame of light is a trace of time.

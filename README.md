@@ -7,7 +7,7 @@
 [![Framework](https://img.shields.io/badge/framework-Tauri%202-blue?logo=tauri)](https://tauri.app)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-> 拾一束光，留一段时光。 Catch the light, keep the moment.
+> 每一帧光影，都是时间的印迹。 Every frame of light is a trace of time.
 
 LightFrame 是一款跨平台（Windows + Linux + macOS）、本地优先的照片查看与管理软件。不复制、不导入，以 Everything 级极速索引就地浏览用户现有文件夹中的照片与视频，并提供去重、截图识别、AI 相似搜索等智能整理能力。
 
@@ -69,7 +69,7 @@ See [User Guide](docs/USER_GUIDE.md) for the complete shortcut reference.
 ## Project Structure
 
 ```
-CatchLight/
+LightFrame/
 ├── src/                    # React frontend
 ├── src-tauri/              # Tauri main crate
 ├── crates/                 # Rust domain crates

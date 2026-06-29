@@ -24,7 +24,7 @@
 
 ### 1.1 系统整体架构
 
-CatchLight 采用 **Tauri 2.x 桌面壳 + Rust 后端 + React WebView 前端 + Python AI 扩展（可选）** 的混合分层架构。核心设计原则：**不复制照片文件**，通过高速索引就地查看；**Cargo workspace 多 crate** 隔离领域逻辑，避免 Lap 式单文件 7300 行巨石模块；**核心功能不依赖 Python**，AI 增强层通过 JSON-RPC 与 Python sidecar 通信，按需启动。技术路线详细对比分析见 [技术路线决策](1-tech-stack-decision.md)。
+LightFrame 采用 **Tauri 2.x 桌面壳 + Rust 后端 + React WebView 前端 + Python AI 扩展（可选）** 的混合分层架构。核心设计原则：**不复制照片文件**，通过高速索引就地查看；**Cargo workspace 多 crate** 隔离领域逻辑，避免 Lap 式单文件 7300 行巨石模块；**核心功能不依赖 Python**，AI 增强层通过 JSON-RPC 与 Python sidecar 通信，按需启动。技术路线详细对比分析见 [技术路线决策](1-tech-stack-decision.md)。
 
 ```mermaid
 flowchart TB
@@ -65,7 +65,7 @@ flowchart TB
     subgraph Storage["持久化层"]
         GlobalDB[(global.db)]
         LibDB[(library_*.db)]
-        Cache[缩略图缓存<br/>~/.catchlight/cache/]
+        Cache[缩略图缓存<br/>~/.lightframe/cache/]
         Config[config.json]
     end
 
@@ -148,7 +148,7 @@ flowchart TB
 |------|------|
 | **状态** | 已采纳 |
 | **背景** | 需在「集中管理」与「照片目录可移植」之间取舍 |
-| **决策** | 元数据与缓存集中存放于 `~/.catchlight/`，照片目录零污染 |
+| **决策** | 元数据与缓存集中存放于 `~/.lightframe/`，照片目录零污染 |
 | **理由** | 见 [§4.1 存储方案对比](#41-存储方案对比) |
 | **后果** | 移动照片目录后需重新扫描或路径修复 |
 
@@ -324,7 +324,7 @@ pub struct ThumbnailService {
 pub enum ThumbResult { Ready(PathBuf), Scheduled, Error(ThumbError) }
 ```
 
-**缓存路径：** `~/.catchlight/cache/thumbs/{size}/{blake3_prefix}.webp`；micro 级另存 `media_files.micro_thumb` BLOB（64×64 JPEG）。
+**缓存路径：** `~/.lightframe/cache/thumbs/{size}/{blake3_prefix}.webp`；micro 级另存 `media_files.micro_thumb` BLOB（64×64 JPEG）。
 
 **三级规格（已实现）：**
 
@@ -484,7 +484,7 @@ graph TD
 
 #### 2.2.1 命令分组策略
 
-对比 Lap 将 180+ 命令堆入 `t_cmds.rs` 的反模式，CatchLight 按**功能域**拆分：
+对比 Lap 将 180+ 命令堆入 `t_cmds.rs` 的反模式，LightFrame 按**功能域**拆分：
 
 | 模块文件 | 命令示例 | 预估数量 |
 |----------|----------|----------|
@@ -849,8 +849,8 @@ useEffect(() => {
 #### 方案 A：集中式存储
 
 ```
-~/.catchlight/                          # Linux
-%LOCALAPPDATA%\CatchLight\              # Windows
+~/.lightframe/                          # Linux
+%LOCALAPPDATA%\LightFrame\              # Windows
 ├── config.json
 ├── libraries/
 │   ├── {library_id}.db                 # 每个库一个 SQLite
@@ -868,7 +868,7 @@ useEffect(() => {
 
 ```
 /photos/trip/
-├── .catchlight/          # 或 .iPhoto/
+├── .lightframe/          # 或 .iPhoto/
 │   ├── index.db
 │   ├── cache/thumbs/
 │   └── album.json
@@ -885,7 +885,7 @@ useEffect(() => {
 #### 方案 C：混合式（推荐）
 
 ```
-~/.catchlight/
+~/.lightframe/
 ├── config.json                         # 全局配置
 ├── global.db                           # 全局合并视图 + 用户状态
 ├── libraries/
@@ -904,15 +904,15 @@ useEffect(() => {
 |------|------|
 | 优点 | 照片目录干净；元数据集中可备份；支持多库统一搜索；缩略图 LRU 统一淘汰 |
 | 缺点 | 不如方案 B 便携（但可通过「导出库配置」部分弥补） |
-| 适用 | CatchLight 主场景：多文件夹监控、大规模本地库 |
+| 适用 | LightFrame 主场景：多文件夹监控、大规模本地库 |
 
 #### 推荐结论：**方案 C（混合式）**
 
 **理由：**
 
-1. **核心产品定位是「就地查看、不复制文件」**，照片目录不应被 `.catchlight/` 污染（对标 macOS 照片的非破坏性理念）。
+1. **核心产品定位是「就地查看、不复制文件」**，照片目录不应被 `.lightframe/` 污染（对标 macOS 照片的非破坏性理念）。
 2. **10 万+ 规模**需要集中式缩略图 LRU 与统一 FTS 搜索，`global.db` 提供跨库合并视图。
-3. iPhotron 的分散式适合「库根 = 单一照片目录」，CatchLight 支持多盘符/多根目录监控，集中式更自然。
+3. iPhotron 的分散式适合「库根 = 单一照片目录」，LightFrame 支持多盘符/多根目录监控，集中式更自然。
 4. Lap 同样采用应用数据目录存库 + 照片路径引用，验证可行。
 5. 便携需求通过「库配置导出/导入 + 路径重映射向导」解决，而非污染照片目录。
 
@@ -922,7 +922,7 @@ useEffect(() => {
 
 ### 4.2 SQLite Schema 设计
 
-参考 iPhotron `assets` 表（库相对路径 + 扫描任务）与 Lap `afiles`/`albums` 表（丰富 EXIF 索引），融合 CatchLight 差异化字段（去重、截图分类、索引状态机）。
+参考 iPhotron `assets` 表（库相对路径 + 扫描任务）与 Lap `afiles`/`albums` 表（丰富 EXIF 索引），融合 LightFrame 差异化字段（去重、截图分类、索引状态机）。
 
 #### 4.2.1 数据库文件布局
 
@@ -1293,7 +1293,7 @@ pub fn create_indexer() -> Box<dyn FileIndexer> {
 ### 5.3 FFmpeg Sidecar 管理
 
 ```
-~/.catchlight/bin/
+~/.lightframe/bin/
 ├── win32/
 │   └── ffmpeg.exe
 └── linux/
@@ -1367,12 +1367,12 @@ pub fn create_indexer() -> Box<dyn FileIndexer> {
 | 数据类型 | 存储位置 | 隔离 |
 |----------|---------|------|
 | 照片原文件 | 用户磁盘任意位置 | 只读访问，路径存 SQLite |
-| 索引/用户状态 | `~/.catchlight/` | 当前 OS 用户 |
-| 缩略图缓存 | `~/.catchlight/cache/` | 可安全删除，自动重建 |
-| AI 模型 | `~/.catchlight/models/` | 可选下载，不含用户数据 |
-| 日志 | `~/.catchlight/logs/` | 不含照片内容，可配置级别 |
+| 索引/用户状态 | `~/.lightframe/` | 当前 OS 用户 |
+| 缩略图缓存 | `~/.lightframe/cache/` | 可安全删除，自动重建 |
+| AI 模型 | `~/.lightframe/models/` | 可选下载，不含用户数据 |
+| 日志 | `~/.lightframe/logs/` | 不含照片内容，可配置级别 |
 
-**多用户：** 每 OS 用户独立 `~/.catchlight/`，不共享索引。
+**多用户：** 每 OS 用户独立 `~/.lightframe/`，不共享索引。
 
 **隐私：** AI 推理本地执行，不上传照片；GeoNames 数据离线嵌入。
 
@@ -1382,7 +1382,7 @@ pub fn create_indexer() -> Box<dyn FileIndexer> {
 
 ### 7.1 设计原则
 
-CatchLight 图像编辑器采用 **非破坏性编辑**：原始照片文件只读，编辑参数以 JSON 形式持久化于 SQLite `media_edits` 表；预览在前端通过 CSS filter/transform 实时渲染，导出时由 Rust 后端 `image_edit` 模块对原图做像素级处理并写入新文件。
+LightFrame 图像编辑器采用 **非破坏性编辑**：原始照片文件只读，编辑参数以 JSON 形式持久化于 SQLite `media_edits` 表；预览在前端通过 CSS filter/transform 实时渲染，导出时由 Rust 后端 `image_edit` 模块对原图做像素级处理并写入新文件。
 
 ```mermaid
 flowchart LR
@@ -1521,9 +1521,9 @@ flowchart TB
 
 ## 附录 A：与参考项目的对照
 
-| 维度 | iPhotron | Lap | FlyPhotos | CatchLight |
+| 维度 | iPhotron | Lap | FlyPhotos | LightFrame |
 |------|----------|-----|-----------|------------|
-| 存储 | 库根 `.iPhoto/` | 应用数据目录 | SQLite + 磁盘缓存 | 混合式 `~/.catchlight/` |
+| 存储 | 库根 `.iPhoto/` | 应用数据目录 | SQLite + 磁盘缓存 | 混合式 `~/.lightframe/` |
 | 后端结构 | Python DDD 分层 | 扁平 `t_*` 模块 | C# 服务层 | Rust workspace 9 crate |
 | IPC | Qt 信号槽 | 180+ 命令单文件 | N/A（原生） | 按域分组 ~90 命令 |
 | 缩略图 | DB BLOB + 磁盘 | `thumb://` 协议 | Preview/HQ 双轨 | 协议 + 四级缓存 + 预取 |
@@ -1546,5 +1546,5 @@ flowchart TB
 
 ---
 
-> **CatchLight / 拾光** — 拾一束光，留一段时光。  
-> Catch the light, keep the moment.
+> **LightFrame / 影迹** — 每一帧光影，都是时间的印迹。  
+> Every frame of light is a trace of time.
