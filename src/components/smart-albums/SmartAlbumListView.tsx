@@ -13,18 +13,23 @@ export function SmartAlbumListView() {
   const { t } = useTranslation();
   const [albums, setAlbums] = useState<SmartAlbum[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
   const [creating, setCreating] = useState(false);
 
   const loadAlbums = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       setAlbums(await listSmartAlbums());
+    } catch (err) {
+      console.error("Failed to load smart albums:", err);
+      setError(t("errors.generic"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadAlbums();
@@ -66,6 +71,11 @@ export function SmartAlbumListView() {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
+      {error && (
+        <div className="border-b border-red-900/50 bg-red-950/30 px-4 py-2">
+          <p className="text-sm text-red-400">{error}</p>
+        </div>
+      )}
       <div className="flex items-center justify-between border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3">
         <h2 className="text-sm font-medium text-neutral-200">{t("smartAlbums.title")}</h2>
         <button

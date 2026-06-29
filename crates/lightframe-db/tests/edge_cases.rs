@@ -2,7 +2,7 @@
 
 use chrono::NaiveDateTime;
 use lightframe_core::media::{MediaFile, MediaType};
-use lightframe_db::Database;
+use lightframe_db::{Database, FaceDetectionInput};
 use std::path::Path;
 use std::sync::Arc;
 use std::thread;
@@ -219,4 +219,129 @@ fn toggle_favorite_on_nonexistent_media_errors() {
     assert!(db.toggle_favorite(0).is_err());
     assert!(db.toggle_favorite(-42).is_err());
     assert!(db.toggle_favorite(999_999).is_err());
+}
+
+#[test]
+fn get_media_by_ids_empty_array_returns_empty_map() {
+    let db = create_test_db();
+    assert!(db.get_media_by_ids(&[]).unwrap().is_empty());
+}
+
+#[test]
+fn get_media_by_ids_mixed_existing_and_missing() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let id1 = db
+        .upsert_media(fid, &sample_media("/photos/exists.jpg"))
+        .unwrap();
+
+    let map = db.get_media_by_ids(&[id1, 999_999, -1]).unwrap();
+    assert_eq!(map.len(), 1);
+    assert!(map.contains_key(&id1));
+    assert!(!map.contains_key(&999_999));
+}
+
+#[test]
+fn batch_set_favorite_empty_array_is_no_op() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/a.jpg"))
+        .unwrap();
+
+    assert_eq!(db.batch_set_favorite(&[], true).unwrap(), 0);
+    assert!(!db.is_favorite(media_id).unwrap());
+}
+
+#[test]
+fn batch_set_deleted_empty_array_is_no_op() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/a.jpg"))
+        .unwrap();
+
+    assert_eq!(db.batch_set_deleted(&[], true).unwrap(), 0);
+    assert!(db.get_media_by_id(media_id).unwrap().is_some());
+    assert!(db.list_deleted_media().unwrap().is_empty());
+}
+
+#[test]
+fn create_album_with_very_long_name() {
+    let db = create_test_db();
+    let long_name = format!("Album {}", "x".repeat(1000));
+    let album = db.create_album(&long_name, None).unwrap();
+    let stored = db.get_album(album.id).unwrap().unwrap();
+    assert_eq!(stored.name, long_name);
+}
+
+#[test]
+fn create_album_with_unicode_emoji_name() {
+    let db = create_test_db();
+    let album = db.create_album("旅行 📸✨", Some("2024 🎉")).unwrap();
+    let stored = db.get_album(album.id).unwrap().unwrap();
+    assert_eq!(stored.name, "旅行 📸✨");
+    assert_eq!(stored.description.as_deref(), Some("2024 🎉"));
+}
+
+#[test]
+fn fts_search_empty_string_returns_empty() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    db.upsert_media(fid, &sample_media("/photos/vacation.jpg"))
+        .unwrap();
+
+    assert!(db.search_media("", 10, 0).unwrap().is_empty());
+    assert!(db.search_media("   ", 10, 0).unwrap().is_empty());
+    assert_eq!(db.search_media_count("").unwrap(), 0);
+    assert_eq!(db.get_media_count().unwrap(), 1);
+}
+
+#[test]
+fn fts_search_very_long_query_does_not_error() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    db.upsert_media(fid, &sample_media("/photos/vacation.jpg"))
+        .unwrap();
+
+    let long_query = "keyword ".repeat(1500);
+    assert!(db.search_media(&long_query, 10, 0).is_ok());
+    assert!(db.search_media_count(&long_query).is_ok());
+    assert_eq!(db.get_media_count().unwrap(), 1);
+}
+
+#[test]
+fn duplicate_group_operations_on_nonexistent_groups() {
+    let db = create_test_db();
+
+    assert!(db.resolve_duplicate_group(999_999, 1, true).is_err());
+    db.delete_duplicate_group(999_999).unwrap();
+    db.remove_from_duplicate_group(999_999, 1).unwrap();
+    assert_eq!(db.get_duplicate_groups_count().unwrap(), 0);
+}
+
+#[test]
+fn face_store_accepts_nan_and_infinity_embeddings() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+    let media_id = db
+        .upsert_media(fid, &sample_media("/photos/face.jpg"))
+        .unwrap();
+
+    let faces = vec![
+        FaceDetectionInput {
+            bbox: [0.1, 0.2, 0.3, 0.4],
+            confidence: 0.95,
+            embedding: vec![f32::NAN, 1.0, f32::INFINITY],
+        },
+        FaceDetectionInput {
+            bbox: [0.5, 0.5, 0.2, 0.2],
+            confidence: 0.88,
+            embedding: vec![f32::NEG_INFINITY, 0.0, -1.0],
+        },
+    ];
+    db.store_face_detections(media_id, &faces).unwrap();
+
+    let stored = db.get_faces_for_media(media_id).unwrap();
+    assert_eq!(stored.len(), 2);
 }

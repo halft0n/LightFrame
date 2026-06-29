@@ -184,6 +184,45 @@ mod tests {
         assert_eq!(results[0], photo);
     }
 
+    #[tokio::test]
+    async fn scan_folder_with_only_non_media_files() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("readme.txt"), b"hello").unwrap();
+        std::fs::write(dir.path().join("notes.pdf"), b"%PDF").unwrap();
+        std::fs::write(dir.path().join("archive.zip"), b"PK").unwrap();
+
+        let results = scan_folder(dir.path()).await.unwrap();
+        assert!(results.is_empty());
+    }
+
+    #[tokio::test]
+    async fn scan_folder_with_deeply_nested_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut nested = dir.path().to_path_buf();
+        for i in 0..20 {
+            nested = nested.join(format!("level-{i}"));
+            std::fs::create_dir_all(&nested).unwrap();
+        }
+        let photo = nested.join("deep.jpg");
+        std::fs::write(&photo, b"fake jpeg").unwrap();
+
+        let results = scan_folder(dir.path()).await.unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0], photo);
+    }
+
+    #[test]
+    fn is_media_file_rejects_double_extension_backup() {
+        assert!(!is_media_file(Path::new("photo.jpg.bak")));
+        assert!(!is_media_file(Path::new("clip.mp4.old")));
+    }
+
+    #[test]
+    fn is_media_file_detects_hidden_prefixed_media_names() {
+        assert!(is_media_file(Path::new(".hidden.jpg")));
+        assert!(is_media_file(Path::new(".secret.png")));
+    }
+
     #[cfg(target_os = "windows")]
     #[test]
     fn mft_scanner_placeholder_returns_empty() {

@@ -6,6 +6,8 @@ use tauri::http::Response;
 
 const MAX_IMAGE_SIZE: u64 = 100 * 1024 * 1024; // 100MB for images
 const MAX_VIDEO_SIZE: u64 = 500 * 1024 * 1024; // 500MB for videos
+// Entire file is read into memory before serving. Large videos should use convertFileSrc, not original://.
+const MAX_INLINE_READ_BYTES: u64 = 200 * 1024 * 1024;
 
 pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
     tracing::debug!("original protocol request: {request_path}");
@@ -76,11 +78,11 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
     if metadata.len() > limit {
         return error_response(StatusCode::from_u16(413).unwrap(), "file too large");
     }
-    if metadata.len() > 50 * 1024 * 1024 {
+    if metadata.len() >= MAX_INLINE_READ_BYTES {
         tracing::warn!(
             size = metadata.len(),
             path = %canonical.display(),
-            "serving large file"
+            "serving very large file via in-memory read; consider convertFileSrc for video"
         );
     }
 

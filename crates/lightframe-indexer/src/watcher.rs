@@ -43,8 +43,10 @@ impl FolderWatcher {
         let (tx, rx) = mpsc::channel(4096);
 
         let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
-            if let Ok(event) = res {
-                let _ = tx.try_send(event);
+            if let Ok(event) = res
+                && let Err(e) = tx.try_send(event)
+            {
+                tracing::warn!("file watcher: event dropped (channel full): {e}");
             }
         })
         .map_err(|e| lightframe_core::Error::Other(e.to_string()))?;

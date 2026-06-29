@@ -257,16 +257,20 @@ async fn process_file_inner(
                     let dhash = lightframe_dedup::dhash_from_decoded(&decoded).ok();
                     let phash = lightframe_dedup::phash_from_decoded(&decoded).ok();
 
-                    let _ = lightframe_thumbnail::generate_from_decoded(
+                    if let Err(e) = lightframe_thumbnail::generate_from_decoded(
                         &decoded,
                         &hash,
                         ThumbnailSize::Micro,
-                    );
-                    let _ = lightframe_thumbnail::generate_from_decoded(
+                    ) {
+                        tracing::warn!(path = %path.display(), "thumbnail generation failed: {e}");
+                    }
+                    if let Err(e) = lightframe_thumbnail::generate_from_decoded(
                         &decoded,
                         &hash,
                         ThumbnailSize::Small,
-                    );
+                    ) {
+                        tracing::warn!(path = %path.display(), "thumbnail generation failed: {e}");
+                    }
 
                     let micro = lightframe_thumbnail::micro_blob_from_decoded(&decoded).ok();
 
@@ -297,16 +301,20 @@ async fn process_file_inner(
                     let frame = temp_frame.clone();
                     let hash_clone = hash.clone();
                     let _ = tokio::task::spawn_blocking(move || {
-                        let _ = lightframe_thumbnail::generate(
+                        if let Err(e) = lightframe_thumbnail::generate(
                             &frame,
                             &hash_clone,
                             ThumbnailSize::Micro,
-                        );
-                        let _ = lightframe_thumbnail::generate(
+                        ) {
+                            tracing::warn!(path = %frame.display(), "thumbnail generation failed: {e}");
+                        }
+                        if let Err(e) = lightframe_thumbnail::generate(
                             &frame,
                             &hash_clone,
                             ThumbnailSize::Small,
-                        );
+                        ) {
+                            tracing::warn!(path = %frame.display(), "thumbnail generation failed: {e}");
+                        }
                         let _ = std::fs::remove_file(&frame);
                     })
                     .await;

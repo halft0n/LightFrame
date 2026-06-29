@@ -646,6 +646,49 @@ mod tests {
     }
 
     #[test]
+    fn is_raw_path_mixed_case_extensions() {
+        assert!(is_raw_path(Path::new("/photos/sample.CR2")));
+        assert!(is_raw_path(Path::new("/photos/sample.Nef")));
+        assert!(is_raw_path(Path::new("/photos/sample.DNG")));
+        assert!(!is_raw_path(Path::new("/photos/sample.JPG")));
+    }
+
+    #[test]
+    fn detect_image_format_empty_file_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let empty = dir.path().join("empty.jpg");
+        std::fs::write(&empty, []).unwrap();
+
+        assert_eq!(detect_image_format(&empty), ImageFormatKind::Other);
+        assert_eq!(detect_image_format(Path::new("")), ImageFormatKind::Other);
+    }
+
+    #[test]
+    fn detect_image_format_truncated_file_uses_extension() {
+        let dir = tempfile::tempdir().unwrap();
+        let truncated = dir.path().join("truncated.avif");
+        std::fs::write(&truncated, &[0x00, 0x01, 0x02]).unwrap();
+
+        assert_eq!(detect_image_format(&truncated), ImageFormatKind::Avif);
+        assert!(decode_image(&truncated).is_err());
+    }
+
+    #[test]
+    fn is_decode_supported_rejects_unsupported_heic_formats() {
+        assert!(!is_decode_supported(Path::new("photo.HEIC")));
+        assert!(!is_decode_supported(Path::new("photo.HeIf")));
+    }
+
+    #[test]
+    fn decode_image_empty_file_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let empty = dir.path().join("empty.png");
+        std::fs::write(&empty, []).unwrap();
+
+        assert!(decode_image(&empty).is_err());
+    }
+
+    #[test]
     fn decode_heic_returns_error_without_panicking() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("sample.heic");

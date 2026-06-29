@@ -1,15 +1,17 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, waitFor, act } from "@testing-library/react";
+import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "@/App";
 import { setLocale } from "@/i18n/index";
 import {
   clearMediaSelection,
   getSnapshot,
+  openViewer,
   setMediaSelection,
   setSearchQuery,
 } from "@/store/appStore";
 import type { MediaItem } from "@/lib/tauri";
+import { invoke } from "@tauri-apps/api/core";
 
 const listWatchedFolders = vi.fn();
 const onScanProgress = vi.fn();
@@ -46,6 +48,7 @@ vi.mock("@/lib/tauri", async (importOriginal) => {
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn().mockResolvedValue(null),
+  convertFileSrc: vi.fn((path: string) => `file://${path}`),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
@@ -115,6 +118,34 @@ function setupDefaultMocks() {
   listAlbums.mockResolvedValue([
     { id: 10, name: "Trip", media_count: 0, created_at: "2024-01-01" },
   ]);
+}
+
+function setupViewerInvoke() {
+  (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string, args?: Record<string, unknown>) => {
+    if (cmd === "get_media_by_id") {
+      const id = (args?.id as number | undefined) ?? 1;
+      const item = sampleMedia.find((m) => m.id === id) ?? sampleMedia[0];
+      return Promise.resolve({ ...item, id });
+    }
+    if (cmd === "get_media_neighbors") {
+      const id = (args?.id as number | undefined) ?? 1;
+      const index = sampleMedia.findIndex((m) => m.id === id);
+      return Promise.resolve({
+        prev_id: index > 0 ? sampleMedia[index - 1].id : null,
+        next_id: index >= 0 && index < sampleMedia.length - 1 ? sampleMedia[index + 1].id : null,
+      });
+    }
+    if (cmd === "get_media_window") {
+      const mediaId = (args?.mediaId as number | undefined) ?? 1;
+      const item = sampleMedia.find((m) => m.id === mediaId) ?? sampleMedia[0];
+      return Promise.resolve([{ ...item, id: mediaId }]);
+    }
+    if (cmd === "has_edits") return Promise.resolve(false);
+    if (cmd === "get_edit") return Promise.resolve(null);
+    if (cmd === "is_favorite") return Promise.resolve(false);
+    if (cmd === "toggle_favorite") return Promise.resolve(true);
+    return Promise.resolve(null);
+  });
 }
 
 beforeEach(() => {
@@ -238,6 +269,107 @@ describe("Search workflow", () => {
       await waitFor(() => {
         expect(searchMedia).toHaveBeenCalled();
         expect(getSnapshot().searchQuery).toBe("beach");
+      });
+    } finally {
+      vi.useRealTimers();
+      setSearchQuery("");
+    }
+  });
+});
+
+describe("Keyboard navigation workflow", () => {
+  it("clears selection on Escape and navigates viewer with arrow keys", async () => {
+    setupViewerInvoke();
+    render(<App />);
+
+    await waitFor(() => {
+      expect(getSnapshot().mediaItems).toHaveLength(3);
+    });
+
+    act(() => {
+      setMediaSelection([1, 2]);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(/已选择 2 项/)).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => {
+      expect(getSnapshot().selectedMediaIds).toHaveLength(0);
+    });
+
+    act(() => {
+      openViewer(2);
+    });
+
+    await waitFor(() => {
+      expect(getSnapshot().viewingMediaId).toBe(2);
+      expect(invoke).toHaveBeenCalledWith("get_media_neighbors", { id: 2 });
+    });
+
+    await waitFor(() => {
+      expect(document.querySelector("img.select-none")).toBeInTheDocument();
+    });
+
+    fireEvent.keyDown(window, { key: "ArrowLeft" });
+    await waitFor(() => {
+      expect(getSnapshot().viewingMediaId).toBe(1);
+    });
+
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    await waitFor(() => {
+      expect(getSnapshot().viewingMediaId).toBe(3);
+    });
+
+    fireEvent.keyDown(window, { key: "Escape" });
+    await waitFor(() => {
+      expect(getSnapshot().viewingMediaId).toBeNull();
+    });
+  });
+});
+
+describe("Error recovery workflow", () => {
+  it("retries after failed search load", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      let searchAttempts = 0;
+      searchMedia.mockImplementation(() => {
+        searchAttempts += 1;
+        if (searchAttempts === 1) {
+          return Promise.reject(new Error("search failed"));
+        }
+        return Promise.resolve([sampleMedia[0]]);
+      });
+      searchMediaCount.mockResolvedValue(1);
+
+      render(<App />);
+
+      await waitFor(() => {
+        expect(getSnapshot().mediaItems).toHaveLength(3);
+      });
+
+      const searchInput = screen.getByPlaceholderText("搜索照片…");
+      await user.type(searchInput, "sunset");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(350);
+      });
+
+      await waitFor(() => {
+        expect(getSnapshot().searchQuery).toBe("sunset");
+        expect(searchMedia).toHaveBeenCalled();
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("搜索失败，请重试。")).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole("button", { name: "重试" }));
+
+      await waitFor(() => {
+        expect(searchMedia).toHaveBeenCalledTimes(2);
+        expect(screen.queryByText("搜索失败，请重试。")).not.toBeInTheDocument();
       });
     } finally {
       vi.useRealTimers();

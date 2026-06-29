@@ -823,12 +823,12 @@ pub fn permanently_delete(state: State<'_, AppState>, media_id: i64) -> Result<(
         ));
     }
 
+    remove_media_from_disk(&path, hash.as_deref(), &state.db);
     state
         .db
         .permanently_delete_media(media_id)
         .map_err(|e| db_err("permanently_delete", &media_id.to_string(), e))?;
     state.thumb_cache.invalidate_media(media_id);
-    remove_media_from_disk(&path, hash.as_deref());
     Ok(())
 }
 
@@ -909,6 +909,10 @@ pub fn batch_permanent_delete(
         }
     }
 
+    for (path, hash) in &to_remove {
+        remove_media_from_disk(path, hash.as_deref(), &state.db);
+    }
+
     let affected = state.db.batch_permanent_delete(&media_ids).map_err(|e| {
         db_err(
             "batch_permanent_delete",
@@ -919,10 +923,6 @@ pub fn batch_permanent_delete(
 
     for media_id in &media_ids {
         state.thumb_cache.invalidate_media(*media_id);
-    }
-
-    for (path, hash) in to_remove {
-        remove_media_from_disk(&path, hash.as_deref());
     }
 
     Ok(affected)
@@ -1698,13 +1698,38 @@ pub fn get_geo_clusters(
         .map_err(|e| e.to_string())
 }
 
-fn remove_media_from_disk(path: &str, hash: Option<&str>) {
+fn remove_media_from_disk(path: &str, hash: Option<&str>, db: &lightframe_db::Database) {
     let file_path = std::path::Path::new(path);
     if crate::original_protocol::path_contains_parent_dir(file_path) {
         tracing::error!("permanent delete: refusing path with traversal: {path}");
         return;
     }
-    match std::fs::remove_file(path) {
+
+    let watched_folders = match db.list_watched_folders() {
+        Ok(folders) => folders,
+        Err(e) => {
+            tracing::error!("permanent delete: failed to list watched folders: {e}");
+            return;
+        }
+    };
+
+    let canonical = match std::fs::canonicalize(path) {
+        Ok(p) => crate::original_protocol::strip_extended_prefix(p),
+        Err(e) => {
+            tracing::warn!("permanent delete: cannot canonicalize {path} (file may be gone): {e}");
+            return;
+        }
+    };
+
+    if !crate::original_protocol::path_is_in_watched_folders(&canonical, &watched_folders) {
+        tracing::error!(
+            "permanent delete: refusing path outside watched folders: {}",
+            canonical.display()
+        );
+        return;
+    }
+
+    match std::fs::remove_file(&canonical) {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             tracing::warn!("permanent delete: file not found on disk: {path}");

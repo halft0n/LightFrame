@@ -1,7 +1,8 @@
 use image::{ImageBuffer, Rgb, RgbImage};
 use lightframe_app::export_edited_image;
 use lightframe_core::media::{MediaFile, MediaType, ThumbnailSize};
-use lightframe_db::Database;
+use lightframe_db::{Database, SmartAlbumRule};
+use chrono::NaiveDateTime;
 use lightframe_indexer::{
     classify_extension, is_media_change_event, is_media_remove_event, is_media_rename_event,
     scan_folder,
@@ -71,6 +72,22 @@ impl TestEnv {
     fn write_unsupported(&self, name: &str) -> PathBuf {
         let path = self.photos_dir.join(name);
         std::fs::write(&path, b"plain text").expect("write txt");
+        path
+    }
+
+    fn write_raw_with_preview(&self, name: &str) -> PathBuf {
+        let path = self.photos_dir.join(name);
+        let img: RgbImage =
+            ImageBuffer::from_fn(16, 16, |x, y| Rgb([(x * 15) as u8, (y * 15) as u8, 128]));
+        let mut jpeg = Vec::new();
+        img.write_to(
+            &mut std::io::Cursor::new(&mut jpeg),
+            image::ImageFormat::Jpeg,
+        )
+        .expect("encode jpeg");
+        let mut data = Vec::from(b"TIFF\x00\x01fake-raw-header\x00");
+        data.extend_from_slice(&jpeg);
+        std::fs::write(&path, &data).expect("write raw");
         path
     }
 
@@ -478,4 +495,193 @@ async fn e2e_watcher_remove_soft_deletes_media() {
     let removed = env.db.list_deleted_media().unwrap();
     assert_eq!(removed.len(), 1);
     assert_eq!(removed[0].filename, "watched.png");
+}
+
+#[tokio::test]
+async fn e2e_raw_scan_and_thumbnail() {
+    let env = TestEnv::new();
+    let path = env.write_raw_with_preview("landscape.cr2");
+    env.scan().await;
+
+    let media = env.db.get_all_media(10, 0).unwrap();
+    assert_eq!(media.len(), 1);
+    assert_eq!(media[0].filename, "landscape.cr2");
+    assert_eq!(media[0].media_type, MediaType::Raw);
+
+    let hash = media[0].blake3_hash.as_ref().expect("blake3 hash");
+    let small = thumb_path(hash, ThumbnailSize::Small);
+    assert!(
+        small.exists(),
+        "RAW with embedded preview should produce a thumbnail"
+    );
+    assert!(path.exists());
+}
+
+#[tokio::test]
+async fn e2e_soft_delete_and_permanent_delete_by_id() {
+    let env = TestEnv::new();
+    let path_a = env.write_png("keep-by-id.png", 11);
+    let path_b = env.write_png("trash-by-id.png", 22);
+    env.scan().await;
+
+    let items = env.db.get_all_media(10, 0).unwrap();
+    let id_a = items.iter().find(|m| m.filename == "keep-by-id.png").unwrap().id;
+    let id_b = items.iter().find(|m| m.filename == "trash-by-id.png").unwrap().id;
+
+    env.db.set_deleted(id_b, true).unwrap();
+    let deleted = env.db.list_deleted_media().unwrap();
+    assert_eq!(deleted.len(), 1);
+    assert_eq!(deleted[0].id, id_b);
+    assert!(env.db.get_media_by_id(id_b).unwrap().is_none());
+    assert!(env.db.get_media_by_id(id_a).unwrap().is_some());
+
+    env.db.permanently_delete_media(id_b).unwrap();
+    std::fs::remove_file(&path_b).expect("remove trashed file");
+    assert!(env.db.get_media_by_id(id_b).unwrap().is_none());
+    assert!(env.db.get_media_by_id(id_a).unwrap().is_some());
+    assert!(path_a.exists());
+}
+
+#[tokio::test]
+async fn e2e_batch_delete_favorite_and_add_to_album() {
+    let env = TestEnv::new();
+    env.write_png("batch-a.png", 10);
+    env.write_png("batch-b.png", 20);
+    env.write_png("batch-c.png", 30);
+    env.scan().await;
+
+    let items = env.db.get_all_media(10, 0).unwrap();
+    let ids: Vec<i64> = items.iter().map(|m| m.id).collect();
+    assert_eq!(ids.len(), 3);
+
+    assert_eq!(env.db.batch_set_favorite(&ids[0..2], true).unwrap(), 2);
+    assert!(env.db.is_favorite(ids[0]).unwrap());
+    assert!(env.db.is_favorite(ids[1]).unwrap());
+    assert!(!env.db.is_favorite(ids[2]).unwrap());
+
+    let album = env.db.create_album("Batch Trip", None).unwrap();
+    env.db.add_to_album(album.id, &ids).unwrap();
+    assert_eq!(env.db.get_album_media(album.id, 10, 0).unwrap().len(), 3);
+
+    assert_eq!(env.db.batch_set_deleted(&ids[1..3], true).unwrap(), 2);
+    assert_eq!(env.db.get_media_count().unwrap(), 1);
+    assert_eq!(env.db.list_deleted_media().unwrap().len(), 2);
+
+    assert_eq!(env.db.batch_set_deleted(&ids[1..3], false).unwrap(), 2);
+    assert_eq!(env.db.get_media_count().unwrap(), 3);
+}
+
+#[tokio::test]
+async fn e2e_smart_album_crud() {
+    let env = TestEnv::new();
+    env.write_png("smart-fav.png", 40);
+    env.write_png("smart-plain.png", 50);
+    env.scan().await;
+
+    let items = env.db.get_all_media(10, 0).unwrap();
+    let fav_item = items.iter().find(|m| m.filename == "smart-fav.png").unwrap();
+    env.db.toggle_favorite(fav_item.id).unwrap();
+
+    let rule = SmartAlbumRule {
+        media_type: None,
+        date_from: None,
+        date_to: None,
+        country: None,
+        city: None,
+        is_favorite: Some(true),
+        min_size: None,
+        has_gps: None,
+    };
+    let album = env
+        .db
+        .create_smart_album("E2E Favorites", Some("star"), &rule)
+        .unwrap();
+    assert_eq!(album.name, "E2E Favorites");
+    assert_eq!(album.media_count, 1);
+
+    let listed = env.db.list_smart_albums().unwrap();
+    assert!(listed.iter().any(|a| a.id == album.id));
+
+    let media = env.db.get_smart_album_media(album.id, 10, 0).unwrap();
+    assert_eq!(media.len(), 1);
+    assert_eq!(media[0].id, fav_item.id);
+
+    env.db.delete_smart_album(album.id).unwrap();
+    assert!(
+        !env
+            .db
+            .list_smart_albums()
+            .unwrap()
+            .iter()
+            .any(|a| a.id == album.id)
+    );
+}
+
+#[tokio::test]
+async fn e2e_memories_generation() {
+    let env = TestEnv::new();
+    let dt = NaiveDateTime::parse_from_str("2023-08-01 10:00:00", "%Y-%m-%d %H:%M:%S").unwrap();
+
+    for i in 0..5 {
+        let path = env.write_png(&format!("mem-{i}.png"), 60 + i);
+        env.scan().await;
+        let mut media = env.db.get_media_by_path(&path.to_string_lossy()).unwrap().unwrap();
+        media.created_at = Some(dt + chrono::Duration::hours(i as i64));
+        media.latitude = Some(31.2304);
+        media.longitude = Some(121.4737);
+        env.db.upsert_media(env.folder_id, &media).unwrap();
+        env.db
+            .update_media_location(media.id, "上海", "中国")
+            .unwrap();
+    }
+
+    let memories = env.db.generate_memories().unwrap();
+    assert_eq!(memories.len(), 1);
+    assert_eq!(memories[0].media_count, 5);
+    assert!(memories[0].title.contains("2023"));
+
+    let listed = env.db.list_memories().unwrap();
+    assert_eq!(listed.len(), 1);
+
+    let memory_media = env.db.get_memory_media(listed[0].id, 10, 0).unwrap();
+    assert_eq!(memory_media.len(), 5);
+}
+
+#[tokio::test]
+async fn e2e_timeline_cursor_pagination() {
+    let env = TestEnv::new();
+    for i in 0..6 {
+        let path = env.write_png(&format!("timeline-{i}.png"), 70 + i);
+        env.scan().await;
+        let date = format!("2024-06-{:02} 10:00:00", 10 + i);
+        let parsed = NaiveDateTime::parse_from_str(&date, "%Y-%m-%d %H:%M:%S").unwrap();
+        let mut media = env.db.get_media_by_path(&path.to_string_lossy()).unwrap().unwrap();
+        media.created_at = Some(parsed);
+        env.db.upsert_media(env.folder_id, &media).unwrap();
+    }
+
+    let page1 = env.db.get_timeline_groups(3, None).unwrap();
+    assert_eq!(page1.iter().map(|g| g.count).sum::<i64>(), 3);
+
+    let page1_ids: Vec<i64> = page1
+        .iter()
+        .flat_map(|g| g.media.iter().map(|m| m.id))
+        .collect();
+    let last_id = *page1_ids.last().expect("page1 item");
+    let cursor_ts = "2024-06-13 10:00:00".to_string();
+
+    let page2 = env
+        .db
+        .get_timeline_groups(3, Some((cursor_ts, last_id)))
+        .unwrap();
+    let page2_ids: Vec<i64> = page2
+        .iter()
+        .flat_map(|g| g.media.iter().map(|m| m.id))
+        .collect();
+
+    assert_eq!(page2.iter().map(|g| g.count).sum::<i64>(), 3);
+    for id in &page2_ids {
+        assert!(!page1_ids.contains(id));
+    }
+    assert_eq!(page1_ids.len() + page2_ids.len(), 6);
 }
