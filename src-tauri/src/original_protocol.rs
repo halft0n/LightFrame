@@ -4,7 +4,8 @@ use http::{StatusCode, header};
 use std::path::{Path, PathBuf};
 use tauri::http::Response;
 
-const MAX_SERVE_SIZE: u64 = 500 * 1024 * 1024; // 500MB
+const MAX_IMAGE_SIZE: u64 = 100 * 1024 * 1024; // 100MB for images
+const MAX_VIDEO_SIZE: u64 = 500 * 1024 * 1024; // 500MB for videos
 
 pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
     tracing::debug!("original protocol request: {request_path}");
@@ -57,22 +58,33 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
         Err(_) => return error_response(StatusCode::NOT_FOUND, "file not found"),
     };
 
-    if metadata.len() > MAX_SERVE_SIZE {
+    let mime = guess_mime(&canonical);
+    let is_video = mime.starts_with("video/");
+    let limit = if is_video {
+        MAX_VIDEO_SIZE
+    } else {
+        MAX_IMAGE_SIZE
+    };
+    if metadata.len() > limit {
         return error_response(StatusCode::from_u16(413).unwrap(), "file too large");
+    }
+    if metadata.len() > 50 * 1024 * 1024 {
+        tracing::warn!(
+            size = metadata.len(),
+            path = %canonical.display(),
+            "serving large file"
+        );
     }
 
     match std::fs::read(&canonical) {
-        Ok(bytes) => {
-            let mime = guess_mime(&canonical);
-            finish_response(
-                Response::builder()
-                    .status(StatusCode::OK)
-                    .header(header::CONTENT_TYPE, mime)
-                    .header(header::CACHE_CONTROL, "max-age=3600")
-                    .header("Access-Control-Allow-Origin", "*"),
-                bytes,
-            )
-        }
+        Ok(bytes) => finish_response(
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, mime)
+                .header(header::CACHE_CONTROL, "max-age=3600")
+                .header("Access-Control-Allow-Origin", "*"),
+            bytes,
+        ),
         Err(e) => {
             tracing::warn!(path = %canonical.display(), "original protocol read error: {e}");
             error_response(StatusCode::INTERNAL_SERVER_ERROR, "read failed")
@@ -157,7 +169,7 @@ fn components_equal(a: std::path::Component<'_>, b: std::path::Component<'_>) ->
     }
 }
 
-fn strip_extended_prefix(p: PathBuf) -> PathBuf {
+pub fn strip_extended_prefix(p: PathBuf) -> PathBuf {
     #[cfg(windows)]
     {
         let s = p.to_string_lossy();
@@ -228,6 +240,8 @@ fn guess_mime(path: &Path) -> &'static str {
         Some("webp") => "image/webp",
         Some("bmp") => "image/bmp",
         Some("tiff" | "tif") => "image/tiff",
+        // SVG scripts don't execute when loaded via <img> src, which is how CatchLight renders them.
+        // If embedding context changes (e.g. <object> or innerHTML), sanitize SVGs first.
         Some("svg") => "image/svg+xml",
         Some("heic" | "heif") => "image/heif",
         Some("avif") => "image/avif",
@@ -593,6 +607,8 @@ mod tests {
         assert_eq!(*resp.body(), b"long-path".to_vec());
     }
 
+    /// On Windows, junctions are handled by `canonicalize()` resolving the real path.
+    /// The symlink escape test is Unix-only because junction creation requires elevated privileges.
     #[test]
     #[cfg(unix)]
     fn handle_symlink_escape_outside_watched_folder_returns_forbidden() {
@@ -634,7 +650,7 @@ mod tests {
         let file = dir.path().join("huge.bin");
 
         let f = std::fs::File::create(&file).unwrap();
-        f.set_len(MAX_SERVE_SIZE + 1).unwrap();
+        f.set_len(MAX_IMAGE_SIZE + 1).unwrap();
         drop(f);
 
         let resp = handle(&state, &request_path_for_file(&file));

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getMediaById,
   getMediaNeighbors,
+  getMediaWindow,
   getOriginalUrl,
   getThumbnailUrl,
   getEdit,
@@ -56,30 +57,8 @@ function filmstripFromContext(
 }
 
 async function loadFilmstripAroundMedia(mediaId: number, radius: number): Promise<MediaItem[]> {
-  const prevIds: number[] = [];
-  const visited = new Set<number>([mediaId]);
-  let cursor = mediaId;
-  for (let i = 0; i < radius; i++) {
-    const nb = await getMediaNeighbors(cursor);
-    if (nb.prev_id == null || visited.has(nb.prev_id)) break;
-    prevIds.unshift(nb.prev_id);
-    visited.add(nb.prev_id);
-    cursor = nb.prev_id;
-  }
-
-  const nextIds: number[] = [];
-  cursor = mediaId;
-  for (let i = 0; i < radius; i++) {
-    const nb = await getMediaNeighbors(cursor);
-    if (nb.next_id == null || visited.has(nb.next_id)) break;
-    nextIds.push(nb.next_id);
-    visited.add(nb.next_id);
-    cursor = nb.next_id;
-  }
-
-  const ids = [...prevIds, mediaId, ...nextIds];
-  const items = await Promise.all(ids.map((id) => getMediaById(id)));
-  return items.filter((item): item is MediaItem => item != null);
+  const items = await getMediaWindow(mediaId, radius);
+  return items ?? [];
 }
 
 async function loadContextFilmstrip(
@@ -118,6 +97,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const filmstripRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
 
   const requestClose = useCallback(() => {
     if (closing) return;
@@ -164,7 +144,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
       if (cancelled) return;
       setMedia(item);
       setNeighbors(nb);
-      setFilmstrip(strip);
+      setFilmstrip(strip ?? []);
       setEdited(hasEdit);
       setIsFavorite(favoriteState);
       if (hasEdit) {
@@ -180,7 +160,13 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   }, [mediaId, resetView, contextItems]);
 
   useEffect(() => {
-    dialogRef.current?.focus();
+    previousFocusRef.current = document.activeElement as HTMLElement;
+    const frame = requestAnimationFrame(() => dialogRef.current?.focus());
+    return () => {
+      cancelAnimationFrame(frame);
+      previousFocusRef.current?.focus();
+      previousFocusRef.current = null;
+    };
   }, []);
 
   useEffect(() => {

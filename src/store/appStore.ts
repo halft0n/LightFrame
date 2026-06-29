@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from "react";
+import { useSyncExternalStore, useMemo } from "react";
 import type { MediaItem, ScanProgress, WatchedFolder } from "@/lib/tauri";
 import { getMediaCount, getMediaPage } from "@/lib/tauri";
 
@@ -309,4 +309,9 @@ export function setThumbnailSize(size: ThumbnailSize) {
 
 export function useAppStore(): AppState {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+export function useAppStoreSelector<T>(selector: (state: AppState) => T): T {
+  const state = useAppStore();
+  return useMemo(() => selector(state), [state, selector]);
 }

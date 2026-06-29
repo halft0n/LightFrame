@@ -52,14 +52,20 @@ pub fn add_watched_folder(
     state: State<'_, AppState>,
     path: String,
 ) -> Result<WatchedFolder, String> {
-    let folder_path = std::path::Path::new(&path);
-    if !folder_path.is_dir() {
+    let canonical =
+        std::fs::canonicalize(&path).map_err(|e| format!("cannot resolve path: {e}"))?;
+    #[cfg(windows)]
+    let canonical = crate::original_protocol::strip_extended_prefix(canonical);
+    if !canonical.is_dir() {
         return Err(format!("not a directory: {path}"));
     }
+    let path_str = canonical
+        .to_str()
+        .ok_or_else(|| "path contains invalid unicode".to_string())?;
 
     let folder = state
         .db
-        .add_watched_folder(&path)
+        .add_watched_folder(path_str)
         .map_err(|e| e.to_string())?;
 
     scan::spawn_scan(app.clone(), &state, folder.id);
@@ -365,6 +371,22 @@ pub fn get_media_neighbors(state: State<'_, AppState>, id: i64) -> Result<MediaN
 }
 
 #[tauri::command]
+pub async fn get_media_window(
+    state: State<'_, AppState>,
+    media_id: i64,
+    radius: usize,
+) -> Result<Vec<MediaFile>, String> {
+    let radius = radius.min(50);
+    let db = state.db.clone();
+    tokio::task::spawn_blocking(move || {
+        db.get_media_window(media_id, radius)
+            .map_err(|e| db_err("get_media_window", &media_id.to_string(), e))
+    })
+    .await
+    .map_err(|e| format!("get_media_window({media_id}): {e}"))?
+}
+
+#[tauri::command]
 pub async fn run_dedup_scan(state: State<'_, AppState>) -> Result<DedupScanResult, String> {
     let db = state.db.clone();
     tokio::task::spawn_blocking(move || {
@@ -641,6 +663,7 @@ pub fn add_to_album(
     album_id: i64,
     media_ids: Vec<i64>,
 ) -> Result<(), String> {
+    check_batch_size(&media_ids)?;
     state
         .db
         .add_to_album(album_id, &media_ids)
@@ -1212,8 +1235,13 @@ pub async fn cluster_faces(
     threshold: Option<f32>,
 ) -> Result<Vec<PersonClusterInfo>, String> {
     let threshold = threshold.unwrap_or(DEFAULT_FACE_CLUSTER_THRESHOLD);
+    if threshold.is_nan() || !(0.0..=1.0).contains(&threshold) {
+        return Err("cluster threshold must be between 0.0 and 1.0".into());
+    }
     let db = state.db.clone();
     tokio::task::spawn_blocking(move || {
+        db.clear_unnamed_person_clusters()
+            .map_err(|e| e.to_string())?;
         let faces = db
             .get_unassigned_face_embeddings()
             .map_err(|e| e.to_string())?;

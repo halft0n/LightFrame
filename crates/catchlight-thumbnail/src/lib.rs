@@ -5,6 +5,12 @@ use std::path::{Path, PathBuf};
 use tracing::debug;
 
 pub fn thumb_path(blake3_hash: &str, size: ThumbnailSize) -> PathBuf {
+    let cache_dir = config::thumb_cache_dir();
+    if blake3_hash.len() < 4 {
+        return cache_dir
+            .join("_invalid")
+            .join(format!("{blake3_hash}.webp"));
+    }
     let prefix = &blake3_hash[..2];
     let sub = &blake3_hash[2..4];
     let size_str = match size {
@@ -12,7 +18,7 @@ pub fn thumb_path(blake3_hash: &str, size: ThumbnailSize) -> PathBuf {
         ThumbnailSize::Small => "small",
         ThumbnailSize::Large => "large",
     };
-    config::thumb_cache_dir()
+    cache_dir
         .join(prefix)
         .join(sub)
         .join(format!("{blake3_hash}_{size_str}.webp"))

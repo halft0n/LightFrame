@@ -57,6 +57,12 @@ describe("getOriginalUrl", () => {
       "original://localhost/%2Fpath%2Fwith%23hash%26query%3D1",
     );
   });
+
+  it("normalizes Windows backslashes to forward slashes", () => {
+    expect(getOriginalUrl("C:\\Users\\photo.jpg")).toBe(
+      "original://localhost/C%3A%2FUsers%2Fphoto.jpg",
+    );
+  });
 });
 
 describe("getFavoriteState", () => {

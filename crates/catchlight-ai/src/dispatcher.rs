@@ -22,6 +22,10 @@ use crate::clip::ClipEncoder;
 #[cfg(feature = "face")]
 use crate::face::FaceDetector;
 
+/// AI operations are serialized through a single Mutex to prevent
+/// concurrent ONNX Runtime sessions from exhausting GPU/CPU memory.
+/// This is intentional for the current scope but should be replaced
+/// with a bounded worker pool for production use.
 pub struct AiDispatcher {
     #[cfg(feature = "clip")]
     clip: Option<Mutex<ClipEncoder>>,

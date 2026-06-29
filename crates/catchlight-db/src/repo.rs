@@ -871,6 +871,71 @@ impl Database {
         Ok(MediaNeighbors { prev_id, next_id })
     }
 
+    pub fn get_media_window(
+        &self,
+        center_id: i64,
+        radius: usize,
+    ) -> catchlight_core::Result<Vec<MediaFile>> {
+        let conn = self.read_conn()?;
+        let radius = radius as i64;
+
+        let center = self
+            .get_media_by_id(center_id)?
+            .ok_or_else(|| catchlight_core::Error::Other(format!("media {center_id} not found")))?;
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, path, filename, media_type, size_bytes, width, height,
+                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                 FROM media_files
+                 WHERE is_deleted = 0
+                   AND COALESCE(created_at, modified_at) > (
+                     SELECT COALESCE(created_at, modified_at) FROM media_files WHERE id = ?1 AND is_deleted = 0
+                   )
+                 ORDER BY COALESCE(created_at, modified_at) ASC
+                 LIMIT ?2",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let newer_rows = stmt
+            .query_map(params![center_id, radius], Self::map_media_row)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let mut newer: Vec<MediaFile> = Vec::new();
+        for row in newer_rows {
+            newer.push(row.map_err(|e| catchlight_core::Error::Database(e.to_string()))?);
+        }
+        newer.reverse();
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, path, filename, media_type, size_bytes, width, height,
+                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                 FROM media_files
+                 WHERE is_deleted = 0
+                   AND COALESCE(created_at, modified_at) < (
+                     SELECT COALESCE(created_at, modified_at) FROM media_files WHERE id = ?1 AND is_deleted = 0
+                   )
+                 ORDER BY COALESCE(created_at, modified_at) DESC
+                 LIMIT ?2",
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let older_rows = stmt
+            .query_map(params![center_id, radius], Self::map_media_row)
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        let mut older: Vec<MediaFile> = Vec::new();
+        for row in older_rows {
+            older.push(row.map_err(|e| catchlight_core::Error::Database(e.to_string()))?);
+        }
+
+        let mut window = newer;
+        window.push(center);
+        window.extend(older);
+        Ok(window)
+    }
+
     pub fn get_media_by_id(&self, id: i64) -> catchlight_core::Result<Option<MediaFile>> {
         let conn = self.read_conn()?;
         conn.query_row(
@@ -1199,11 +1264,19 @@ impl Database {
         uf: &mut UnionFind,
         pair_similarities: &mut std::collections::HashMap<(i64, i64), f64>,
     ) {
+        const MAX_BUCKET_SIZE: usize = 200;
+
         for indices in bucket_groups {
-            for i in 0..indices.len() {
-                for j in (i + 1)..indices.len() {
-                    let a = indices[i];
-                    let b = indices[j];
+            let capped = if indices.len() > MAX_BUCKET_SIZE {
+                &indices[..MAX_BUCKET_SIZE]
+            } else {
+                indices.as_slice()
+            };
+
+            for i in 0..capped.len() {
+                for j in (i + 1)..capped.len() {
+                    let a = capped[i];
+                    let b = capped[j];
                     let pair = if a < b { (a, b) } else { (b, a) };
                     if !seen_pairs.insert(pair) {
                         continue;
@@ -2573,9 +2646,35 @@ impl Database {
 
     pub fn merge_persons(&self, target_id: i64, source_ids: &[i64]) -> catchlight_core::Result<()> {
         let conn = self.conn()?;
+
+        let target_exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM persons WHERE id = ?1)",
+                params![target_id],
+                |row| row.get(0),
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        if !target_exists {
+            return Err(catchlight_core::Error::Other(format!(
+                "person {target_id} not found"
+            )));
+        }
+
         for source_id in source_ids {
             if *source_id == target_id {
                 continue;
+            }
+            let source_exists: bool = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM persons WHERE id = ?1)",
+                    params![source_id],
+                    |row| row.get(0),
+                )
+                .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+            if !source_exists {
+                return Err(catchlight_core::Error::Other(format!(
+                    "person {source_id} not found"
+                )));
             }
             conn.execute(
                 "UPDATE face_detections SET person_id = ?1 WHERE person_id = ?2",
@@ -2658,6 +2757,10 @@ impl Database {
             .map_err(|e| catchlight_core::Error::Database(e.to_string()))
     }
 
+    /// Find media similar to the given media's CLIP embedding.
+    ///
+    /// NOTE: Current implementation is O(n) linear scan over all embeddings.
+    /// For libraries >10K photos, consider using sqlite-vec or an external ANN index.
     pub fn find_similar_media(
         &self,
         media_id: i64,
@@ -2760,6 +2863,17 @@ impl Database {
         person_id: i64,
     ) -> catchlight_core::Result<()> {
         let conn = self.conn()?;
+
+        let old_person_id: Option<i64> = conn
+            .query_row(
+                "SELECT person_id FROM face_detections WHERE id = ?1",
+                params![face_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?
+            .flatten();
+
         let updated = conn
             .execute(
                 "UPDATE face_detections SET person_id = ?1 WHERE id = ?2",
@@ -2780,6 +2894,23 @@ impl Database {
             params![person_id],
         )
         .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+
+        if let Some(old_id) = old_person_id
+            && old_id != person_id
+        {
+            conn.execute(
+                "UPDATE persons SET face_count = (
+                     SELECT COUNT(*) FROM face_detections WHERE person_id = ?1
+                 ) WHERE id = ?1",
+                params![old_id],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+            conn.execute(
+                "DELETE FROM persons WHERE id = ?1 AND face_count = 0 AND (name IS NULL OR name = '')",
+                params![old_id],
+            )
+            .map_err(|e| catchlight_core::Error::Database(e.to_string()))?;
+        }
 
         Ok(())
     }

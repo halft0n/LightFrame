@@ -35,7 +35,7 @@ impl ScanStatus {
         self.folder_id.store(folder_id, Ordering::Relaxed);
         self.total.store(0, Ordering::Relaxed);
         self.scanned.store(0, Ordering::Relaxed);
-        *self.status.lock().expect("scan status mutex poisoned") = "scanning".to_string();
+        *self.status.lock().unwrap_or_else(|e| e.into_inner()) = "scanning".to_string();
     }
 
     pub fn set_total(&self, total: i64) {
@@ -43,7 +43,7 @@ impl ScanStatus {
     }
 
     pub fn set_status(&self, status: &str) {
-        *self.status.lock().expect("scan status mutex poisoned") = status.to_string();
+        *self.status.lock().unwrap_or_else(|e| e.into_inner()) = status.to_string();
     }
 
     pub fn increment_scanned(&self) -> i64 {
@@ -58,7 +58,7 @@ impl ScanStatus {
             status: self
                 .status
                 .lock()
-                .expect("scan status mutex poisoned")
+                .unwrap_or_else(|e| e.into_inner())
                 .clone(),
         }
     }

@@ -19,12 +19,13 @@ pub struct ModelInfo {
     pub description: &'static str,
 }
 
+// sha256 fields are empty until filled in after a first verified download.
 pub const CLIP_VISUAL_MODEL: ModelInfo = ModelInfo {
     name: "CLIP Visual Encoder",
     filename: CLIP_MODEL_FILENAME,
     url: "https://huggingface.co/pjbhc/onnx-clip/resolve/main/clip-ViT-B-32-visual.onnx",
     size_mb: 338,
-    sha256: "...",
+    sha256: "",
     description: "CLIP ViT-B/32 visual encoder for image embeddings",
 };
 
@@ -33,7 +34,7 @@ pub const CLIP_TEXT_MODEL: ModelInfo = ModelInfo {
     filename: CLIP_TEXT_MODEL_FILENAME,
     url: "https://huggingface.co/pjbhc/onnx-clip/resolve/main/clip-ViT-B-32-textual.onnx",
     size_mb: 254,
-    sha256: "...",
+    sha256: "",
     description: "CLIP ViT-B/32 text encoder for semantic search",
 };
 
@@ -42,7 +43,7 @@ pub const FACE_DETECTION_MODEL: ModelInfo = ModelInfo {
     filename: FACE_DETECT_MODEL_FILENAME,
     url: "https://github.com/deepinsight/insightface/releases/download/v0.7/scrfd_500m_bnkps.onnx",
     size_mb: 3,
-    sha256: "...",
+    sha256: "",
     description: "SCRFD face detector with landmark keypoints",
 };
 
@@ -51,7 +52,7 @@ pub const FACE_RECOGNITION_MODEL: ModelInfo = ModelInfo {
     filename: FACE_RECOG_MODEL_FILENAME,
     url: "https://github.com/deepinsight/insightface/releases/download/v0.7/w600k_r50.onnx",
     size_mb: 166,
-    sha256: "...",
+    sha256: "",
     description: "ArcFace R50 for face embedding extraction",
 };
 
@@ -142,7 +143,7 @@ pub fn model_file_status(info: &ModelInfo) -> ModelFileStatus {
     let file_size_bytes =
         installed.then(|| std::fs::metadata(&path).ok().map(|m| m.len()).unwrap_or(0));
 
-    let sha256_verified = if installed && info.sha256 != "..." {
+    let sha256_verified = if installed && !info.sha256.is_empty() {
         Some(verify_file_sha256(&path, info.sha256).is_ok())
     } else {
         None
@@ -187,7 +188,12 @@ pub fn download_model(info: &ModelInfo) -> Result<PathBuf> {
     }
     drop(file);
 
-    if info.sha256 != "..." {
+    if info.sha256.is_empty() {
+        tracing::warn!(
+            model = info.name,
+            "no sha256 hash configured; skipping verification"
+        );
+    } else {
         verify_file_sha256(&tmp, info.sha256)?;
     }
 

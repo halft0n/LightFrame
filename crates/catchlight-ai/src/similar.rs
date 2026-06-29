@@ -45,6 +45,8 @@ fn avg_intra_cluster_distance(face_embeddings: &[(i64, Vec<f32>)], centroid: &[f
 type FaceClusterState = (Vec<i64>, Vec<f32>, Vec<Vec<f32>>);
 
 /// Simple agglomerative clustering based on embedding cosine similarity.
+/// O(n × k) where n = faces and k = clusters.
+/// For >10K unassigned faces, consider DBSCAN or HNSW-based approach.
 pub fn cluster_face_embeddings(faces: &[(i64, Vec<f32>)], threshold: f32) -> Vec<PersonCluster> {
     if faces.is_empty() {
         return Vec::new();

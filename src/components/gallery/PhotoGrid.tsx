@@ -15,7 +15,7 @@ import {
   setThumbnailSize,
   THUMBNAIL_WIDTHS,
   toggleMediaSelection,
-  useAppStore,
+  useAppStoreSelector,
   type ThumbnailSize,
 } from "@/store/appStore";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -86,12 +86,10 @@ export function PhotoGrid({
   showSizeControl = true,
 }: PhotoGridProps = {}) {
   const { t } = useTranslation();
-  const {
-    mediaItems: storeItems,
-    totalCount: storeTotalCount,
-    selectedMediaIds,
-    thumbnailSize,
-  } = useAppStore();
+  const storeItems = useAppStoreSelector((s) => s.mediaItems);
+  const storeTotalCount = useAppStoreSelector((s) => s.totalCount);
+  const selectedMediaIds = useAppStoreSelector((s) => s.selectedMediaIds);
+  const thumbnailSize = useAppStoreSelector((s) => s.thumbnailSize);
   const mediaItems = itemsProp ?? storeItems;
   const totalCount = totalCountProp ?? storeTotalCount;
   const parentRef = useRef<HTMLDivElement>(null);

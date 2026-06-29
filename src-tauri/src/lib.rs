@@ -53,6 +53,7 @@ pub fn run() {
             commands::stop_watching,
             commands::get_timeline_groups,
             commands::get_media_neighbors,
+            commands::get_media_window,
             commands::run_dedup_scan,
             commands::get_duplicate_groups,
             commands::get_duplicate_count,

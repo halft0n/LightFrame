@@ -1,5 +1,20 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { t } from "@/i18n";
+import { localizeError } from "./errors";
+
+export async function invokeCommand<T>(
+  cmd: string,
+  args?: Record<string, unknown>,
+): Promise<T> {
+  try {
+    return args !== undefined
+      ? await invoke<T>(cmd, args)
+      : await invoke<T>(cmd);
+  } catch (error) {
+    throw new Error(localizeError(error, t));
+  }
+}
 
 export type MediaType =
   | "Photo"
@@ -212,7 +227,8 @@ export function getThumbnailUrl(id: number, size: "small" | "large" | "micro" = 
 }
 
 export function getOriginalUrl(path: string): string {
-  return `original://localhost/${encodeURIComponent(path)}`;
+  const normalized = path.replace(/\\/g, "/");
+  return `original://localhost/${encodeURIComponent(normalized)}`;
 }
 
 export async function addWatchedFolder(path: string): Promise<WatchedFolder> {
@@ -232,11 +248,11 @@ export async function getMediaList(offset: number, limit: number): Promise<Media
 }
 
 export async function getMediaPage(limit: number, cursor?: [string, number]) {
-  return invoke<MediaItem[]>("get_media_page", { limit, cursor: cursor ?? null });
+  return invokeCommand<MediaItem[]>("get_media_page", { limit, cursor: cursor ?? null });
 }
 
 export async function getMediaCount(): Promise<number> {
-  return invoke<number>("get_media_count");
+  return invokeCommand<number>("get_media_count");
 }
 
 export async function getMediaByFolder(
@@ -284,6 +300,10 @@ export async function getTimelineGroups(limit = 200, offset = 0): Promise<Timeli
 
 export async function getMediaNeighbors(id: number): Promise<MediaNeighbors> {
   return invoke<MediaNeighbors>("get_media_neighbors", { id });
+}
+
+export async function getMediaWindow(mediaId: number, radius: number): Promise<MediaItem[]> {
+  return invokeCommand<MediaItem[]>("get_media_window", { mediaId, radius });
 }
 
 export async function scanFolder(folderId: number): Promise<void> {
@@ -360,11 +380,11 @@ export async function createAlbum(
   name: string,
   description?: string | null,
 ): Promise<Album> {
-  return invoke<Album>("create_album", { name, description: description ?? null });
+  return invokeCommand<Album>("create_album", { name, description: description ?? null });
 }
 
 export async function deleteAlbum(id: number): Promise<void> {
-  return invoke("delete_album", { id });
+  return invokeCommand("delete_album", { id });
 }
 
 export async function updateAlbum(
@@ -372,7 +392,7 @@ export async function updateAlbum(
   name: string,
   description?: string | null,
 ): Promise<void> {
-  return invoke("update_album", { id, name, description: description ?? null });
+  return invokeCommand("update_album", { id, name, description: description ?? null });
 }
 
 export async function setAlbumCover(albumId: number, mediaId: number): Promise<void> {
@@ -384,11 +404,11 @@ export async function listAlbums(): Promise<Album[]> {
 }
 
 export async function addToAlbum(albumId: number, mediaIds: number[]): Promise<void> {
-  return invoke("add_to_album", { albumId, mediaIds });
+  return invokeCommand("add_to_album", { albumId, mediaIds });
 }
 
 export async function removeFromAlbum(albumId: number, mediaId: number): Promise<void> {
-  return invoke("remove_from_album", { albumId, mediaId });
+  return invokeCommand("remove_from_album", { albumId, mediaId });
 }
 
 export async function getAlbumMedia(
@@ -400,7 +420,7 @@ export async function getAlbumMedia(
 }
 
 export async function toggleFavorite(mediaId: number): Promise<boolean> {
-  return invoke<boolean>("toggle_favorite", { mediaId });
+  return invokeCommand<boolean>("toggle_favorite", { mediaId });
 }
 
 export async function getFavoriteState(mediaId: number): Promise<boolean> {
@@ -421,7 +441,7 @@ export async function getFavoritesCount(): Promise<number> {
 }
 
 export async function deleteMedia(mediaId: number): Promise<void> {
-  return invoke("delete_media", { mediaId });
+  return invokeCommand("delete_media", { mediaId });
 }
 
 export async function getDeletedMedia(): Promise<MediaItem[]> {
@@ -437,18 +457,18 @@ export async function permanentlyDelete(mediaId: number): Promise<void> {
 }
 
 export async function batchDeleteMedia(mediaIds: number[]): Promise<number> {
-  return invoke<number>("batch_delete_media", { mediaIds });
+  return invokeCommand<number>("batch_delete_media", { mediaIds });
 }
 
 export async function batchAddToAlbum(albumId: number, mediaIds: number[]): Promise<void> {
-  return invoke("batch_add_to_album", { albumId, mediaIds });
+  return invokeCommand("batch_add_to_album", { albumId, mediaIds });
 }
 
 export async function batchToggleFavorite(
   mediaIds: number[],
   favorite: boolean,
 ): Promise<number> {
-  return invoke<number>("batch_toggle_favorite", { mediaIds, favorite });
+  return invokeCommand<number>("batch_toggle_favorite", { mediaIds, favorite });
 }
 
 export async function batchRestoreMedia(mediaIds: number[]): Promise<number> {

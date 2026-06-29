@@ -16,6 +16,13 @@ fn emit_progress(app: &AppHandle, status: &ScanStatus) {
     }
 }
 
+/// Start scanning watched folders.
+///
+/// Only one scan runs at a time. If a scan is already in progress,
+/// new scan requests are silently ignored. This prevents resource
+/// contention on disk I/O-heavy operations.
+///
+/// TODO: Implement per-folder scan queue for v0.2.0
 pub fn spawn_scan(app: AppHandle, state: &AppState, folder_id: i64) {
     if state
         .scanning
