@@ -219,7 +219,7 @@ where
     on_progress(downloaded, total_bytes);
 
     if info.sha256.is_empty() {
-        tracing::warn!(
+        tracing::info!(
             model = info.name,
             "no sha256 hash configured; skipping verification"
         );

@@ -199,6 +199,7 @@ pub async fn regenerate_all_thumbnails(
         }
 
         offset += PAGE_SIZE;
+        tokio::task::yield_now().await;
     }
 
     emit(processed, regenerated, "complete");

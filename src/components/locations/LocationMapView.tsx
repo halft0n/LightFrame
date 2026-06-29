@@ -8,6 +8,7 @@ import iconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
 import iconUrl from "leaflet/dist/images/marker-icon.png";
 import shadowUrl from "leaflet/dist/images/marker-shadow.png";
 import { getMediaById, type LocationGroup } from "@/lib/tauri";
+import { escapeHtml } from "@/lib/escapeHtml";
 import { useTranslation } from "@/i18n/useTranslation";
 import { useAppStore } from "@/store/appStore";
 
@@ -28,14 +29,6 @@ interface LocationMarker {
 function locationLabel(country: string, city: string | null): string {
   if (city) return `${city}, ${country}`;
   return country;
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 function useResolvedTheme(): "light" | "dark" {

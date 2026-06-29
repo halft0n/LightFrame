@@ -8,18 +8,10 @@ import iconRetinaUrl from "leaflet/dist/images/marker-icon-2x.png";
 import iconUrl from "leaflet/dist/images/marker-icon.png";
 import shadowUrl from "leaflet/dist/images/marker-shadow.png";
 import { getMediaWithGeo, getThumbnailUrl, type MediaItem } from "@/lib/tauri";
+import { escapeHtml } from "@/lib/escapeHtml";
 import { useTranslation } from "@/i18n/useTranslation";
 import { openViewer, useAppStore } from "@/store/appStore";
 import { EmptyState } from "@/components/ui/EmptyState";
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
 
 delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
 L.Icon.Default.mergeOptions({

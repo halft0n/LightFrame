@@ -25,6 +25,20 @@ fn check_batch_size(media_ids: &[i64]) -> Result<(), String> {
     Ok(())
 }
 
+fn validate_media_path(db: &lightframe_db::Database, path: &str) -> Result<(), String> {
+    let file_path = std::path::Path::new(path);
+    if crate::original_protocol::path_contains_parent_dir(file_path) {
+        return Err("invalid path".to_string());
+    }
+    let folders = db.list_watched_folders().map_err(|e| e.to_string())?;
+    if let Ok(canonical) = file_path.canonicalize()
+        && !crate::original_protocol::path_is_in_watched_folders(&canonical, &folders)
+    {
+        return Err("path outside watched folders".to_string());
+    }
+    Ok(())
+}
+
 fn db_err(cmd: &str, context: &str, e: impl std::fmt::Display) -> String {
     format!("{cmd}({context}): {e}")
 }
@@ -111,10 +125,33 @@ pub fn remove_watched_folder(
     state: State<'_, AppState>,
     id: i64,
 ) -> Result<(), String> {
+    let hashes = state
+        .db
+        .list_media_hashes_by_folder(id)
+        .map_err(|e| e.to_string())?;
     state
         .db
         .remove_watched_folder(id)
         .map_err(|e| e.to_string())?;
+    for hash in hashes {
+        if hash.len() >= 4 {
+            for size in [
+                ThumbnailSize::Micro,
+                ThumbnailSize::Small,
+                ThumbnailSize::Large,
+            ] {
+                let thumb = thumb_path(&hash, size);
+                if thumb.exists()
+                    && let Err(e) = std::fs::remove_file(&thumb)
+                {
+                    tracing::warn!(
+                        "remove folder: failed to remove thumbnail {}: {e}",
+                        thumb.display()
+                    );
+                }
+            }
+        }
+    }
     watcher::start(&app, &state).map_err(|e| e.to_string())
 }
 
@@ -203,6 +240,11 @@ pub fn batch_export(
         else {
             continue;
         };
+
+        if let Err(e) = validate_media_path(&state.db, &media.path) {
+            tracing::warn!("batch export: skipping media {}: {e}", media_id);
+            continue;
+        }
 
         let source = std::path::Path::new(&media.path);
         if !source.is_file() {
@@ -969,6 +1011,17 @@ pub struct SemanticSearchResponse {
 const SEMANTIC_SEARCH_THRESHOLD: f32 = 0.15;
 const MAX_SEMANTIC_QUERY_LEN: usize = 512;
 
+fn truncate_utf8(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    &s[..end]
+}
+
 /// CLIP vector search when text embedding is available; otherwise FTS5 keyword fallback.
 #[tauri::command]
 pub async fn semantic_search(
@@ -978,7 +1031,7 @@ pub async fn semantic_search(
 ) -> Result<SemanticSearchResponse, String> {
     let limit = limit.unwrap_or(50).clamp(1, 500);
     let query_text = if query_text.len() > MAX_SEMANTIC_QUERY_LEN {
-        query_text[..MAX_SEMANTIC_QUERY_LEN].to_string()
+        truncate_utf8(&query_text, MAX_SEMANTIC_QUERY_LEN).to_string()
     } else {
         query_text
     };
@@ -1428,6 +1481,8 @@ async fn detect_and_store_faces_for_media(state: &AppState, media_id: i64) -> Re
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("media {media_id} not found"))?;
 
+    validate_media_path(&state.db, &media.path)?;
+
     let path = std::path::Path::new(&media.path);
     if !path.is_file() {
         return Err(format!("media file not found: {}", media.path));
@@ -1643,6 +1698,8 @@ pub fn export_edited(
         .get_edit_params(media_id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "no edit params saved for this media".to_string())?;
+
+    validate_media_path(&state.db, &media.path)?;
 
     let quality = quality.clamp(1, 100);
     let out = std::path::Path::new(&output_path);

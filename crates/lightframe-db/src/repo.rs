@@ -733,6 +733,24 @@ impl Database {
         .map_err(|e| lightframe_core::Error::Database(e.to_string()))
     }
 
+    pub fn list_media_hashes_by_folder(
+        &self,
+        folder_id: i64,
+    ) -> lightframe_core::Result<Vec<String>> {
+        let conn = self.read_conn()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT blake3_hash FROM media_files WHERE folder_id = ?1 AND blake3_hash IS NOT NULL",
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        let hashes = stmt
+            .query_map(params![folder_id], |row| row.get(0))
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+            .filter_map(Result::ok)
+            .collect();
+        Ok(hashes)
+    }
+
     pub fn remove_watched_folder(&self, id: i64) -> lightframe_core::Result<()> {
         let conn = self.conn()?;
         conn.execute("DELETE FROM media_files WHERE folder_id = ?1", params![id])
@@ -1754,6 +1772,33 @@ impl Database {
             .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
 
         Ok(affected)
+    }
+
+    pub fn list_expired_deleted_media(
+        &self,
+        days: i64,
+    ) -> lightframe_core::Result<Vec<(String, Option<String>)>> {
+        if days <= 0 {
+            return Err(lightframe_core::Error::Other(
+                "cleanup days must be positive".to_string(),
+            ));
+        }
+        let conn = self.read_conn()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT path, blake3_hash FROM media_files
+                 WHERE is_deleted = 1
+                   AND deleted_at IS NOT NULL
+                   AND deleted_at < datetime('now', ?1)",
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        let rows = stmt
+            .query_map(params![format!("-{days} days")], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))
     }
 
     pub fn cleanup_deleted_older_than(&self, days: i64) -> lightframe_core::Result<usize> {

@@ -73,6 +73,17 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
         return error_response(StatusCode::NOT_FOUND, "source file missing");
     }
 
+    const MAX_FACE_SOURCE_SIZE: u64 = 100 * 1024 * 1024;
+    match std::fs::metadata(&canonical) {
+        Ok(m) if m.len() > MAX_FACE_SOURCE_SIZE => {
+            return error_response(StatusCode::from_u16(413).unwrap(), "source image too large");
+        }
+        Err(_) => {
+            return error_response(StatusCode::NOT_FOUND, "file not found");
+        }
+        _ => {}
+    }
+
     let img = match lightframe_core::decode::decode_image(&canonical) {
         Ok(decoded) => match decoded.to_dynamic_image() {
             Ok(img) => img,

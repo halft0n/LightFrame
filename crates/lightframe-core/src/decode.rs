@@ -1,6 +1,7 @@
 use crate::Result;
 use crate::media::DecodedImage;
 use exif::{In, Tag};
+use image::GenericImageView;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek, SeekFrom};
 use std::path::Path;
@@ -479,6 +480,14 @@ pub fn decode_image(path: &Path) -> Result<DecodedImage> {
         };
         crate::Error::Other(format!("{prefix}: {e}"))
     })?;
+
+    const MAX_PIXELS: u64 = 200_000_000;
+    let (w, h) = img.dimensions();
+    if (w as u64) * (h as u64) > MAX_PIXELS {
+        return Err(crate::Error::Decode(format!(
+            "image too large: {w}x{h} exceeds {MAX_PIXELS} pixel limit"
+        )));
+    }
 
     let rgba = img.to_rgba8();
     let (width, height) = rgba.dimensions();

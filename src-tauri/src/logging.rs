@@ -43,38 +43,50 @@ pub fn init_logging(config: &LogConfig) -> tracing_appender::non_blocking::Worke
     let log_dir = log_directory();
     fs::create_dir_all(&log_dir).ok();
 
+    let level = parse_log_level(&config.level);
+    let filter = EnvFilter::from_default_env().add_directive(level.into());
+
     let max_files = config.retention_days.max(1) as usize;
-    let file_appender = RollingFileAppender::builder()
+    match RollingFileAppender::builder()
         .rotation(Rotation::DAILY)
         .filename_prefix("lightframe")
         .filename_suffix("log")
         .max_log_files(max_files)
         .build(&log_dir)
-        .expect("failed to create log appender");
+    {
+        Ok(file_appender) => {
+            let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+            tracing_subscriber::registry()
+                .with(filter)
+                .with(fmt::layer().with_ansi(true))
+                .with(
+                    fmt::layer()
+                        .with_ansi(false)
+                        .with_writer(non_blocking)
+                        .with_target(true)
+                        .with_thread_ids(true),
+                )
+                .init();
 
-    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+            let cleanup_dir = log_dir.clone();
+            let days = config.retention_days;
+            let max_mb = config.max_size_mb;
+            std::thread::spawn(move || {
+                cleanup_logs_with_limits(&cleanup_dir, days as u64, max_mb as u64 * 1024 * 1024);
+            });
 
-    let level = parse_log_level(&config.level);
-    tracing_subscriber::registry()
-        .with(EnvFilter::from_default_env().add_directive(level.into()))
-        .with(fmt::layer().with_ansi(true))
-        .with(
-            fmt::layer()
-                .with_ansi(false)
-                .with_writer(non_blocking)
-                .with_target(true)
-                .with_thread_ids(true),
-        )
-        .init();
-
-    let cleanup_dir = log_dir.clone();
-    let days = config.retention_days;
-    let max_mb = config.max_size_mb;
-    std::thread::spawn(move || {
-        cleanup_logs_with_limits(&cleanup_dir, days as u64, max_mb as u64 * 1024 * 1024);
-    });
-
-    guard
+            guard
+        }
+        Err(e) => {
+            eprintln!("Warning: failed to create log file appender: {e}. Falling back to console.");
+            tracing_subscriber::registry()
+                .with(filter)
+                .with(fmt::layer().with_ansi(true))
+                .init();
+            let (_writer, guard) = tracing_appender::non_blocking(std::io::sink());
+            guard
+        }
+    }
 }
 
 /// Get the log directory path.

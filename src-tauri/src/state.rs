@@ -1,6 +1,8 @@
 use lightframe_ai::AiDispatcher;
 use lightframe_core::config::{self, AppConfig};
+use lightframe_core::media::ThumbnailSize;
 use lightframe_db::Database;
+use lightframe_thumbnail::thumb_path;
 use serde::Serialize;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -85,11 +87,47 @@ pub struct AppState {
     pub ai: Arc<tokio::sync::Mutex<AiDispatcher>>,
 }
 
+const TRASH_RETENTION_DAYS: i64 = 30;
+
+fn purge_expired_trash(db: &Database) {
+    let expired_items = match db.list_expired_deleted_media(TRASH_RETENTION_DAYS) {
+        Ok(items) => items,
+        Err(e) => {
+            tracing::warn!("startup: failed to list expired deleted media: {e}");
+            return;
+        }
+    };
+
+    for (path, hash) in expired_items {
+        let file_path = std::path::Path::new(&path);
+        if file_path.is_file()
+            && let Err(e) = std::fs::remove_file(file_path)
+        {
+            tracing::warn!("trash cleanup: failed to remove {path}: {e}");
+        }
+        if let Some(hash) = hash.filter(|h| h.len() >= 4) {
+            for size in [
+                ThumbnailSize::Micro,
+                ThumbnailSize::Small,
+                ThumbnailSize::Large,
+            ] {
+                let thumb = thumb_path(&hash, size);
+                let _ = std::fs::remove_file(&thumb);
+            }
+        }
+    }
+
+    if let Err(e) = db.cleanup_deleted_older_than(TRASH_RETENTION_DAYS) {
+        tracing::warn!("startup: failed to cleanup deleted media: {e}");
+    }
+}
+
 impl AppState {
     pub fn new() -> lightframe_core::Result<Self> {
         let db = Arc::new(Database::open_default()?);
-        if let Err(e) = db.cleanup_deleted_older_than(30) {
-            tracing::warn!("startup: failed to cleanup deleted media: {e}");
+        {
+            let db_clone = Arc::clone(&db);
+            std::thread::spawn(move || purge_expired_trash(&db_clone));
         }
         let config = load_config();
         let cpus = std::thread::available_parallelism()
