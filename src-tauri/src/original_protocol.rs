@@ -131,11 +131,11 @@ fn components_equal(a: std::path::Component<'_>, b: std::path::Component<'_>) ->
     {
         use std::path::Component;
         match (a, b) {
-            (Component::Prefix(a), Component::Prefix(b)) => {
-                a.as_os_str().eq_ignore_ascii_case(b.as_os_str())
+            (Component::Prefix(pa), Component::Prefix(pb)) => {
+                pa.as_os_str().to_ascii_lowercase() == pb.as_os_str().to_ascii_lowercase()
             }
-            (Component::Normal(a), Component::Normal(b)) => {
-                a.as_os_str().eq_ignore_ascii_case(b.as_os_str())
+            (Component::Normal(na), Component::Normal(nb)) => {
+                na.to_ascii_lowercase() == nb.to_ascii_lowercase()
             }
             _ => false,
         }
