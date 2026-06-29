@@ -163,6 +163,53 @@ pub fn micro_blob_from_decoded(decoded: &DecodedImage) -> Result<Vec<u8>> {
 mod tests {
     use super::*;
     use image::{ImageBuffer, Rgb};
+    use lightframe_core::media::DecodedImage;
+
+    fn synthetic_decoded(width: u32, height: u32) -> DecodedImage {
+        DecodedImage {
+            rgba: vec![128u8; (width as usize) * (height as usize) * 4],
+            width,
+            height,
+        }
+    }
+
+    #[test]
+    fn thumb_file_needs_regeneration_states() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("missing.webp");
+        assert!(thumb_file_needs_regeneration(&missing));
+
+        let empty = dir.path().join("empty.webp");
+        std::fs::write(&empty, []).unwrap();
+        assert!(thumb_file_needs_regeneration(&empty));
+
+        let valid = dir.path().join("valid.webp");
+        std::fs::write(&valid, b"non-empty").unwrap();
+        assert!(!thumb_file_needs_regeneration(&valid));
+    }
+
+    #[test]
+    fn generate_from_decoded_and_micro_blob() {
+        let decoded = synthetic_decoded(32, 32);
+        let hash = "ddddeeeeffff0000ddddeeeeffff0000ddddeeeeffff0000ddddeeeeffff0000";
+        let out = generate_from_decoded(&decoded, hash, ThumbnailSize::Micro).expect("thumb");
+        assert!(out.exists());
+        image::open(&out).expect("webp thumb");
+
+        let blob = micro_blob_from_decoded(&decoded).expect("blob");
+        assert!(blob.len() >= 2);
+        assert_eq!(&blob[0..2], &[0xFF, 0xD8]);
+    }
+
+    #[test]
+    fn regenerate_from_decoded_replaces_file() {
+        let decoded = synthetic_decoded(48, 48);
+        let hash = "eeeeffff00001111eeeeffff00001111eeeeffff00001111eeeeffff00001111";
+        generate_from_decoded(&decoded, hash, ThumbnailSize::Small).expect("first");
+        let out = regenerate_from_decoded(&decoded, hash, ThumbnailSize::Small).expect("regen");
+        assert!(out.exists());
+        image::open(&out).expect("valid after regen");
+    }
 
     #[test]
     fn generate_heic_skips_gracefully() {

@@ -108,6 +108,45 @@ mod tests {
     }
 
     #[test]
+    fn decoded_image_to_dynamic_image_valid_rgba() {
+        let width = 4u32;
+        let height = 3u32;
+        let rgba = vec![0u8; (width * height * 4) as usize];
+        let decoded = DecodedImage {
+            rgba,
+            width,
+            height,
+        };
+        let img = decoded.to_dynamic_image().expect("valid buffer");
+        assert_eq!(img.width(), width);
+        assert_eq!(img.height(), height);
+    }
+
+    #[test]
+    fn decoded_image_to_dynamic_image_short_buffer_fails() {
+        let decoded = DecodedImage {
+            rgba: vec![0u8; 10],
+            width: 4,
+            height: 3,
+        };
+        let err = decoded.to_dynamic_image().unwrap_err();
+        assert!(matches!(err, crate::Error::Decode(_)));
+        assert!(err.to_string().contains("RGBA buffer length"));
+    }
+
+    #[test]
+    fn decoded_image_to_dynamic_image_zero_dimensions_valid() {
+        let decoded = DecodedImage {
+            rgba: vec![],
+            width: 0,
+            height: 0,
+        };
+        let img = decoded.to_dynamic_image().expect("0x0 with empty buffer");
+        assert_eq!(img.width(), 0);
+        assert_eq!(img.height(), 0);
+    }
+
+    #[test]
     fn media_file_serialize() {
         let file = MediaFile {
             id: 1,

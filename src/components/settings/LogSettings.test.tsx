@@ -131,4 +131,75 @@ describe("LogSettings", () => {
 
     expect(screen.getByDisplayValue("30")).toBeInTheDocument();
   });
+
+  it("handles load config failure gracefully", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
+      if (cmd === "get_log_config") return Promise.reject(new Error("load failed"));
+      if (cmd === "get_log_directory") return Promise.resolve("/logs");
+      if (cmd === "get_log_files") return Promise.resolve([]);
+      return Promise.resolve(null);
+    });
+
+    render(<LogSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("7")).toBeInTheDocument();
+    });
+    expect(screen.getByDisplayValue("100")).toBeInTheDocument();
+    expect(consoleSpy).toHaveBeenCalled();
+    consoleSpy.mockRestore();
+  });
+
+  it("handles save config failure", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const user = userEvent.setup();
+    (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
+      if (cmd === "get_log_config") return Promise.resolve(defaultConfig);
+      if (cmd === "get_log_directory") return Promise.resolve("/logs");
+      if (cmd === "get_log_files") return Promise.resolve(sampleLogFiles);
+      if (cmd === "set_log_config") return Promise.reject(new Error("save failed"));
+      return Promise.resolve(null);
+    });
+
+    render(<LogSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(consoleSpy).toHaveBeenCalledWith("Failed to save log config:", expect.any(Error));
+    });
+    expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
+    consoleSpy.mockRestore();
+  });
+
+  it("handles cleanup failure", async () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const user = userEvent.setup();
+    (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
+      if (cmd === "get_log_config") return Promise.resolve(defaultConfig);
+      if (cmd === "get_log_directory") return Promise.resolve("/logs");
+      if (cmd === "get_log_files") return Promise.resolve(sampleLogFiles);
+      if (cmd === "cleanup_logs") return Promise.reject(new Error("cleanup failed"));
+      return Promise.resolve(null);
+    });
+
+    render(<LogSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByText(/日志文件数.*2/)).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "立即清理" }));
+
+    await waitFor(() => {
+      expect(consoleSpy).toHaveBeenCalledWith("Failed to cleanup logs:", expect.any(Error));
+    });
+    expect(screen.getByText(/日志文件数.*2/)).toBeInTheDocument();
+    consoleSpy.mockRestore();
+  });
 });

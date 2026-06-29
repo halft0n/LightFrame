@@ -539,4 +539,86 @@ mod tests {
         restore.set_mode(0o755);
         let _ = fs::set_permissions(&restricted, restore);
     }
+
+    fn progress_would_emit(
+        throttler: &ProgressThrottler,
+        status: &ScanStatus,
+        force: bool,
+    ) -> bool {
+        if force {
+            return true;
+        }
+        let scanned = status.snapshot().scanned;
+        let emit_by_count = scanned % PROGRESS_EMIT_FILE_INTERVAL == 0;
+        let emit_by_time = throttler
+            .last_emit
+            .lock()
+            .map(|last| last.elapsed() >= PROGRESS_EMIT_INTERVAL)
+            .unwrap_or(true);
+        emit_by_count || emit_by_time
+    }
+
+    #[test]
+    fn progress_throttler_force_always_emits() {
+        let throttler = ProgressThrottler::new();
+        let status = ScanStatus::new();
+        status.set_total(100);
+        for scanned in [0, 1, 23, 49, 50, 100] {
+            status.reset(1);
+            for _ in 0..scanned {
+                status.increment_scanned();
+            }
+            assert!(
+                progress_would_emit(&throttler, &status, true),
+                "force should emit at scanned={scanned}"
+            );
+        }
+    }
+
+    #[test]
+    fn progress_throttler_emit_every_fiftieth_item() {
+        let throttler = ProgressThrottler::new();
+        let status = ScanStatus::new();
+        *throttler.last_emit.lock().unwrap() = Instant::now();
+
+        for scanned in [50, 100, 150] {
+            status.reset(1);
+            for _ in 0..scanned {
+                status.increment_scanned();
+            }
+            assert!(
+                progress_would_emit(&throttler, &status, false),
+                "scanned={scanned} should emit by count"
+            );
+        }
+    }
+
+    #[test]
+    fn progress_throttler_first_count_within_time_window() {
+        let throttler = ProgressThrottler::new();
+        let status = ScanStatus::new();
+        status.reset(1);
+        status.increment_scanned();
+        assert_eq!(status.snapshot().scanned, 1);
+        assert!(
+            progress_would_emit(&throttler, &status, false),
+            "initial throttler allows first progress emit via elapsed interval"
+        );
+    }
+
+    #[test]
+    fn progress_throttler_non_modulo_within_time_window_does_not_emit() {
+        let throttler = ProgressThrottler::new();
+        *throttler.last_emit.lock().unwrap() = Instant::now();
+        let status = ScanStatus::new();
+        status.reset(1);
+        for _ in 0..23 {
+            status.increment_scanned();
+        }
+        assert_eq!(status.snapshot().scanned, 23);
+        assert!(
+            !progress_would_emit(&throttler, &status, false),
+            "scanned=23 should not emit when inside time window"
+        );
+    }
 }

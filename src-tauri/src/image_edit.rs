@@ -1296,6 +1296,93 @@ mod tests {
     }
 
     #[test]
+    fn test_apply_edits_rotate_270() {
+        let original = create_test_image_sized(120, 80);
+        let params = EditParams {
+            rotate: 270,
+            ..Default::default()
+        };
+        let edited = apply_edits(original, &params);
+        assert_eq!(edited.dimensions(), (80, 120));
+    }
+
+    #[test]
+    fn test_apply_edits_exposure() {
+        let original = create_midtone_image();
+        let orig_lum = avg_luminance(&original);
+        let params = EditParams {
+            exposure: 50.0,
+            ..Default::default()
+        };
+        let edited = apply_edits(original, &params);
+        let edited_lum = avg_luminance(&edited);
+        assert!(
+            edited_lum > orig_lum,
+            "positive exposure should brighten the image"
+        );
+    }
+
+    #[test]
+    fn test_apply_edits_crop_rotate_flip_combined() {
+        let original = create_test_image_sized(200, 100);
+        let params = EditParams {
+            crop: Some(CropRect {
+                x: 0.0,
+                y: 0.0,
+                width: 0.5,
+                height: 1.0,
+            }),
+            rotate: 90,
+            flip_h: true,
+            ..Default::default()
+        };
+        let edited = apply_edits(original, &params);
+        assert_eq!(edited.dimensions(), (100, 100));
+    }
+
+    #[test]
+    fn test_apply_edits_warmth_shifts_toward_red() {
+        let mut img = RgbaImage::new(20, 20);
+        for pixel in img.pixels_mut() {
+            *pixel = Rgba([128, 128, 128, 255]);
+        }
+        let original = DynamicImage::ImageRgba8(img);
+        let gray = original.to_rgba8().get_pixel(0, 0).0;
+
+        let params = EditParams {
+            warmth: 100.0,
+            ..Default::default()
+        };
+        let edited = apply_edits(original, &params);
+        let px = edited.to_rgba8().get_pixel(0, 0).0;
+        assert!(
+            px[0] > gray[0] && px[2] < gray[2],
+            "warmth should increase red and decrease blue"
+        );
+    }
+
+    #[test]
+    fn test_apply_edits_tint_shifts_hue() {
+        let mut img = RgbaImage::new(20, 20);
+        for pixel in img.pixels_mut() {
+            *pixel = Rgba([128, 128, 128, 255]);
+        }
+        let original = DynamicImage::ImageRgba8(img);
+        let gray = original.to_rgba8().get_pixel(0, 0).0;
+
+        let params = EditParams {
+            tint: 100.0,
+            ..Default::default()
+        };
+        let edited = apply_edits(original, &params);
+        let px = edited.to_rgba8().get_pixel(0, 0).0;
+        assert!(
+            px[1] > gray[1] || px[0] < gray[0],
+            "tint should shift green and/or red channels"
+        );
+    }
+
+    #[test]
     fn test_apply_edits_rotate_180() {
         let original = create_test_image_sized(120, 80);
         let params = EditParams {

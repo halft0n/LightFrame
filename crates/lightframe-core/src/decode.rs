@@ -532,6 +532,46 @@ mod tests {
     }
 
     #[test]
+    fn file_extension_lower_mixed_case() {
+        assert_eq!(
+            file_extension_lower(Path::new("/photos/vacation.JPG")),
+            Some("jpg".to_string())
+        );
+    }
+
+    #[test]
+    fn file_extension_lower_no_extension() {
+        assert_eq!(file_extension_lower(Path::new("/photos/noext")), None);
+        assert_eq!(file_extension_lower(Path::new("filename")), None);
+    }
+
+    #[test]
+    fn file_extension_lower_multiple_dots() {
+        assert_eq!(
+            file_extension_lower(Path::new("/photos/photo.raw.cr2")),
+            Some("cr2".to_string())
+        );
+    }
+
+    #[test]
+    fn is_heic_path_recognizes_extensions() {
+        assert!(is_heic_path(Path::new("/photos/sample.heic")));
+        assert!(is_heic_path(Path::new("/photos/sample.heif")));
+        assert!(is_heic_path(Path::new("/photos/sample.HEIC")));
+        assert!(is_heic_path(Path::new("/photos/sample.HeIf")));
+        assert!(!is_heic_path(Path::new("/photos/sample.jpg")));
+        assert!(!is_heic_path(Path::new("/photos/sample.avif")));
+    }
+
+    #[test]
+    fn is_avif_path_recognizes_extensions() {
+        assert!(is_avif_path(Path::new("/photos/sample.avif")));
+        assert!(is_avif_path(Path::new("/photos/sample.AVIF")));
+        assert!(!is_avif_path(Path::new("/photos/sample.heic")));
+        assert!(!is_avif_path(Path::new("/photos/sample.jpg")));
+    }
+
+    #[test]
     fn is_raw_path_recognizes_all_extensions() {
         for ext in RAW_EXTENSIONS {
             let name = format!("/photos/sample.{ext}");

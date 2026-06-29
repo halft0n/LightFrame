@@ -35,6 +35,8 @@ import {
   closeSlideshow,
   nextSlideshow,
   prevSlideshow,
+  setSlideshowIndex,
+  setSlideshowSpeed,
   setSearchMode,
   updateFolder,
   setSingleMediaSelection,
@@ -124,6 +126,16 @@ describe("appStore", () => {
     const state = getSnapshot();
     expect(state.mediaItems).toEqual(items);
     expect(state.totalCount).toBe(42);
+  });
+
+  it("setWatchedFolders replaces folder list", () => {
+    addFolder(sampleFolder);
+    const folders = [
+      sampleFolder,
+      { ...sampleFolder, id: 2, path: "/videos" },
+    ];
+    setWatchedFolders(folders);
+    expect(getSnapshot().watchedFolders).toEqual(folders);
   });
 
   it("addFolder and removeFolder manage folder list", () => {
@@ -391,6 +403,44 @@ describe("appStore", () => {
     expect(state.selectedFolderPath).toBeNull();
   });
 
+  it("navigate to map and locations sets view and clears detail IDs", () => {
+    openPersonDetail(9);
+    navigate("map");
+
+    let state = getSnapshot();
+    expect(state.currentView).toBe("map");
+    expect(state.selectedPersonId).toBeNull();
+
+    openAlbumDetail(3);
+    navigate("locations");
+    state = getSnapshot();
+    expect(state.currentView).toBe("locations");
+    expect(state.selectedAlbumId).toBeNull();
+  });
+
+  it("navigate to person-detail preserves selectedPersonId", () => {
+    openPersonDetail(12);
+    navigate("person-detail");
+
+    const state = getSnapshot();
+    expect(state.currentView).toBe("person-detail");
+    expect(state.selectedPersonId).toBe(12);
+  });
+
+  it("navigate to detail views clears unrelated detail IDs", () => {
+    openPersonDetail(5);
+    openAlbumDetail(8);
+
+    navigate("album-detail");
+    expect(getSnapshot().selectedAlbumId).toBe(8);
+    expect(getSnapshot().selectedPersonId).toBeNull();
+
+    openSmartAlbumDetail(4);
+    navigate("smart-album-detail");
+    expect(getSnapshot().selectedSmartAlbumId).toBe(4);
+    expect(getSnapshot().selectedAlbumId).toBeNull();
+  });
+
   describe("search history", () => {
     it("addSearchHistory adds trimmed queries", () => {
       addSearchHistory("  sunset  ");
@@ -488,6 +538,45 @@ describe("appStore", () => {
       await loadMoreMedia();
       expect(getMediaPage).not.toHaveBeenCalled();
     });
+
+    it("loadMoreMedia handles errors without throwing", async () => {
+      const itemWithCursor = { ...sampleMedia, created_at: "2024-01-01T00:00:00" };
+      setMedia([itemWithCursor], 10);
+      getMediaPage.mockRejectedValue(new Error("network"));
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      await loadMoreMedia();
+
+      expect(getSnapshot().mediaItems).toHaveLength(1);
+      consoleSpy.mockRestore();
+    });
+
+    it("loadMoreMedia uses undefined cursor when created_at is null", async () => {
+      setMedia([sampleMedia], 10);
+      getMediaPage.mockResolvedValue([{ ...sampleMedia, id: 2 }]);
+
+      await loadMoreMedia();
+
+      expect(getMediaPage).toHaveBeenCalledWith(60, undefined);
+    });
+
+    it("setMedia trims items when count exceeds 5000", () => {
+      const items = Array.from({ length: 5100 }, (_, i) => ({
+        ...sampleMedia,
+        id: i + 1,
+      }));
+      setMediaScrollIndex(4000);
+      setMedia(items, 5100);
+
+      const state = getSnapshot();
+      expect(state.mediaItems).toHaveLength(5000);
+      expect(state.mediaItems[0].id).toBe(101);
+    });
+
+    it("setMedia sets mediaCursor to null when created_at is missing", () => {
+      setMedia([sampleMedia], 1);
+      expect(getSnapshot().mediaCursor).toBeNull();
+    });
   });
 
   describe("slideshow", () => {
@@ -537,6 +626,32 @@ describe("appStore", () => {
 
       prevSlideshow();
       expect(getSnapshot().slideshowIndex).toBe(1);
+    });
+
+    it("setSlideshowIndex sets index and clamps to valid range", () => {
+      startSlideshow([10, 20, 30]);
+
+      setSlideshowIndex(2);
+      expect(getSnapshot().slideshowIndex).toBe(2);
+
+      setSlideshowIndex(99);
+      expect(getSnapshot().slideshowIndex).toBe(2);
+
+      setSlideshowIndex(-5);
+      expect(getSnapshot().slideshowIndex).toBe(0);
+    });
+
+    it("setSlideshowIndex does nothing when slideshow is inactive", () => {
+      setSlideshowIndex(5);
+      expect(getSnapshot().slideshowIndex).toBe(0);
+    });
+
+    it("setSlideshowSpeed stores speed value", () => {
+      setSlideshowSpeed(3);
+      expect(getSnapshot().slideshowSpeed).toBe(3);
+
+      setSlideshowSpeed(10);
+      expect(getSnapshot().slideshowSpeed).toBe(10);
     });
   });
 

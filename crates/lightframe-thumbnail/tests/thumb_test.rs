@@ -1,5 +1,8 @@
-use lightframe_core::media::ThumbnailSize;
-use lightframe_thumbnail::{generate, generate_micro_blob, thumb_path};
+use lightframe_core::media::{DecodedImage, ThumbnailSize};
+use lightframe_thumbnail::{
+    generate, generate_from_decoded, generate_micro_blob, micro_blob_from_decoded,
+    regenerate_from_decoded, thumb_file_needs_regeneration, thumb_path,
+};
 
 fn create_test_image(dir: &std::path::Path, name: &str, w: u32, h: u32) -> std::path::PathBuf {
     let path = dir.join(name);
@@ -123,4 +126,82 @@ fn thumb_path_uses_hash_prefix_directories() {
 fn micro_blob_from_nonexistent_errors() {
     let result = generate_micro_blob(std::path::Path::new("/nonexistent.jpg"));
     assert!(result.is_err());
+}
+
+fn synthetic_decoded_image(width: u32, height: u32) -> DecodedImage {
+    let len = (width as usize) * (height as usize) * 4;
+    let mut rgba = vec![0u8; len];
+    for y in 0..height {
+        for x in 0..width {
+            let i = ((y * width + x) * 4) as usize;
+            rgba[i] = (x % 256) as u8;
+            rgba[i + 1] = (y % 256) as u8;
+            rgba[i + 2] = 128;
+            rgba[i + 3] = 255;
+        }
+    }
+    DecodedImage {
+        rgba,
+        width,
+        height,
+    }
+}
+
+#[test]
+fn thumb_file_needs_regeneration_missing() {
+    assert!(thumb_file_needs_regeneration(std::path::Path::new(
+        "/nonexistent/thumb.webp"
+    )));
+}
+
+#[test]
+fn thumb_file_needs_regeneration_empty() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("empty.webp");
+    std::fs::write(&path, []).unwrap();
+    assert!(thumb_file_needs_regeneration(&path));
+}
+
+#[test]
+fn thumb_file_needs_regeneration_valid() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("valid.webp");
+    std::fs::write(&path, b"RIFF....WEBP").unwrap();
+    assert!(!thumb_file_needs_regeneration(&path));
+}
+
+#[test]
+fn generate_from_decoded_creates_valid_image() {
+    let decoded = synthetic_decoded_image(128, 96);
+    let hash = "bbbbccccddddeeeebbbbccccddddeeeebbbbccccddddeeeebbbbccccddddeeee";
+    let out = generate_from_decoded(&decoded, hash, ThumbnailSize::Small).expect("generate");
+    assert!(out.exists());
+    assert!(out.metadata().unwrap().len() > 0);
+    image::open(&out).expect("output should be a valid image");
+}
+
+#[test]
+fn micro_blob_from_decoded_returns_jpeg() {
+    let decoded = synthetic_decoded_image(64, 64);
+    let blob = micro_blob_from_decoded(&decoded).expect("micro blob");
+    assert!(!blob.is_empty());
+    assert_eq!(blob[0], 0xFF);
+    assert_eq!(blob[1], 0xD8);
+    image::load_from_memory(&blob).expect("micro blob should decode as JPEG");
+}
+
+#[test]
+fn regenerate_from_decoded_overwrites_and_stays_valid() {
+    let decoded = synthetic_decoded_image(200, 150);
+    let hash = "ccccddddeeeeffffccccddddeeeeffffccccddddeeeeffffccccddddeeeeffff";
+    let out = generate_from_decoded(&decoded, hash, ThumbnailSize::Small).expect("initial");
+    assert!(out.exists());
+    let first_len = out.metadata().unwrap().len();
+
+    let out2 = regenerate_from_decoded(&decoded, hash, ThumbnailSize::Small).expect("regenerate");
+    assert_eq!(out, out2);
+    assert!(out2.exists());
+    assert!(out2.metadata().unwrap().len() > 0);
+    image::open(&out2).expect("regenerated output should be a valid image");
+    assert_eq!(first_len, out2.metadata().unwrap().len());
 }

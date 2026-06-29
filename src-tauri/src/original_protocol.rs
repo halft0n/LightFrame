@@ -305,7 +305,7 @@ mod tests {
     use super::*;
     use http::StatusCode;
     use lightframe_core::config::AppConfig;
-    use lightframe_db::Database;
+    use lightframe_db::{Database, WatchedFolder};
     use std::sync::Arc;
     use std::sync::atomic::AtomicBool;
 
@@ -411,6 +411,71 @@ mod tests {
             Path::new("/photos2/vacation.jpg"),
             "/photos"
         ));
+    }
+
+    fn watched_folder(path: &str) -> WatchedFolder {
+        WatchedFolder {
+            id: 1,
+            path: path.to_string(),
+            media_count: 0,
+            last_scan: None,
+            scan_status: "idle".to_string(),
+        }
+    }
+
+    #[test]
+    fn path_is_in_watched_folders_nested_and_exact() {
+        let folders = vec![watched_folder("/photos")];
+        assert!(path_is_in_watched_folders(
+            Path::new("/photos/vacation.jpg"),
+            &folders
+        ));
+        assert!(path_is_in_watched_folders(Path::new("/photos"), &folders));
+        assert!(path_is_in_watched_folders(
+            Path::new("/photos/2024/event/nested.jpg"),
+            &folders
+        ));
+    }
+
+    #[test]
+    fn path_is_in_watched_folders_rejects_outside_and_prefix_collision() {
+        let folders = vec![watched_folder("/photos")];
+        assert!(!path_is_in_watched_folders(
+            Path::new("/other/secret.jpg"),
+            &folders
+        ));
+        assert!(!path_is_in_watched_folders(
+            Path::new("/photos-backup/copy.jpg"),
+            &folders
+        ));
+    }
+
+    #[test]
+    fn path_is_in_watched_folders_empty_list() {
+        assert!(!path_is_in_watched_folders(
+            Path::new("/photos/vacation.jpg"),
+            &[]
+        ));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn strip_extended_prefix_removes_win32_prefix() {
+        let stripped = strip_extended_prefix(PathBuf::from(r"\\?\C:\Users\photo.jpg"));
+        assert_eq!(stripped.to_string_lossy(), r"C:\Users\photo.jpg");
+    }
+
+    #[test]
+    fn strip_extended_prefix_leaves_clean_path() {
+        let path = PathBuf::from("/home/user/photos/sample.jpg");
+        assert_eq!(strip_extended_prefix(path.clone()), path);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn strip_extended_prefix_unix_unchanged() {
+        let path = PathBuf::from("/tmp/lightframe/test.jpg");
+        assert_eq!(strip_extended_prefix(path.clone()), path);
     }
 
     #[test]
