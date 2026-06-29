@@ -2,7 +2,6 @@ pub mod scanner;
 pub mod watcher;
 
 #[cfg(target_os = "windows")]
-#[allow(dead_code)]
 mod mft;
 
 pub use watcher::{
@@ -191,13 +190,5 @@ mod tests {
         let scanner = mft::MftScanner::new('C').unwrap();
         let entries = scanner.scan_media_files(&["jpg"]).unwrap();
         assert!(entries.is_empty());
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn usn_journal_placeholder_returns_empty() {
-        let journal = mft::UsnJournal::new('C').unwrap();
-        let changes = journal.poll_changes().unwrap();
-        assert!(changes.is_empty());
     }
 }
