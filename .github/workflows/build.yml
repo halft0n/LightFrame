@@ -154,50 +154,56 @@ jobs:
           pnpm tauri build --help | grep -i appimage || true
           echo "Tauri bundles AppImage via linuxdeploy (downloaded automatically during build)"
 
-      - name: Build (native target)
-        if: "!contains(matrix.label, 'arm64')"
+      - name: Prepare signing
+        id: signing
         shell: bash
         env:
           _SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           _SIGNING_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
+          VALID=false
           if [ -n "$_SIGNING_KEY" ]; then
-            export TAURI_SIGNING_PRIVATE_KEY="$_SIGNING_KEY"
-            export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${_SIGNING_PASSWORD:-}"
-            echo "::notice::Attempting build with updater signing"
-            if pnpm tauri build; then
-              echo "::notice::Build with signing succeeded"
+            FIRST_LINE="$(echo "$_SIGNING_KEY" | head -1)"
+            if echo "$FIRST_LINE" | grep -q "untrusted comment:"; then
+              VALID=true
+              echo "::notice::Valid updater signing key detected"
             else
-              echo "::warning::Build with signing failed — rebuilding without signing"
-              unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-              pnpm tauri build
+              echo "::warning::Signing key exists but format is invalid (missing 'untrusted comment:' header). Building unsigned."
             fi
           else
-            echo "::notice::Building without updater signing (no key configured)"
-            pnpm tauri build
+            echo "::warning::No signing key configured. Building unsigned."
           fi
+
+          echo "enabled=$VALID" >> "$GITHUB_OUTPUT"
+
+          if [ "$VALID" = "false" ]; then
+            cp src-tauri/tauri.conf.json src-tauri/tauri.conf.json.bak
+            jq 'del(.plugins.updater.pubkey)' src-tauri/tauri.conf.json > _tmp.json && mv _tmp.json src-tauri/tauri.conf.json
+            echo "Removed pubkey from updater config for unsigned build"
+          fi
+
+      - name: Build (native target)
+        if: "!contains(matrix.label, 'arm64')"
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ steps.signing.outputs.enabled == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ steps.signing.outputs.enabled == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+        run: pnpm tauri build
 
       - name: Build (cross-compile arm64)
         if: contains(matrix.label, 'arm64')
         shell: bash
         env:
-          _SIGNING_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          _SIGNING_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ steps.signing.outputs.enabled == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ steps.signing.outputs.enabled == 'true' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
+        run: pnpm tauri build --target ${{ matrix.target }}
+
+      - name: Restore tauri.conf.json
+        if: steps.signing.outputs.enabled == 'false'
+        shell: bash
         run: |
-          if [ -n "$_SIGNING_KEY" ]; then
-            export TAURI_SIGNING_PRIVATE_KEY="$_SIGNING_KEY"
-            export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="${_SIGNING_PASSWORD:-}"
-            echo "::notice::Attempting build with updater signing"
-            if pnpm tauri build --target ${{ matrix.target }}; then
-              echo "::notice::Build with signing succeeded"
-            else
-              echo "::warning::Build with signing failed — rebuilding without signing"
-              unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-              pnpm tauri build --target ${{ matrix.target }}
-            fi
-          else
-            echo "::notice::Building without updater signing (no key configured)"
-            pnpm tauri build --target ${{ matrix.target }}
+          if [ -f src-tauri/tauri.conf.json.bak ]; then
+            mv src-tauri/tauri.conf.json.bak src-tauri/tauri.conf.json
           fi
 
       - name: Collect release artifacts
