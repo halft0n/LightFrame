@@ -254,8 +254,8 @@ async fn process_file_inner(
                         }
                     };
 
-                    let dhash = Some(lightframe_dedup::dhash_from_decoded(&decoded));
-                    let phash = Some(lightframe_dedup::phash_from_decoded(&decoded));
+                    let dhash = lightframe_dedup::dhash_from_decoded(&decoded).ok();
+                    let phash = lightframe_dedup::phash_from_decoded(&decoded).ok();
 
                     let _ = lightframe_thumbnail::generate_from_decoded(
                         &decoded,
@@ -372,14 +372,17 @@ async fn process_file_inner(
         let _span = tracing::info_span!("db_upsert").entered();
         db.upsert_media(folder_id, &media)?
     };
-    if let Some(blob) = micro_blob {
-        let _ = db.set_micro_thumb(media_id, &blob);
+    if let Some(blob) = micro_blob
+        && let Err(e) = db.set_micro_thumb(media_id, &blob)
+    {
+        tracing::warn!(media_id, "failed to set micro thumb: {e}");
     }
 
     if matches!(media_type, MediaType::Screenshot)
         && let Ok(screenshot_type) = lightframe_ai::classify_screenshot(&path)
+        && let Err(e) = db.set_screenshot_type(media_id, screenshot_type.label())
     {
-        let _ = db.set_screenshot_type(media_id, screenshot_type.label());
+        tracing::warn!(media_id, "failed to set screenshot type: {e}");
     }
 
     if let (Some(lat), Some(lon)) = (media.latitude, media.longitude)
@@ -387,8 +390,10 @@ async fn process_file_inner(
     {
         let country = loc.country.as_deref().unwrap_or("");
         let city = loc.city.as_deref().unwrap_or("");
-        if !country.is_empty() {
-            let _ = db.update_media_location(media_id, city, country);
+        if !country.is_empty()
+            && let Err(e) = db.update_media_location(media_id, city, country)
+        {
+            tracing::warn!(media_id, "failed to update media location: {e}");
         }
     }
 

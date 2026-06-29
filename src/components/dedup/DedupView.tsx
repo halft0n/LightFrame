@@ -168,8 +168,8 @@ export function DedupView() {
       setGroups(data);
       setVisibleCount(GROUP_PAGE_SIZE);
       if (data.length > 0) setHasScanned(true);
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Failed to load duplicate groups:", err);
     } finally {
       setLoading(false);
     }
@@ -192,8 +192,8 @@ export function DedupView() {
       );
       setHasScanned(true);
       await loadGroups();
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Dedup scan failed:", err);
     } finally {
       setScanning(false);
     }
@@ -201,20 +201,21 @@ export function DedupView() {
 
   const handleResolve = useCallback(async (groupId: number, keepId: number | undefined) => {
     if (keepId == null) return;
+    if (!window.confirm(t("dedup.confirmDelete"))) return;
     try {
       await resolveDuplicate(groupId, keepId, true);
       setGroups((prev) => prev.filter((g) => g.id !== groupId));
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Failed to resolve duplicate group:", err);
     }
-  }, []);
+  }, [t]);
 
   const handleDismiss = useCallback(async (groupId: number) => {
     try {
       await dismissDuplicateGroup(groupId);
       setGroups((prev) => prev.filter((g) => g.id !== groupId));
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Failed to dismiss duplicate group:", err);
     }
   }, []);
 

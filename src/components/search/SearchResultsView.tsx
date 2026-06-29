@@ -67,12 +67,14 @@ export function SearchResultsView() {
   const { t } = useTranslation();
   const { searchQuery, searchMode } = useAppStore();
   const parentRef = useRef<HTMLDivElement>(null);
+  const requestIdRef = useRef(0);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [relevanceById, setRelevanceById] = useState<Map<number, number>>(new Map());
   const [usedSemantic, setUsedSemantic] = useState<boolean | null>(null);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
 
@@ -84,18 +86,23 @@ export function SearchResultsView() {
 
   const loadInitial = useCallback(async (query: string, mode: SearchMode) => {
     const trimmed = query.trim();
+    const requestId = ++requestIdRef.current;
+
     if (!trimmed) {
       setMedia([]);
       setTotalCount(0);
       setRelevanceById(new Map());
       setUsedSemantic(null);
+      setError(null);
       return;
     }
 
     setLoading(true);
+    setError(null);
     try {
       if (mode === "semantic") {
         const response = await semanticSearch(trimmed, PAGE_SIZE);
+        if (requestId !== requestIdRef.current) return;
         setMedia(response.results.map(searchResultToMediaItem));
         setRelevanceById(new Map(response.results.map((r) => [r.media_id, r.relevance])));
         setUsedSemantic(response.used_semantic);
@@ -105,17 +112,22 @@ export function SearchResultsView() {
           searchMedia(trimmed, PAGE_SIZE, 0),
           searchMediaCount(trimmed),
         ]);
+        if (requestId !== requestIdRef.current) return;
         setMedia(items);
         setRelevanceById(new Map());
         setUsedSemantic(null);
         setTotalCount(count);
       }
     } catch (err) {
+      if (requestId !== requestIdRef.current) return;
       console.error("Failed to search media:", err);
+      setError(t("search.error"));
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (searchMode !== "semantic") {
@@ -251,6 +263,19 @@ export function SearchResultsView() {
         <div className="border-b border-amber-200/80 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
           <p>{t("search.semanticFallback")}</p>
           <p className="mt-1 text-xs opacity-90">{t("search.semanticDownloadHint")}</p>
+        </div>
+      )}
+
+      {error && (
+        <div className="flex items-center justify-between gap-3 border-b border-red-200/80 bg-red-50 px-4 py-2 text-sm text-red-900 dark:border-red-900/50 dark:bg-red-950/40 dark:text-red-200">
+          <p>{error}</p>
+          <button
+            type="button"
+            onClick={() => void loadInitial(searchQuery, searchMode)}
+            className="shrink-0 rounded-md bg-red-600 px-3 py-1 text-xs font-medium text-white transition hover:bg-red-500"
+          >
+            {t("search.retry")}
+          </button>
         </div>
       )}
 

@@ -88,7 +88,9 @@ pub struct AppState {
 impl AppState {
     pub fn new() -> lightframe_core::Result<Self> {
         let db = Arc::new(Database::open_default()?);
-        let _ = db.cleanup_deleted_older_than(30);
+        if let Err(e) = db.cleanup_deleted_older_than(30) {
+            tracing::warn!("startup: failed to cleanup deleted media: {e}");
+        }
         let config = load_config();
         let cpus = std::thread::available_parallelism()
             .map(|n| n.get())

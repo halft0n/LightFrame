@@ -72,8 +72,14 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
         return error_response(StatusCode::NOT_FOUND, "source file missing");
     }
 
-    let img = match image::open(&canonical) {
-        Ok(img) => img,
+    let img = match lightframe_core::decode::decode_image(&canonical) {
+        Ok(decoded) => match decoded.to_dynamic_image() {
+            Ok(img) => img,
+            Err(e) => {
+                tracing::warn!(path = %media.path, "failed to decode image for face crop: {e}");
+                return error_response(StatusCode::NOT_FOUND, "failed to decode image");
+            }
+        },
         Err(e) => {
             tracing::warn!(path = %media.path, "failed to open image for face crop: {e}");
             return error_response(StatusCode::NOT_FOUND, "failed to open image");

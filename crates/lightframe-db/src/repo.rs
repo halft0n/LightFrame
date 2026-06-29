@@ -1555,13 +1555,13 @@ impl Database {
     }
 
     /// Resolve a duplicate group by keeping the winner and optionally soft-deleting the others.
-    /// Note: when `delete_files` is true, `set_deleted` only sets `is_deleted = 1`; it does NOT
-    /// remove files from disk.
+    /// When `soft_delete_others` is true, the remaining members are marked `is_deleted = 1`
+    /// (moved to trash); files are NOT removed from disk.
     pub fn resolve_duplicate_group(
         &self,
         group_id: i64,
         keep_media_id: i64,
-        delete_files: bool,
+        soft_delete_others: bool,
     ) -> lightframe_core::Result<()> {
         let group = self
             .get_duplicate_group_by_id(group_id)?
@@ -1574,7 +1574,7 @@ impl Database {
         }
 
         for member in &group.members {
-            if member.media_id != keep_media_id && delete_files {
+            if member.media_id != keep_media_id && soft_delete_others {
                 self.set_deleted(member.media_id, true)?;
             }
         }

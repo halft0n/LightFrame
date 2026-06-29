@@ -144,7 +144,7 @@ fn path_is_under_folder(path: &Path, folder: &str) -> bool {
     false
 }
 
-fn path_contains_parent_dir(path: &Path) -> bool {
+pub fn path_contains_parent_dir(path: &Path) -> bool {
     if path
         .components()
         .any(|c| matches!(c, std::path::Component::ParentDir))

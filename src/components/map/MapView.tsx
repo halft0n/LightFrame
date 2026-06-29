@@ -12,6 +12,15 @@ import { useTranslation } from "@/i18n/useTranslation";
 import { openViewer, useAppStore } from "@/store/appStore";
 import { EmptyState } from "@/components/ui/EmptyState";
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconUrl,
@@ -84,7 +93,7 @@ function PhotoClusterLayer({ markers, onSelect }: PhotoClusterLayerProps) {
       const popup = L.popup({ maxWidth: 220 }).setContent(
         `<div class="map-popup">
           <img src="${getThumbnailUrl(marker.id, "small")}" alt="" style="width:100%;border-radius:6px;aspect-ratio:4/3;object-fit:cover" />
-          <p style="margin:6px 0 0;font-size:12px;font-weight:500">${marker.filename}</p>
+          <p style="margin:6px 0 0;font-size:12px;font-weight:500">${escapeHtml(marker.filename)}</p>
         </div>`,
       );
       const m = L.marker([marker.lat, marker.lng]).bindPopup(popup);

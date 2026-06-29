@@ -100,6 +100,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const printTargetRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
+  const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const requestClose = useCallback(() => {
     if (closing) return;
@@ -111,6 +112,14 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
     const timer = window.setTimeout(() => closeViewer(), VIEWER_EXIT_MS);
     return () => window.clearTimeout(timer);
   }, [closing]);
+
+  useEffect(() => {
+    return () => {
+      if (copyFeedbackTimeoutRef.current) {
+        clearTimeout(copyFeedbackTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const resetView = useCallback(() => {
     setZoom(1);
@@ -377,11 +386,17 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
       const type = blob.type || "image/png";
       await navigator.clipboard.write([new ClipboardItem({ [type]: blob })]);
       setCopyFeedback(t("viewer.copySuccess"));
-      window.setTimeout(() => setCopyFeedback(null), 2000);
+      if (copyFeedbackTimeoutRef.current) {
+        clearTimeout(copyFeedbackTimeoutRef.current);
+      }
+      copyFeedbackTimeoutRef.current = setTimeout(() => setCopyFeedback(null), 2000);
     } catch (error) {
       console.error("Copy failed:", error);
       setCopyFeedback(t("viewer.copyFailed"));
-      window.setTimeout(() => setCopyFeedback(null), 2000);
+      if (copyFeedbackTimeoutRef.current) {
+        clearTimeout(copyFeedbackTimeoutRef.current);
+      }
+      copyFeedbackTimeoutRef.current = setTimeout(() => setCopyFeedback(null), 2000);
     }
   }, [media, isVideo, t]);
 

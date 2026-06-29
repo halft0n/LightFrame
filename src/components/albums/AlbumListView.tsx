@@ -51,8 +51,13 @@ export function AlbumListView() {
 
   const handleDelete = async (e: React.MouseEvent, albumId: number) => {
     e.stopPropagation();
-    await deleteAlbum(albumId);
-    await loadAlbums();
+    if (!window.confirm(t("albums.confirmDelete"))) return;
+    try {
+      await deleteAlbum(albumId);
+      await loadAlbums();
+    } catch (err) {
+      console.error("Failed to delete album:", err);
+    }
   };
 
   const startRename = (e: React.MouseEvent, album: Album) => {

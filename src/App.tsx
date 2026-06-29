@@ -84,6 +84,7 @@ export default function App() {
   };
 
   useEffect(() => {
+    let mounted = true;
     let cancelled = false;
 
     async function init() {
@@ -125,7 +126,11 @@ export default function App() {
         })();
       }
     }).then((fn) => {
-      unlistenProgress = fn;
+      if (mounted) {
+        unlistenProgress = fn;
+      } else {
+        fn();
+      }
     });
 
     void onFolderChanged((folderId) => {
@@ -134,10 +139,15 @@ export default function App() {
         updateFolder(folderId, { scan_status: "error" });
       });
     }).then((fn) => {
-      unlistenFolder = fn;
+      if (mounted) {
+        unlistenFolder = fn;
+      } else {
+        fn();
+      }
     });
 
     return () => {
+      mounted = false;
       cancelled = true;
       unlistenProgress?.();
       unlistenFolder?.();

@@ -94,6 +94,7 @@ export function PhotoGrid({
   const thumbnailSize = useAppStoreSelector((s) => s.thumbnailSize);
   const mediaItems = itemsProp ?? storeItems;
   const totalCount = totalCountProp ?? storeTotalCount;
+  const useStoreScroll = itemsProp == null;
   const parentRef = useRef<HTMLDivElement>(null);
   const lastSelectedRef = useRef<number | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -154,6 +155,8 @@ export function PhotoGrid({
   }, [rowHeight, columnCount, rowVirtualizer]);
 
   useEffect(() => {
+    if (!useStoreScroll) return;
+
     const virtualItems = rowVirtualizer.getVirtualItems();
     if (virtualItems.length === 0) return;
     const center = virtualItems[Math.floor(virtualItems.length / 2)];
@@ -165,7 +168,7 @@ export function PhotoGrid({
     }, 200);
 
     return () => window.clearTimeout(timeoutId);
-  }, [rowVirtualizer.range, columnCount, mediaItems.length]);
+  }, [rowVirtualizer.range, columnCount, mediaItems.length, useStoreScroll]);
 
   const handleScroll = useCallback(() => {
     const el = parentRef.current;

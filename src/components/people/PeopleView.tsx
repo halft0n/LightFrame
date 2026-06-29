@@ -208,14 +208,20 @@ export function PeopleView() {
   useEffect(() => {
     if (!detecting) return;
 
+    let mounted = true;
     let unlisten: (() => void) | undefined;
     void onFaceDetectionProgress((progress) => {
       setDetectionProgress(progress);
     }).then((fn) => {
-      unlisten = fn;
+      if (mounted) {
+        unlisten = fn;
+      } else {
+        fn();
+      }
     });
 
     return () => {
+      mounted = false;
       unlisten?.();
     };
   }, [detecting]);

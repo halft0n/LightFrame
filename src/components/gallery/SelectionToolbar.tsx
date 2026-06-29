@@ -239,7 +239,14 @@ export function SelectionToolbar({
       </div>
 
       {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          tabIndex={-1}
+          autoFocus
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setShowDeleteConfirm(false);
+          }}
+        >
           <div className="w-full max-w-sm rounded-xl border border-neutral-700 bg-neutral-900 p-5 shadow-xl">
             <p className="text-sm font-medium text-neutral-100">
               {t("batch.confirmDelete", { count })}

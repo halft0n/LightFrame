@@ -56,13 +56,14 @@ impl FaceDetector {
 
     pub fn detect_faces(&mut self, _image_path: &Path) -> Result<Vec<FaceDetection>> {
         if self.detect_session.is_none() {
-            return Ok(Vec::new());
+            return Err(lightframe_core::Error::Ai(
+                "face detection model not loaded".to_string(),
+            ));
         }
 
-        // Full SCRFD/InsightFace post-processing requires model-specific output parsing.
-        // When models are present but parsing is not yet wired, degrade gracefully.
-        tracing::debug!("face detection model loaded; inference pipeline not yet configured");
-        Ok(Vec::new())
+        Err(lightframe_core::Error::Ai(
+            "Rust ONNX face inference not yet implemented; use Python sidecar".to_string(),
+        ))
     }
 
     pub fn cluster_faces(detections: &[(i64, Vec<FaceDetection>)]) -> Result<Vec<PersonCluster>> {

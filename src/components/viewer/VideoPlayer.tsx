@@ -78,6 +78,24 @@ export function VideoPlayer({ src, mediaId, filmstripIds, onNavigate }: VideoPla
     seek(ratio * duration);
   };
 
+  const handleProgressKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (duration <= 0) return;
+    const step = duration * 0.05;
+    if (e.key === "ArrowLeft") {
+      e.preventDefault();
+      seek(currentTime - step);
+    } else if (e.key === "ArrowRight") {
+      e.preventDefault();
+      seek(currentTime + step);
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      seek(0);
+    } else if (e.key === "End") {
+      e.preventDefault();
+      seek(duration);
+    }
+  };
+
   const handleFilmstripClick = (id: number, index: number) => {
     if (id === mediaId && duration > 0 && filmstripIds.length > 1) {
       const segment = duration / filmstripIds.length;
@@ -110,6 +128,7 @@ export function VideoPlayer({ src, mediaId, filmstripIds, onNavigate }: VideoPla
           aria-valuenow={currentTime}
           tabIndex={0}
           onClick={handleProgressClick}
+          onKeyDown={handleProgressKeyDown}
           className="group relative h-1.5 cursor-pointer rounded-full bg-white/20"
         >
           <div

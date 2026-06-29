@@ -21,7 +21,7 @@ fn decoded_from_rgb(img: &RgbImage) -> DecodedImage {
 }
 
 fn resize_thumbnail(decoded: &DecodedImage, size: ThumbnailSize) -> image::DynamicImage {
-    let img = decoded.to_dynamic_image();
+    let img = decoded.to_dynamic_image().expect("valid test image");
     let pixels = size.pixels();
     img.thumbnail(pixels, pixels)
 }

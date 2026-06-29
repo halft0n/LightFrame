@@ -34,7 +34,7 @@ fn open_source_image(src: &Path) -> Result<image::DynamicImage> {
     }
 
     let decoded = decode::decode_image(src)?;
-    Ok(decoded.to_dynamic_image())
+    decoded.to_dynamic_image()
 }
 
 pub fn generate(src: &Path, hash: &str, size: ThumbnailSize) -> Result<PathBuf> {
@@ -96,7 +96,7 @@ pub fn generate_from_decoded(
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let img = decoded.to_dynamic_image();
+    let img = decoded.to_dynamic_image()?;
     let pixels = size.pixels();
     let thumb = img.thumbnail(pixels, pixels);
     thumb
@@ -119,7 +119,7 @@ pub fn regenerate_from_decoded(
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let img = decoded.to_dynamic_image();
+    let img = decoded.to_dynamic_image()?;
     let pixels = size.pixels();
     let thumb = img.thumbnail(pixels, pixels);
     thumb
@@ -150,7 +150,7 @@ pub fn regenerate(src: &Path, hash: &str, size: ThumbnailSize) -> Result<PathBuf
 }
 
 pub fn micro_blob_from_decoded(decoded: &DecodedImage) -> Result<Vec<u8>> {
-    let img = decoded.to_dynamic_image();
+    let img = decoded.to_dynamic_image()?;
     let thumb = img.thumbnail(64, 64);
     let mut buf = std::io::Cursor::new(Vec::new());
     thumb

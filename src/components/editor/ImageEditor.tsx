@@ -58,6 +58,7 @@ export function ImageEditor({
   const [compare, setCompare] = useState(false);
   const [cropMode, setCropMode] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [historyMeta, setHistoryMeta] = useState({ index: 0, total: 1 });
 
@@ -212,6 +213,7 @@ export function ImageEditor({
 
   const handleSave = useCallback(async () => {
     setSaving(true);
+    setSaveError(null);
     try {
       const payload = isDefaultEditParams(params)
         ? null
@@ -223,10 +225,13 @@ export function ImageEditor({
       }
       onSaved();
       onClose();
+    } catch (err) {
+      console.error("Failed to save edits:", err);
+      setSaveError(t("editor.saveError"));
     } finally {
       setSaving(false);
     }
-  }, [cropMode, mediaId, onClose, onSaved, params]);
+  }, [cropMode, mediaId, onClose, onSaved, params, t]);
 
   const handleExport = useCallback(async () => {
     const defaultName = filename.replace(/\.[^.]+$/, "") + "_edited.jpg";
@@ -245,6 +250,9 @@ export function ImageEditor({
     try {
       await saveEdit(mediaId, payload);
       await exportEdited(mediaId, outputPath, 92);
+    } catch (err) {
+      console.error("Failed to export edited image:", err);
+      setSaveError(t("editor.exportError"));
     } finally {
       if (previousEdit) {
         await saveEdit(mediaId, previousEdit);
@@ -252,7 +260,7 @@ export function ImageEditor({
         await revertEdit(mediaId);
       }
     }
-  }, [cropMode, filename, mediaId, params]);
+  }, [cropMode, filename, mediaId, params, t]);
 
   const effectiveParams = compare ? DEFAULT_EDIT_PARAMS : params;
   const filter = useMemo(() => buildCssFilter(effectiveParams), [effectiveParams]);
@@ -279,6 +287,9 @@ export function ImageEditor({
       <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
         <h1 className="text-sm font-semibold tracking-wide text-neutral-200">{t("editor.title")}</h1>
         <div className="flex items-center gap-2">
+          {saveError && (
+            <span className="text-xs text-red-400">{saveError}</span>
+          )}
           <div className="flex items-center gap-1 rounded-lg bg-white/5 px-1 py-0.5">
             <button
               type="button"

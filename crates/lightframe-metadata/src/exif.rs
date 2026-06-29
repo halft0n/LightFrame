@@ -3,7 +3,6 @@ use lightframe_core::Result;
 use std::fs::File;
 use std::io::BufReader;
 use std::path::Path;
-use tracing::warn;
 
 pub fn extract_exif(path: &Path) -> Result<PhotoMetadata> {
     let file = File::open(path)?;
@@ -74,7 +73,7 @@ pub fn extract_exif(path: &Path) -> Result<PhotoMetadata> {
             meta.longitude = Some(lon);
         }
         Err(_) => {
-            warn!(path = %path.display(), "no GPS data found");
+            tracing::debug!(path = %path.display(), "no GPS data found");
         }
     }
 

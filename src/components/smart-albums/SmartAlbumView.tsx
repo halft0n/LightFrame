@@ -21,6 +21,7 @@ export function SmartAlbumView() {
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
 
   const columnCount = Math.max(
@@ -32,6 +33,7 @@ export function SmartAlbumView() {
   const loadInitial = useCallback(async () => {
     if (selectedSmartAlbumId == null) return;
     setLoading(true);
+    setError(null);
     try {
       const [albums, items] = await Promise.all([
         listSmartAlbums(),
@@ -39,12 +41,13 @@ export function SmartAlbumView() {
       ]);
       setAlbum(albums.find((a) => a.id === selectedSmartAlbumId) ?? null);
       setMedia(items);
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Failed to load smart album:", err);
+      setError(t("errors.generic"));
     } finally {
       setLoading(false);
     }
-  }, [selectedSmartAlbumId]);
+  }, [selectedSmartAlbumId, t]);
 
   useEffect(() => {
     void loadInitial();
@@ -69,8 +72,8 @@ export function SmartAlbumView() {
     try {
       const items = await getSmartAlbumMedia(selectedSmartAlbumId, media.length, PAGE_SIZE);
       setMedia((prev) => [...prev, ...items]);
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Failed to load more smart album media:", err);
     } finally {
       setLoadingMore(false);
     }
@@ -119,6 +122,12 @@ export function SmartAlbumView() {
           {t("gallery.count", { count: album?.media_count ?? media.length })}
         </span>
       </div>
+
+      {error && (
+        <div className="border-b border-red-900/50 bg-red-950/30 px-4 py-2">
+          <p className="text-sm text-red-400">{error}</p>
+        </div>
+      )}
 
       {media.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center text-neutral-500">

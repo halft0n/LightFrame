@@ -107,8 +107,8 @@ pub fn compute_dhash(path: &Path) -> Result<u64> {
     Ok(hash)
 }
 
-pub fn dhash_from_decoded(decoded: &DecodedImage) -> u64 {
-    let img = decoded.to_dynamic_image();
+pub fn dhash_from_decoded(decoded: &DecodedImage) -> lightframe_core::Result<u64> {
+    let img = decoded.to_dynamic_image()?;
     let gray = img
         .resize_exact(9, 8, image::imageops::FilterType::Lanczos3)
         .to_luma8();
@@ -120,11 +120,11 @@ pub fn dhash_from_decoded(decoded: &DecodedImage) -> u64 {
             }
         }
     }
-    hash
+    Ok(hash)
 }
 
-pub fn phash_from_decoded(decoded: &DecodedImage) -> u64 {
-    compute_phash(&decoded.to_dynamic_image())
+pub fn phash_from_decoded(decoded: &DecodedImage) -> lightframe_core::Result<u64> {
+    Ok(compute_phash(&decoded.to_dynamic_image()?))
 }
 
 #[cfg(test)]
@@ -300,8 +300,8 @@ mod tests {
             width,
             height,
         };
-        let from_decoded = phash_from_decoded(&decoded);
-        let from_dynamic = compute_phash(&decoded.to_dynamic_image());
+        let from_decoded = phash_from_decoded(&decoded).unwrap();
+        let from_dynamic = compute_phash(&decoded.to_dynamic_image().unwrap());
         assert_eq!(from_decoded, from_dynamic);
     }
 

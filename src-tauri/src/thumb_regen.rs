@@ -89,11 +89,22 @@ pub fn regenerate_thumbnails_for_media(state: &AppState, media_id: i64) -> Resul
             let _ = std::fs::create_dir_all(parent);
         }
 
-        let rt = tokio::runtime::Handle::current();
-        let extracted =
-            rt.block_on(async { lightframe_video::extract_frame(path, &temp_frame, 1.0).await });
+        let path_owned = path.to_path_buf();
+        let frame_clone = temp_frame.clone();
+        let extraction_result = std::thread::spawn(move || {
+            let rt = tokio::runtime::Runtime::new()
+                .map_err(|e| format!("failed to create runtime: {e}"))?;
+            rt.block_on(lightframe_video::extract_frame(
+                &path_owned,
+                &frame_clone,
+                1.0,
+            ))
+            .map_err(|e| format!("frame extraction failed: {e}"))
+        })
+        .join()
+        .map_err(|_| "video frame extraction thread panicked".to_string())?;
 
-        if extracted.is_err() || !temp_frame.exists() {
+        if extraction_result.is_err() || !temp_frame.exists() {
             return Ok(false);
         }
 

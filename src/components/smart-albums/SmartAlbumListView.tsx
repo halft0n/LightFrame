@@ -47,8 +47,13 @@ export function SmartAlbumListView() {
 
   const handleDelete = async (e: React.MouseEvent, albumId: number) => {
     e.stopPropagation();
-    await deleteSmartAlbum(albumId);
-    await loadAlbums();
+    if (!window.confirm(t("smartAlbums.confirmDelete"))) return;
+    try {
+      await deleteSmartAlbum(albumId);
+      await loadAlbums();
+    } catch (err) {
+      console.error("Failed to delete smart album:", err);
+    }
   };
 
   if (loading) {

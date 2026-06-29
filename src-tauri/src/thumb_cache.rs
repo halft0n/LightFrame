@@ -28,13 +28,13 @@ impl ThumbCache {
             ThumbnailSize::Micro => self
                 .micro
                 .lock()
-                .expect("micro thumb cache mutex poisoned")
+                .unwrap_or_else(|e| e.into_inner())
                 .get(&media_id)
                 .cloned(),
             ThumbnailSize::Small | ThumbnailSize::Large => self
                 .standard
                 .lock()
-                .expect("standard thumb cache mutex poisoned")
+                .unwrap_or_else(|e| e.into_inner())
                 .get(&(media_id, size))
                 .cloned(),
         }
@@ -45,13 +45,13 @@ impl ThumbCache {
             ThumbnailSize::Micro => {
                 self.micro
                     .lock()
-                    .expect("micro thumb cache mutex poisoned")
+                    .unwrap_or_else(|e| e.into_inner())
                     .put(media_id, bytes);
             }
             ThumbnailSize::Small | ThumbnailSize::Large => {
                 self.standard
                     .lock()
-                    .expect("standard thumb cache mutex poisoned")
+                    .unwrap_or_else(|e| e.into_inner())
                     .put((media_id, size), bytes);
             }
         }
@@ -59,14 +59,11 @@ impl ThumbCache {
 
     pub fn invalidate_media(&self, media_id: i64) {
         {
-            let mut micro = self.micro.lock().expect("micro thumb cache mutex poisoned");
+            let mut micro = self.micro.lock().unwrap_or_else(|e| e.into_inner());
             micro.pop(&media_id);
         }
         {
-            let mut standard = self
-                .standard
-                .lock()
-                .expect("standard thumb cache mutex poisoned");
+            let mut standard = self.standard.lock().unwrap_or_else(|e| e.into_inner());
             standard.pop(&(media_id, ThumbnailSize::Small));
             standard.pop(&(media_id, ThumbnailSize::Large));
         }

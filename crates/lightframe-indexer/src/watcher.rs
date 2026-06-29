@@ -35,16 +35,16 @@ pub fn is_media_rename_event(event: &Event) -> bool {
 
 pub struct FolderWatcher {
     _watcher: RecommendedWatcher,
-    pub events: mpsc::UnboundedReceiver<Event>,
+    pub events: mpsc::Receiver<Event>,
 }
 
 impl FolderWatcher {
     pub fn new(folder: &Path) -> Result<Self> {
-        let (tx, rx) = mpsc::unbounded_channel();
+        let (tx, rx) = mpsc::channel(4096);
 
         let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
             if let Ok(event) = res {
-                let _ = tx.send(event);
+                let _ = tx.try_send(event);
             }
         })
         .map_err(|e| lightframe_core::Error::Other(e.to_string()))?;

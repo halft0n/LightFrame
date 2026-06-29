@@ -27,6 +27,7 @@ export function PersonDetailView() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [splittingId, setSplittingId] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
 
@@ -38,6 +39,7 @@ export function PersonDetailView() {
   const loadInitial = useCallback(async () => {
     if (selectedPersonId == null) return;
     setLoading(true);
+    setError(null);
     try {
       const [people, faceList] = await Promise.all([
         listPersons(),
@@ -48,13 +50,14 @@ export function PersonDetailView() {
       setName(found?.name ?? "");
       setFaces(faceList);
       setHasMore(faceList.length === PAGE_SIZE);
-    } catch {
+    } catch (err) {
+      console.error("Failed to load person detail:", err);
       setHasMore(false);
-      // ignore
+      setError(t("errors.generic"));
     } finally {
       setLoading(false);
     }
-  }, [selectedPersonId]);
+  }, [selectedPersonId, t]);
 
   useEffect(() => {
     void loadInitial();
@@ -86,8 +89,8 @@ export function PersonDetailView() {
       const items = await getPersonFaces(selectedPersonId, faces.length, PAGE_SIZE);
       setFaces((prev) => [...prev, ...items]);
       setHasMore(items.length === PAGE_SIZE);
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Failed to load more faces:", err);
     } finally {
       setLoadingMore(false);
     }
@@ -114,8 +117,8 @@ export function PersonDetailView() {
     try {
       await renamePerson(selectedPersonId, trimmed);
       setPerson((prev) => (prev ? { ...prev, name: trimmed || null } : prev));
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Failed to rename person:", err);
     } finally {
       setEditingName(false);
     }
@@ -130,8 +133,8 @@ export function PersonDetailView() {
         prev ? { ...prev, face_count: Math.max(0, prev.face_count - 1) } : prev,
       );
       setToast(t("people.faceSplitSuccess"));
-    } catch {
-      // ignore
+    } catch (err) {
+      console.error("Failed to split face from person:", err);
     } finally {
       setSplittingId(null);
     }
@@ -206,6 +209,12 @@ export function PersonDetailView() {
           {t("people.faceCount", { count: person?.face_count ?? faces.length })}
         </span>
       </div>
+
+      {error && (
+        <div className="border-b border-red-900/50 bg-red-950/30 px-4 py-2">
+          <p className="text-sm text-red-400">{error}</p>
+        </div>
+      )}
 
       <div ref={parentRef} className="flex-1 overflow-y-auto px-1 py-1">
         {faces.length === 0 ? (

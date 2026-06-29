@@ -53,10 +53,18 @@ pub struct DecodedImage {
 }
 
 impl DecodedImage {
-    pub fn to_dynamic_image(&self) -> image::DynamicImage {
+    pub fn to_dynamic_image(&self) -> Result<image::DynamicImage, crate::Error> {
         let img = image::RgbaImage::from_raw(self.width, self.height, self.rgba.clone())
-            .expect("invalid RGBA buffer dimensions");
-        image::DynamicImage::ImageRgba8(img)
+            .ok_or_else(|| {
+                crate::Error::Decode(format!(
+                    "RGBA buffer length {} does not match {}x{}x4={}",
+                    self.rgba.len(),
+                    self.width,
+                    self.height,
+                    (self.width as usize) * (self.height as usize) * 4,
+                ))
+            })?;
+        Ok(image::DynamicImage::ImageRgba8(img))
     }
 }
 

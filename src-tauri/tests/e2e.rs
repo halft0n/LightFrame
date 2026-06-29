@@ -175,8 +175,8 @@ async fn index_file(db: &Database, folder_id: i64, path: &Path) -> lightframe_co
                 Err(_) => return (None, None, None),
             };
 
-            let dhash = Some(lightframe_dedup::dhash_from_decoded(&decoded));
-            let phash = Some(lightframe_dedup::phash_from_decoded(&decoded));
+            let dhash = lightframe_dedup::dhash_from_decoded(&decoded).ok();
+            let phash = lightframe_dedup::phash_from_decoded(&decoded).ok();
             let _ =
                 lightframe_thumbnail::generate_from_decoded(&decoded, &hash, ThumbnailSize::Small);
             let micro = lightframe_thumbnail::micro_blob_from_decoded(&decoded).ok();

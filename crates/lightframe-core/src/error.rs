@@ -17,6 +17,9 @@ pub enum Error {
     #[error("AI processing error: {0}")]
     Ai(String),
 
+    #[error("Image decode error: {0}")]
+    Decode(String),
+
     #[error("Configuration error: {0}")]
     Config(String),
 

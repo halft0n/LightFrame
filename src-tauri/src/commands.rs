@@ -99,7 +99,9 @@ pub fn add_watched_folder(
         .map_err(|e| e.to_string())?;
 
     scan::spawn_scan(app.clone(), &state, folder.id);
-    let _ = watcher::start(&app, &state);
+    if let Err(e) = watcher::start(&app, &state) {
+        tracing::warn!(folder_id = folder.id, "failed to start file watcher: {e}");
+    }
     Ok(folder)
 }
 
@@ -1216,8 +1218,10 @@ pub async fn compute_clip_embeddings_batch(
         });
     }
 
-    let mut ai = state.ai.lock().await;
-    ai.ensure_python().await.map_err(|e| e.to_string())?;
+    {
+        let mut ai = state.ai.lock().await;
+        ai.ensure_python().await.map_err(|e| e.to_string())?;
+    }
 
     let mut succeeded = 0usize;
     let mut failed = 0usize;
@@ -1231,7 +1235,12 @@ pub async fn compute_clip_embeddings_batch(
             continue;
         }
 
-        match ai.compute_embedding(path).await {
+        let result = {
+            let ai = state.ai.lock().await;
+            ai.compute_embedding(path).await
+        };
+
+        match result {
             Ok(Some(embedding)) => {
                 if let Err(e) = state.db.store_clip_embedding(*media_id, &embedding) {
                     failed += 1;
@@ -1532,14 +1541,12 @@ pub async fn cluster_faces(
         let mut results = Vec::with_capacity(clusters.len());
 
         for cluster in clusters {
+            let face_count = cluster.face_ids.len() as i64;
             let person_id = db.create_person(None).map_err(|e| e.to_string())?;
-            for face_id in cluster.face_ids {
-                db.assign_face_to_person(face_id, person_id)
+            for face_id in &cluster.face_ids {
+                db.assign_face_to_person(*face_id, person_id)
                     .map_err(|e| e.to_string())?;
             }
-            let face_count = db
-                .get_person_face_count(person_id)
-                .map_err(|e| e.to_string())?;
             results.push(PersonClusterInfo {
                 person_id,
                 name: None,
@@ -1638,12 +1645,16 @@ pub fn export_edited(
         .ok_or_else(|| "no edit params saved for this media".to_string())?;
 
     let quality = quality.clamp(1, 100);
-    crate::image_edit::export_edited_image(
-        std::path::Path::new(&media.path),
-        std::path::Path::new(&output_path),
-        &params,
-        quality,
-    )
+    let out = std::path::Path::new(&output_path);
+    if crate::original_protocol::path_contains_parent_dir(out) {
+        return Err("output path contains path traversal".to_string());
+    }
+    if let Some(parent) = out.parent()
+        && !parent.exists()
+    {
+        return Err("output directory does not exist".to_string());
+    }
+    crate::image_edit::export_edited_image(std::path::Path::new(&media.path), out, &params, quality)
 }
 
 #[tauri::command]
@@ -1688,6 +1699,11 @@ pub fn get_geo_clusters(
 }
 
 fn remove_media_from_disk(path: &str, hash: Option<&str>) {
+    let file_path = std::path::Path::new(path);
+    if crate::original_protocol::path_contains_parent_dir(file_path) {
+        tracing::error!("permanent delete: refusing path with traversal: {path}");
+        return;
+    }
     match std::fs::remove_file(path) {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {

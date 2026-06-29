@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useTranslation } from "@/i18n/useTranslation";
 
@@ -26,18 +26,28 @@ export function LogSettings() {
   const [logDir, setLogDir] = useState("");
   const [logFiles, setLogFiles] = useState<LogFileInfo[]>([]);
   const [saved, setSaved] = useState(false);
+  const savedTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     invoke<LogConfig>("get_log_config").then(setConfig).catch(console.error);
     invoke<string>("get_log_directory").then(setLogDir).catch(console.error);
     invoke<LogFileInfo[]>("get_log_files").then(setLogFiles).catch(console.error);
+
+    return () => {
+      if (savedTimeoutRef.current) {
+        clearTimeout(savedTimeoutRef.current);
+      }
+    };
   }, []);
 
   const handleSave = async () => {
     try {
       await invoke("set_log_config", { config });
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      if (savedTimeoutRef.current) {
+        clearTimeout(savedTimeoutRef.current);
+      }
+      savedTimeoutRef.current = setTimeout(() => setSaved(false), 2000);
     } catch (e) {
       console.error("Failed to save log config:", e);
     }

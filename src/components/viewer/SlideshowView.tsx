@@ -139,6 +139,8 @@ export function SlideshowView() {
       role="dialog"
       aria-modal="true"
       aria-label={t("slideshow.title")}
+      tabIndex={-1}
+      autoFocus
     >
       <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-2">
         <button
