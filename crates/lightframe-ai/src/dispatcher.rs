@@ -10,11 +10,14 @@ use tracing::info;
 #[cfg(any(feature = "clip", feature = "face"))]
 use std::sync::Mutex;
 
+#[cfg(any(feature = "clip", feature = "face"))]
+use crate::models::model_exists;
+
 #[cfg(feature = "clip")]
-use crate::models::{clip_model_path, model_exists};
+use crate::models::clip_model_path;
 
 #[cfg(feature = "face")]
-use crate::models::{face_detect_model_path, face_recog_model_path, model_exists as _};
+use crate::models::{face_detect_model_path, face_recog_model_path};
 
 #[cfg(feature = "clip")]
 use crate::clip::ClipEncoder;

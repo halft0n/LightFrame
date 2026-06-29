@@ -181,13 +181,7 @@ fn list_log_files_in(log_dir: &Path) -> Vec<LogFileInfo> {
         .collect()
 }
 
-/// Collect recent error logs for future upload (designed for extensibility)
-#[allow(dead_code)]
-pub fn collect_recent_errors(since_hours: u64) -> Vec<String> {
-    collect_recent_errors_in(&log_directory(), since_hours)
-}
-
-#[cfg_attr(not(test), allow(dead_code))]
+#[cfg(test)]
 fn collect_recent_errors_in(log_dir: &Path, since_hours: u64) -> Vec<String> {
     let cutoff = std::time::SystemTime::now()
         .checked_sub(std::time::Duration::from_secs(since_hours * 3600))

@@ -17,26 +17,16 @@ pub struct PersonCluster {
 
 pub struct FaceDetector {
     detect_session: Option<Session>,
-    #[allow(dead_code)]
-    recognize_session: Option<Session>,
 }
 
 impl FaceDetector {
-    pub fn new(detect_model: Option<&Path>, recog_model: Option<&Path>) -> Result<Self> {
+    pub fn new(detect_model: Option<&Path>, _recog_model: Option<&Path>) -> Result<Self> {
         let detect_session = detect_model
             .filter(|p| model_exists(p))
             .map(|p| load_session(p, "face detection"))
             .transpose()?;
 
-        let recognize_session = recog_model
-            .filter(|p| model_exists(p))
-            .map(|p| load_session(p, "face recognition"))
-            .transpose()?;
-
-        Ok(Self {
-            detect_session,
-            recognize_session,
-        })
+        Ok(Self { detect_session })
     }
 
     pub fn try_default() -> Result<Self> {
