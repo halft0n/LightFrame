@@ -113,7 +113,7 @@ fn bench_timeline_groups(c: &mut Criterion) {
     seed_media(&db, folder_id, 5_000);
 
     c.bench_function("get_timeline_groups_5000", |b| {
-        b.iter(|| black_box(db.get_timeline_groups(200, 0).unwrap()));
+        b.iter(|| black_box(db.get_timeline_groups(200, None).unwrap()));
     });
 }
 

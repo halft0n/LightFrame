@@ -16,6 +16,7 @@ _shutdown_requested = False
 
 _CLIP_AVAILABLE = False
 _FACE_AVAILABLE = False
+_clip_cache: tuple[Any, Any, Any] | None = None
 
 try:
     import open_clip  # type: ignore[import-not-found]
@@ -41,6 +42,21 @@ def _register(name: str):
     return decorator
 
 
+def _get_clip_model() -> tuple[Any, Any, Any]:
+    """Lazy-load open-clip model, preprocess, and tokenizer."""
+    global _clip_cache
+    if not _CLIP_AVAILABLE:
+        raise RuntimeError("open-clip-torch is not installed")
+    if _clip_cache is None:
+        model, _, preprocess = open_clip.create_model_and_transforms(  # type: ignore[name-defined]
+            "ViT-B-32", pretrained="openai"
+        )
+        tokenizer = open_clip.get_tokenizer("ViT-B-32")  # type: ignore[name-defined]
+        model.eval()
+        _clip_cache = (model, preprocess, tokenizer)
+    return _clip_cache
+
+
 @_register("ping")
 def _ping(_params: dict[str, Any]) -> dict[str, bool]:
     return {"pong": True}
@@ -62,7 +78,7 @@ def _check_capabilities(_params: dict[str, Any]) -> dict[str, Any]:
 
 @_register("compute_clip_embedding")
 def _compute_clip_embedding(params: dict[str, Any]) -> dict[str, Any] | None:
-    """Compute a CLIP embedding using open-clip when available."""
+    """Compute a CLIP image embedding using open-clip when available."""
     image_path = params.get("image_path")
     if not image_path or not isinstance(image_path, str):
         raise ValueError("params.image_path must be a non-empty string")
@@ -72,14 +88,32 @@ def _compute_clip_embedding(params: dict[str, Any]) -> dict[str, Any] | None:
 
     from PIL import Image
 
-    model, _, preprocess = open_clip.create_model_and_transforms(  # type: ignore[name-defined]
-        "ViT-B-32", pretrained="openai"
-    )
-    model.eval()
+    model, preprocess, _ = _get_clip_model()
 
     with torch.no_grad():  # type: ignore[name-defined]
         image = preprocess(Image.open(image_path).convert("RGB")).unsqueeze(0)
         embedding = model.encode_image(image)
+        embedding = embedding / embedding.norm(dim=-1, keepdim=True)
+        vector = embedding.squeeze(0).tolist()
+
+    return {"embedding": vector}
+
+
+@_register("compute_text_embedding")
+def _compute_text_embedding(params: dict[str, Any]) -> dict[str, Any] | None:
+    """Compute a CLIP text embedding using open-clip when available."""
+    text = params.get("text")
+    if not text or not isinstance(text, str):
+        raise ValueError("params.text must be a non-empty string")
+
+    if not _CLIP_AVAILABLE:
+        return None
+
+    model, _, tokenizer = _get_clip_model()
+
+    with torch.no_grad():  # type: ignore[name-defined]
+        tokens = tokenizer([text.strip()])
+        embedding = model.encode_text(tokens)
         embedding = embedding / embedding.norm(dim=-1, keepdim=True)
         vector = embedding.squeeze(0).tolist()
 

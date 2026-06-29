@@ -23,7 +23,7 @@ pub use status::{AiStatus, check_ai_status};
 pub use types::FaceDetection;
 
 #[cfg(feature = "clip")]
-pub use clip::ClipEncoder;
+pub use clip::{ClipEncoder, ClipTextEncoder};
 
 #[cfg(feature = "face")]
 pub use face::{FaceDetector, PersonCluster};

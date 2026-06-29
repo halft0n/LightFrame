@@ -19,6 +19,9 @@ use crate::models::{face_detect_model_path, face_recog_model_path, model_exists 
 #[cfg(feature = "clip")]
 use crate::clip::ClipEncoder;
 
+#[cfg(feature = "clip")]
+use crate::clip::ClipTextEncoder;
+
 #[cfg(feature = "face")]
 use crate::face::FaceDetector;
 
@@ -29,6 +32,8 @@ use crate::face::FaceDetector;
 pub struct AiDispatcher {
     #[cfg(feature = "clip")]
     clip: Option<Mutex<ClipEncoder>>,
+    #[cfg(feature = "clip")]
+    clip_text: Option<Mutex<ClipTextEncoder>>,
     #[cfg(feature = "face")]
     face: Option<Mutex<FaceDetector>>,
     python: Option<Arc<AsyncMutex<PythonSidecar>>>,
@@ -39,6 +44,8 @@ impl AiDispatcher {
         Self {
             #[cfg(feature = "clip")]
             clip: Self::try_init_clip(),
+            #[cfg(feature = "clip")]
+            clip_text: Self::try_init_clip_text(),
             #[cfg(feature = "face")]
             face: Self::try_init_face(),
             python: None,
@@ -59,6 +66,25 @@ impl AiDispatcher {
             }
             Err(e) => {
                 tracing::warn!("failed to load CLIP encoder: {e}");
+                None
+            }
+        }
+    }
+
+    #[cfg(feature = "clip")]
+    fn try_init_clip_text() -> Option<Mutex<ClipTextEncoder>> {
+        let path = crate::models::clip_text_model_path();
+        if !model_exists(&path) {
+            tracing::debug!("CLIP text model not found at {}", path.display());
+            return None;
+        }
+        match ClipTextEncoder::new(&path) {
+            Ok(enc) => {
+                info!("CLIP text encoder loaded from {}", path.display());
+                Some(Mutex::new(enc))
+            }
+            Err(e) => {
+                tracing::warn!("failed to load CLIP text encoder: {e}");
                 None
             }
         }
@@ -185,6 +211,42 @@ impl AiDispatcher {
 
         Ok(Vec::new())
     }
+
+    /// Encode a text query into a CLIP embedding vector (512-dim, L2-normalized).
+    /// Tries the Python sidecar first; ONNX Rust path is not yet implemented.
+    pub async fn compute_text_embedding(&self, text: &str) -> Result<Option<Vec<f32>>> {
+        if text.trim().is_empty() {
+            return Ok(None);
+        }
+
+        if let Some(python) = &self.python {
+            let sidecar = python.lock().await;
+            match sidecar
+                .call("compute_text_embedding", json!({ "text": text }))
+                .await
+            {
+                Ok(result) => {
+                    if let Some(embedding) = parse_embedding(&result) {
+                        return Ok(Some(embedding));
+                    }
+                }
+                Err(e) => tracing::warn!("Python text embedding failed: {e}"),
+            }
+        }
+
+        #[cfg(feature = "clip")]
+        if let Some(text_enc) = &self.clip_text {
+            let mut guard = text_enc.lock().map_err(|_| {
+                lightframe_core::Error::Ai("CLIP text encoder lock poisoned".into())
+            })?;
+            match guard.encode_text(text) {
+                Ok(embedding) => return Ok(Some(embedding)),
+                Err(e) => tracing::debug!("Rust CLIP text encoding unavailable: {e}"),
+            }
+        }
+
+        Ok(None)
+    }
 }
 
 impl Default for AiDispatcher {
@@ -274,7 +336,14 @@ mod tests {
     }
 
     #[test]
-    fn parse_embedding_null_returns_none() {
-        assert!(parse_embedding(&Value::Null).is_none());
+    fn parse_embedding_from_object_with_embedding_key() {
+        let value = json!({"embedding": [0.4, 0.5]});
+        let emb = parse_embedding(&value).unwrap();
+        assert_eq!(emb.len(), 2);
+    }
+
+    #[test]
+    fn parse_embedding_empty_array_returns_none() {
+        assert!(parse_embedding(&json!([])).is_none());
     }
 }

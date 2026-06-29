@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   downloadModel,
   getModelStatus,
   openModelsDir,
+  type ModelDownloadProgress,
   type ModelFileStatus,
   type ModelStatus,
 } from "@/lib/tauri";
@@ -32,13 +34,52 @@ function formatFileSize(bytes: number | null): string {
   return `${(bytes / 1024).toFixed(0)} KB`;
 }
 
+function formatSpeed(bytesPerSec: number): string {
+  if (bytesPerSec >= 1024 * 1024) {
+    return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+  }
+  return `${(bytesPerSec / 1024).toFixed(0)} KB/s`;
+}
+
+interface DownloadProgressState {
+  downloaded: number;
+  total: number;
+  speedBps: number;
+}
+
+function DownloadProgressBar({ progress }: { progress: DownloadProgressState }) {
+  const { t } = useTranslation();
+  const { downloaded, total, speedBps } = progress;
+  const percent = total > 0 ? Math.min(100, (downloaded / total) * 100) : null;
+
+  return (
+    <div className="mt-2 space-y-1">
+      <div className="h-1.5 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
+        <div
+          className="h-full rounded-full bg-blue-600 transition-[width] duration-150"
+          style={{ width: `${percent ?? 0}%` }}
+        />
+      </div>
+      <p className="text-[11px] tabular-nums text-neutral-500 dark:text-neutral-400">
+        {percent != null ? `${percent.toFixed(1)}%` : t("ai.downloading")}
+        {" · "}
+        {formatFileSize(downloaded)}
+        {total > 0 && <> / {formatFileSize(total)}</>}
+        {speedBps > 0 && <> · {formatSpeed(speedBps)}</>}
+      </p>
+    </div>
+  );
+}
+
 function ModelRow({
   model,
   downloading,
+  progress,
   onDownload,
 }: {
   model: ModelFileStatus;
   downloading: boolean;
+  progress: DownloadProgressState | null;
   onDownload: (filename: string) => void;
 }) {
   const { t } = useTranslation();
@@ -60,6 +101,7 @@ function ModelRow({
             )}
             {!model.installed && <> · ~{model.size_mb} MB</>}
           </p>
+          {downloading && progress && <DownloadProgressBar progress={progress} />}
         </div>
         <div className="flex items-center gap-2">
           <StatusBadge available={model.installed} />
@@ -85,6 +127,8 @@ export function AiSettings() {
   const [loading, setLoading] = useState(true);
   const [opening, setOpening] = useState(false);
   const [downloadingFile, setDownloadingFile] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgressState | null>(null);
+  const speedSampleRef = useRef<{ downloaded: number; at: number } | null>(null);
 
   const loadStatus = useCallback(async () => {
     setLoading(true);
@@ -101,6 +145,35 @@ export function AiSettings() {
   useEffect(() => {
     void loadStatus();
   }, [loadStatus]);
+
+  useEffect(() => {
+    if (!window.__TAURI_INTERNALS__) return;
+
+    let unlisten: UnlistenFn | undefined;
+    void listen<ModelDownloadProgress>("model-download-progress", (event) => {
+      const { filename, downloaded, total } = event.payload;
+      if (filename !== downloadingFile) return;
+
+      const now = Date.now();
+      const prev = speedSampleRef.current;
+      let speedBps = 0;
+      if (prev && now > prev.at) {
+        const deltaBytes = downloaded - prev.downloaded;
+        const deltaSec = (now - prev.at) / 1000;
+        if (deltaSec > 0 && deltaBytes >= 0) {
+          speedBps = deltaBytes / deltaSec;
+        }
+      }
+      speedSampleRef.current = { downloaded, at: now };
+      setDownloadProgress({ downloaded, total, speedBps });
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      void unlisten?.();
+    };
+  }, [downloadingFile]);
 
   const handleOpenModelsDir = async () => {
     if (!window.__TAURI_INTERNALS__) {
@@ -125,6 +198,8 @@ export function AiSettings() {
     }
 
     setDownloadingFile(filename);
+    setDownloadProgress({ downloaded: 0, total: 0, speedBps: 0 });
+    speedSampleRef.current = null;
     try {
       await downloadModel(filename);
       await loadStatus();
@@ -132,6 +207,8 @@ export function AiSettings() {
       console.error("Failed to download model:", err);
     } finally {
       setDownloadingFile(null);
+      setDownloadProgress(null);
+      speedSampleRef.current = null;
     }
   };
 
@@ -154,7 +231,8 @@ export function AiSettings() {
                 key={model.filename}
                 model={model}
                 downloading={downloadingFile === model.filename}
-                onDownload={(filename) => void handleDownload(filename)}
+                progress={downloadingFile === model.filename ? downloadProgress : null}
+                onDownload={(name) => void handleDownload(name)}
               />
             ))}
           </ul>

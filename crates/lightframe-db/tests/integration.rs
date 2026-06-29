@@ -267,7 +267,7 @@ fn get_timeline_groups_returns_grouped_media() {
         Some(NaiveDateTime::parse_from_str("2024-06-14 09:00:00", "%Y-%m-%d %H:%M:%S").unwrap());
     db.upsert_media(folder_id, &media3).unwrap();
 
-    let groups = db.get_timeline_groups(100, 0).unwrap();
+    let groups = db.get_timeline_groups(100, None).unwrap();
     assert_eq!(groups.len(), 2, "should have 2 date groups");
     assert_eq!(groups[0].date, "2024-06-15");
     assert_eq!(groups[0].count, 2);
@@ -277,7 +277,7 @@ fn get_timeline_groups_returns_grouped_media() {
 }
 
 #[test]
-fn get_timeline_groups_respects_limit_and_offset() {
+fn get_timeline_groups_respects_limit_and_cursor() {
     let db = create_test_db();
     let folder_id = db.add_watched_folder("/photos").unwrap().id;
 
@@ -293,11 +293,26 @@ fn get_timeline_groups_respects_limit_and_offset() {
         db.upsert_media(folder_id, &media).unwrap();
     }
 
-    let groups = db.get_timeline_groups(5, 0).unwrap();
+    let groups = db.get_timeline_groups(5, None).unwrap();
     assert!(groups.iter().map(|g| g.count).sum::<i64>() <= 5);
 
-    let all = db.get_timeline_groups(100, 0).unwrap();
+    let all = db.get_timeline_groups(100, None).unwrap();
     assert_eq!(all.iter().map(|g| g.count).sum::<i64>(), 10);
+
+    let last_media = all.last().and_then(|g| g.media.last()).expect("last media");
+    let ts = last_media
+        .created_at
+        .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
+        .unwrap_or_else(|| {
+            last_media
+                .modified_at
+                .format("%Y-%m-%d %H:%M:%S")
+                .to_string()
+        });
+    let page2 = db
+        .get_timeline_groups(5, Some((ts, last_media.id)))
+        .unwrap();
+    assert!(page2.iter().map(|g| g.count).sum::<i64>() <= 5);
 }
 
 #[test]
@@ -344,7 +359,7 @@ fn get_media_neighbors_returns_none_for_nonexistent() {
 #[test]
 fn get_timeline_groups_empty_database() {
     let db = create_test_db();
-    let groups = db.get_timeline_groups(100, 0).unwrap();
+    let groups = db.get_timeline_groups(100, None).unwrap();
     assert!(groups.is_empty());
 }
 
@@ -941,7 +956,7 @@ fn timeline_groups_ordering_uses_id_tiebreaker() {
         db.upsert_media(folder_id, &media).unwrap();
     }
 
-    let groups = db.get_timeline_groups(100, 0).unwrap();
+    let groups = db.get_timeline_groups(100, None).unwrap();
     assert_eq!(groups.len(), 1);
     assert_eq!(groups[0].count, 3);
 
@@ -1005,6 +1020,34 @@ fn clip_embeddings_store_retrieve_and_overwrite() {
 fn clip_embedding_missing_media_returns_none() {
     let db = create_test_db();
     assert!(db.get_clip_embedding(9999).unwrap().is_none());
+}
+
+#[test]
+fn semantic_search_by_embedding_ranks_by_cosine_similarity() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let id_a = db
+        .upsert_media(fid, &sample_media("/photos/a.jpg"))
+        .unwrap();
+    let id_b = db
+        .upsert_media(fid, &sample_media("/photos/b.jpg"))
+        .unwrap();
+    let id_c = db
+        .upsert_media(fid, &sample_media("/photos/c.jpg"))
+        .unwrap();
+
+    db.store_clip_embedding(id_a, &[1.0, 0.0, 0.0]).unwrap();
+    db.store_clip_embedding(id_b, &[0.9, 0.1, 0.0]).unwrap();
+    db.store_clip_embedding(id_c, &[0.0, 1.0, 0.0]).unwrap();
+
+    let query = [1.0, 0.0, 0.0];
+    let results = db.semantic_search_by_embedding(&query, 0.5, 10).unwrap();
+
+    assert_eq!(results.len(), 2);
+    assert_eq!(results[0].0.id, id_a);
+    assert!(results[0].1 > results[1].1);
+    assert_eq!(results[1].0.id, id_b);
 }
 
 #[test]
@@ -1219,7 +1262,7 @@ fn timeline_groups_all_same_date() {
         db.upsert_media(folder_id, &media).unwrap();
     }
 
-    let groups = db.get_timeline_groups(100, 0).unwrap();
+    let groups = db.get_timeline_groups(100, None).unwrap();
     assert_eq!(groups.len(), 1);
     assert_eq!(groups[0].count, 5);
 }
@@ -1240,7 +1283,7 @@ fn timeline_groups_spanning_years() {
         db.upsert_media(folder_id, &media).unwrap();
     }
 
-    let groups = db.get_timeline_groups(100, 0).unwrap();
+    let groups = db.get_timeline_groups(100, None).unwrap();
     assert_eq!(groups.len(), 3);
     assert_eq!(groups[0].date, "2024-12-31");
     assert_eq!(groups[2].date, "2022-01-01");

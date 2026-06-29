@@ -1,6 +1,8 @@
 mod commands;
+mod face_protocol;
 mod image_edit;
 mod logging;
+mod memory;
 mod original_protocol;
 mod scan;
 mod state;
@@ -22,6 +24,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(app_state)
         .on_window_event(|_window, event| {
             if let tauri::WindowEvent::Destroyed = event {
@@ -106,9 +109,12 @@ pub fn run() {
             commands::get_memory_media,
             commands::get_ai_status,
             commands::compute_clip_embedding,
+            commands::compute_clip_embeddings_batch,
             commands::find_similar_photos,
             commands::detect_faces,
+            commands::detect_faces_batch,
             commands::get_faces,
+            commands::get_person_faces,
             commands::list_persons,
             commands::get_person_media,
             commands::rename_person,
@@ -129,6 +135,10 @@ pub fn run() {
         .register_uri_scheme_protocol("thumb", |ctx, request| {
             let state = ctx.app_handle().state::<AppState>();
             thumb_protocol::handle(&state, request.uri().path())
+        })
+        .register_uri_scheme_protocol("face", |ctx, request| {
+            let state = ctx.app_handle().state::<AppState>();
+            face_protocol::handle(&state, request.uri().path())
         })
         .register_uri_scheme_protocol("original", |ctx, request| {
             let state = ctx.app_handle().state::<AppState>();

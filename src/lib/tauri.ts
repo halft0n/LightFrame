@@ -203,9 +203,22 @@ export interface SimilarPhoto {
 
 export interface FaceInfo {
   id: number;
+  media_id: number;
   bbox: [number, number, number, number];
   confidence: number;
   person_id: number | null;
+}
+
+export interface FaceDetectionProgress {
+  processed: number;
+  total: number;
+  faces_found: number;
+  status: "detecting" | "complete" | "error";
+}
+
+export interface FaceDetectionBatchResult {
+  media_processed: number;
+  faces_found: number;
 }
 
 export interface SearchResult {
@@ -215,11 +228,26 @@ export interface SearchResult {
   relevance: number;
 }
 
+export interface SemanticSearchResponse {
+  results: SearchResult[];
+  used_semantic: boolean;
+}
+
+export interface ModelDownloadProgress {
+  filename: string;
+  downloaded: number;
+  total: number;
+}
+
 export interface PersonClusterInfo {
   person_id: number;
   name: string | null;
   face_count: number;
   avg_intra_cluster_distance: number;
+}
+
+export function getFaceThumbnailUrl(faceId: number): string {
+  return `face://localhost/${faceId}`;
 }
 
 export function getThumbnailUrl(id: number, size: "small" | "large" | "micro" = "small"): string {
@@ -294,8 +322,28 @@ export async function getMediaById(id: number): Promise<MediaItem | null> {
   return invoke<MediaItem | null>("get_media_by_id", { id });
 }
 
-export async function getTimelineGroups(limit = 200, offset = 0): Promise<TimelineGroup[]> {
-  return invoke<TimelineGroup[]>("get_timeline_groups", { limit, offset });
+export type TimelineCursor = { createdAt: string; id: number } | null;
+
+export async function getTimelineGroups(
+  limit = 200,
+  cursor?: TimelineCursor,
+): Promise<TimelineGroup[]> {
+  return invoke<TimelineGroup[]>("get_timeline_groups", {
+    limit,
+    cursorCreatedAt: cursor?.createdAt ?? null,
+    cursorId: cursor?.id ?? null,
+  });
+}
+
+export interface BatchEmbedResult {
+  processed: number;
+  succeeded: number;
+  failed: number;
+  errors: string[];
+}
+
+export async function computeClipEmbeddingsBatch(limit = 32): Promise<BatchEmbedResult> {
+  return invoke<BatchEmbedResult>("compute_clip_embeddings_batch", { limit });
 }
 
 export async function getMediaNeighbors(id: number): Promise<MediaNeighbors> {
@@ -491,8 +539,14 @@ export async function searchMediaCount(query: string): Promise<number> {
   return invoke<number>("search_media_count", { query });
 }
 
-export async function semanticSearch(query: string, limit?: number): Promise<SearchResult[]> {
-  return invoke<SearchResult[]>("semantic_search", { queryText: query, limit: limit ?? 50 });
+export async function semanticSearch(
+  query: string,
+  limit?: number,
+): Promise<SemanticSearchResponse> {
+  return invoke<SemanticSearchResponse>("semantic_search", {
+    queryText: query,
+    limit: limit ?? 50,
+  });
 }
 
 export async function createSmartAlbum(
@@ -588,8 +642,28 @@ export async function detectFaces(mediaId: number): Promise<FaceInfo[]> {
   return invoke<FaceInfo[]>("detect_faces", { mediaId });
 }
 
+export async function detectFacesBatch(): Promise<FaceDetectionBatchResult> {
+  return invoke<FaceDetectionBatchResult>("detect_faces_batch");
+}
+
+export async function onFaceDetectionProgress(
+  callback: (progress: FaceDetectionProgress) => void,
+): Promise<() => void> {
+  return listen<FaceDetectionProgress>("face-detection-progress", (event) => {
+    callback(event.payload);
+  });
+}
+
 export async function getFaces(mediaId: number): Promise<FaceInfo[]> {
   return invoke<FaceInfo[]>("get_faces", { mediaId });
+}
+
+export async function getPersonFaces(
+  personId: number,
+  offset: number,
+  limit: number,
+): Promise<FaceInfo[]> {
+  return invoke<FaceInfo[]>("get_person_faces", { personId, offset, limit });
 }
 
 export async function listPersons(): Promise<Person[]> {

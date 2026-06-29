@@ -64,6 +64,26 @@ function formatDateHeader(
   }).format(date);
 }
 
+function mergeTimelineGroups(prev: TimelineGroup[], data: TimelineGroup[]): TimelineGroup[] {
+  if (prev.length === 0) return data;
+  if (data.length === 0) return prev;
+
+  const lastGroup = prev[prev.length - 1];
+  const firstNew = data[0];
+
+  if (lastGroup.date === firstNew.date) {
+    const merged = [...prev];
+    merged[merged.length - 1] = {
+      ...lastGroup,
+      count: lastGroup.count + firstNew.count,
+      media: [...lastGroup.media, ...firstNew.media],
+    };
+    return [...merged, ...data.slice(1)];
+  }
+
+  return [...prev, ...data];
+}
+
 function buildVirtualRows(groups: TimelineGroup[], columnCount: number): VirtualRow[] {
   const rows: VirtualRow[] = [];
 
@@ -90,6 +110,18 @@ function buildVirtualRows(groups: TimelineGroup[], columnCount: number): Virtual
   return rows;
 }
 
+function timelineCursorFromGroups(groups: TimelineGroup[]) {
+  for (let i = groups.length - 1; i >= 0; i -= 1) {
+    const group = groups[i];
+    const last = group.media[group.media.length - 1];
+    if (!last) continue;
+    const createdAt = last.created_at ?? last.modified_at;
+    if (!createdAt) return null;
+    return { createdAt, id: last.id };
+  }
+  return null;
+}
+
 export function TimelineView() {
   const { t, locale } = useTranslation();
   const parentRef = useRef<HTMLDivElement>(null);
@@ -97,7 +129,7 @@ export function TimelineView() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const [offset, setOffset] = useState(0);
+  const [cursor, setCursor] = useState<ReturnType<typeof timelineCursorFromGroups>>(null);
   const [containerWidth, setContainerWidth] = useState(0);
 
   const columnCount = Math.max(
@@ -111,12 +143,12 @@ export function TimelineView() {
     async function loadInitial() {
       setLoading(true);
       try {
-        const data = await getTimelineGroups(PAGE_SIZE, 0);
+        const data = await getTimelineGroups(PAGE_SIZE);
         if (!cancelled) {
           const itemCount = data.reduce((sum, g) => sum + g.media.length, 0);
           setGroups(data);
           setHasMore(itemCount >= PAGE_SIZE);
-          setOffset(itemCount);
+          setCursor(timelineCursorFromGroups(data));
         }
       } catch (err) {
         console.error("Failed to load timeline groups:", err);
@@ -132,38 +164,23 @@ export function TimelineView() {
   }, []);
 
   const loadMore = useCallback(async () => {
-    if (loadingMore || !hasMore) return;
+    if (loadingMore || !hasMore || !cursor) return;
     setLoadingMore(true);
     try {
-      const data = await getTimelineGroups(PAGE_SIZE, offset);
+      const data = await getTimelineGroups(PAGE_SIZE, cursor);
       const itemCount = data.reduce((sum, g) => sum + g.media.length, 0);
       setGroups((prev) => {
-        if (prev.length === 0) return data;
-        if (data.length === 0) return prev;
-
-        const lastGroup = prev[prev.length - 1];
-        const firstNew = data[0];
-
-        if (lastGroup.date === firstNew.date) {
-          const merged = [...prev];
-          merged[merged.length - 1] = {
-            ...lastGroup,
-            count: lastGroup.count + firstNew.count,
-            media: [...lastGroup.media, ...firstNew.media],
-          };
-          return [...merged, ...data.slice(1)];
-        }
-
-        return [...prev, ...data];
+        const merged = mergeTimelineGroups(prev, data);
+        setCursor(timelineCursorFromGroups(merged));
+        return merged;
       });
       setHasMore(itemCount >= PAGE_SIZE);
-      setOffset((prev) => prev + itemCount);
     } catch (err) {
       console.error("Failed to load more timeline groups:", err);
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, hasMore, offset]);
+  }, [loadingMore, hasMore, cursor]);
 
   useEffect(() => {
     const el = parentRef.current;

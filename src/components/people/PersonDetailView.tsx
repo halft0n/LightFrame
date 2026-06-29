@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PhotoCard } from "@/components/gallery/PhotoCard";
 import {
-  getPersonMedia,
+  getFaceThumbnailUrl,
+  getPersonFaces,
   listPersons,
   renamePerson,
-  type MediaItem,
+  splitFaceFromPerson,
+  type FaceInfo,
   type Person,
 } from "@/lib/tauri";
 import { closePersonDetail, openViewer, useAppStore } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 
-const MIN_COLUMN_WIDTH = 160;
+const MIN_COLUMN_WIDTH = 120;
 const GAP = 3;
 const PAGE_SIZE = 60;
 
@@ -19,31 +20,34 @@ export function PersonDetailView() {
   const { selectedPersonId } = useAppStore();
   const parentRef = useRef<HTMLDivElement>(null);
   const [person, setPerson] = useState<Person | null>(null);
-  const [media, setMedia] = useState<MediaItem[]>([]);
+  const [faces, setFaces] = useState<FaceInfo[]>([]);
   const [name, setName] = useState("");
   const [editingName, setEditingName] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [splittingId, setSplittingId] = useState<number | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
 
   const columnCount = Math.max(
     1,
     Math.floor((containerWidth + GAP) / (MIN_COLUMN_WIDTH + GAP)),
   );
-  const hasMore = person != null && media.length < person.face_count && media.length % PAGE_SIZE === 0;
+  const hasMore =
+    person != null && faces.length < person.face_count && faces.length % PAGE_SIZE === 0;
 
   const loadInitial = useCallback(async () => {
     if (selectedPersonId == null) return;
     setLoading(true);
     try {
-      const [people, items] = await Promise.all([
+      const [people, faceList] = await Promise.all([
         listPersons(),
-        getPersonMedia(selectedPersonId, 0, PAGE_SIZE),
+        getPersonFaces(selectedPersonId, 0, PAGE_SIZE),
       ]);
       const found = people.find((p) => p.id === selectedPersonId) ?? null;
       setPerson(found);
       setName(found?.name ?? "");
-      setMedia(items);
+      setFaces(faceList);
     } catch {
       // ignore
     } finally {
@@ -68,18 +72,24 @@ export function PersonDetailView() {
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
   const loadMore = useCallback(async () => {
     if (selectedPersonId == null || loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
-      const items = await getPersonMedia(selectedPersonId, media.length, PAGE_SIZE);
-      setMedia((prev) => [...prev, ...items]);
+      const items = await getPersonFaces(selectedPersonId, faces.length, PAGE_SIZE);
+      setFaces((prev) => [...prev, ...items]);
     } catch {
       // ignore
     } finally {
       setLoadingMore(false);
     }
-  }, [hasMore, loadingMore, media.length, selectedPersonId]);
+  }, [faces.length, hasMore, loadingMore, selectedPersonId]);
 
   useEffect(() => {
     const el = parentRef.current;
@@ -109,6 +119,22 @@ export function PersonDetailView() {
     }
   };
 
+  const handleSplitFace = async (faceId: number) => {
+    setSplittingId(faceId);
+    try {
+      await splitFaceFromPerson(faceId);
+      setFaces((prev) => prev.filter((f) => f.id !== faceId));
+      setPerson((prev) =>
+        prev ? { ...prev, face_count: Math.max(0, prev.face_count - 1) } : prev,
+      );
+      setToast(t("people.faceSplitSuccess"));
+    } catch {
+      // ignore
+    } finally {
+      setSplittingId(null);
+    }
+  };
+
   if (selectedPersonId == null) return null;
 
   if (loading) {
@@ -120,7 +146,13 @@ export function PersonDetailView() {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="relative flex flex-1 flex-col overflow-hidden">
+      {toast && (
+        <div className="pointer-events-none absolute bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-neutral-800 px-4 py-2 text-sm text-neutral-100 shadow-lg">
+          {toast}
+        </div>
+      )}
+
       <div className="flex items-center gap-3 border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-2">
         <button
           type="button"
@@ -169,12 +201,12 @@ export function PersonDetailView() {
         </div>
 
         <span className="text-sm text-neutral-500">
-          {t("people.faceCount", { count: person?.face_count ?? media.length })}
+          {t("people.faceCount", { count: person?.face_count ?? faces.length })}
         </span>
       </div>
 
       <div ref={parentRef} className="flex-1 overflow-y-auto px-1 py-1">
-        {media.length === 0 ? (
+        {faces.length === 0 ? (
           <div className="flex flex-1 items-center justify-center py-12 text-neutral-500">
             <p>{t("gallery.noPhotos")}</p>
           </div>
@@ -185,15 +217,36 @@ export function PersonDetailView() {
               gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
             }}
           >
-            {media.map((item) => (
-              <PhotoCard
-                key={item.id}
-                item={item}
-                selected={false}
-                selectedMediaIds={[]}
-                onSelect={() => openViewer(item.id)}
-                onOpen={openViewer}
-              />
+            {faces.map((face) => (
+              <div
+                key={face.id}
+                className="group relative aspect-square overflow-hidden rounded-md bg-neutral-800"
+              >
+                <button
+                  type="button"
+                  onClick={() => openViewer(face.media_id)}
+                  className="block h-full w-full"
+                  title={t("people.splitFace")}
+                >
+                  <img
+                    src={getFaceThumbnailUrl(face.id)}
+                    alt=""
+                    className="h-full w-full object-cover"
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSplitFace(face.id)}
+                  disabled={splittingId === face.id}
+                  className="absolute bottom-1 left-1 right-1 rounded bg-black/70 px-2 py-1 text-xs text-neutral-200 opacity-0 transition group-hover:opacity-100 hover:bg-red-900/80 disabled:opacity-50"
+                >
+                  {splittingId === face.id
+                    ? t("gallery.loading")
+                    : t("people.removeFromPerson")}
+                </button>
+              </div>
             ))}
           </div>
         )}

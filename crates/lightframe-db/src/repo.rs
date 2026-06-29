@@ -792,23 +792,46 @@ impl Database {
     pub fn get_timeline_groups(
         &self,
         limit: i64,
-        offset: i64,
+        cursor: Option<(String, i64)>,
     ) -> lightframe_core::Result<Vec<TimelineGroup>> {
+        let limit = limit.clamp(1, 500);
         let conn = self.read_conn()?;
-        let mut stmt = conn
-            .prepare(
+        let (sql, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match cursor {
+            None => (
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
                         created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude,
                         date(COALESCE(created_at, modified_at)) AS group_date
                  FROM media_files
                  WHERE is_deleted = 0
                  ORDER BY COALESCE(created_at, modified_at) DESC, id DESC
-                 LIMIT ?1 OFFSET ?2",
-            )
+                 LIMIT ?1"
+                    .to_string(),
+                vec![Box::new(limit)],
+            ),
+            Some((timestamp, id)) => (
+                "SELECT id, path, filename, media_type, size_bytes, width, height,
+                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude,
+                        date(COALESCE(created_at, modified_at)) AS group_date
+                 FROM media_files
+                 WHERE is_deleted = 0
+                   AND (
+                     COALESCE(created_at, modified_at) < ?1
+                     OR (COALESCE(created_at, modified_at) = ?1 AND id < ?2)
+                   )
+                 ORDER BY COALESCE(created_at, modified_at) DESC, id DESC
+                 LIMIT ?3"
+                    .to_string(),
+                vec![Box::new(timestamp), Box::new(id), Box::new(limit)],
+            ),
+        };
+
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = conn
+            .prepare(&sql)
             .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
 
         let rows = stmt
-            .query_map(params![limit, offset], |row| {
+            .query_map(param_refs.as_slice(), |row| {
                 let group_date: String = row.get(14)?;
                 let media = Self::map_media_row(row)?;
                 Ok((group_date, media))
@@ -2736,6 +2759,32 @@ impl Database {
         Ok(blob.map(|b| blob_to_f32_vec(&b)).filter(|v| !v.is_empty()))
     }
 
+    pub fn list_media_without_clip_embedding(
+        &self,
+        limit: i64,
+    ) -> lightframe_core::Result<Vec<(i64, String)>> {
+        let conn = self.read_conn()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT m.id, m.path
+                 FROM media_files m
+                 LEFT JOIN media_embeddings e ON e.media_id = m.id
+                 WHERE m.is_deleted = 0
+                   AND m.media_type IN ('Photo', 'Screenshot', 'Raw')
+                   AND (e.clip_embedding IS NULL)
+                 ORDER BY m.id ASC
+                 LIMIT ?1",
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(params![limit], |row| Ok((row.get(0)?, row.get(1)?)))
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))
+    }
+
     pub fn get_all_clip_embeddings(&self) -> lightframe_core::Result<Vec<(i64, Vec<f32>)>> {
         let conn = self.read_conn()?;
         let mut stmt = conn
@@ -2783,6 +2832,25 @@ impl Database {
             threshold,
             limit,
         ))
+    }
+
+    /// Cosine-similarity search between a text/query embedding and stored media embeddings.
+    pub fn semantic_search_by_embedding(
+        &self,
+        embedding: &[f32],
+        threshold: f32,
+        limit: usize,
+    ) -> lightframe_core::Result<Vec<(MediaFile, f32)>> {
+        let candidates = self.get_all_clip_embeddings()?;
+        let scored = find_similar_embeddings(embedding, &candidates, threshold, limit);
+
+        let mut results = Vec::with_capacity(scored.len());
+        for (id, score) in scored {
+            if let Some(media) = self.get_media_by_id(id)? {
+                results.push((media, score));
+            }
+        }
+        Ok(results)
     }
 
     pub fn store_face_detections(
@@ -2844,6 +2912,96 @@ impl Database {
                     person_id: row.get(7)?,
                 })
             })
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))
+    }
+
+    pub fn get_face_by_id(
+        &self,
+        face_id: i64,
+    ) -> lightframe_core::Result<Option<FaceDetectionRecord>> {
+        let conn = self.read_conn()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, media_id, bbox_x, bbox_y, bbox_w, bbox_h, confidence, person_id
+                 FROM face_detections WHERE id = ?1",
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        let mut rows = stmt
+            .query_map(params![face_id], |row| {
+                Ok(FaceDetectionRecord {
+                    id: row.get(0)?,
+                    media_id: row.get(1)?,
+                    bbox_x: row.get(2)?,
+                    bbox_y: row.get(3)?,
+                    bbox_w: row.get(4)?,
+                    bbox_h: row.get(5)?,
+                    confidence: row.get(6)?,
+                    person_id: row.get(7)?,
+                })
+            })
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        rows.next()
+            .transpose()
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))
+    }
+
+    pub fn get_faces_for_person(
+        &self,
+        person_id: i64,
+        limit: i64,
+        offset: i64,
+    ) -> lightframe_core::Result<Vec<FaceDetectionRecord>> {
+        let conn = self.read_conn()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, media_id, bbox_x, bbox_y, bbox_w, bbox_h, confidence, person_id
+                 FROM face_detections
+                 WHERE person_id = ?1
+                 ORDER BY created_at DESC
+                 LIMIT ?2 OFFSET ?3",
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map(params![person_id, limit, offset], |row| {
+                Ok(FaceDetectionRecord {
+                    id: row.get(0)?,
+                    media_id: row.get(1)?,
+                    bbox_x: row.get(2)?,
+                    bbox_y: row.get(3)?,
+                    bbox_w: row.get(4)?,
+                    bbox_h: row.get(5)?,
+                    confidence: row.get(6)?,
+                    person_id: row.get(7)?,
+                })
+            })
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))
+    }
+
+    pub fn get_media_ids_without_faces(&self) -> lightframe_core::Result<Vec<i64>> {
+        let conn = self.read_conn()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT mf.id FROM media_files mf
+                 WHERE mf.is_deleted = 0
+                   AND mf.media_type IN ('Photo', 'Raw', 'LivePhoto', 'Screenshot')
+                   AND NOT EXISTS (
+                       SELECT 1 FROM face_detections fd WHERE fd.media_id = mf.id
+                   )
+                 ORDER BY mf.id",
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        let rows = stmt
+            .query_map([], |row| row.get(0))
             .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
 
         rows.collect::<Result<Vec<_>, _>>()

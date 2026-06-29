@@ -1,3 +1,4 @@
+use crate::memory;
 use crate::state::{AppState, ScanStatus};
 use futures::stream::{self, StreamExt};
 use lightframe_core::media::{MediaFile, MediaType, ThumbnailSize};
@@ -7,7 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Emitter};
-use tracing::{error, warn};
+use tracing::{Instrument, error, info, warn};
 
 fn emit_progress(app: &AppHandle, status: &ScanStatus) {
     let payload = status.snapshot();
@@ -64,11 +65,16 @@ pub async fn run_scan(
     scan_status.reset(folder_id);
     db.set_folder_scan_status(folder_id, "scanning")?;
     emit_progress(app, &scan_status);
+    memory::log_memory("scan_start");
 
     let root = PathBuf::from(&folder.path);
-    let files = discover_files(&root).await.inspect_err(|_| {
-        let _ = db.set_folder_scan_status(folder_id, "error");
-    })?;
+    let files = async {
+        discover_files(&root).await.inspect_err(|_| {
+            let _ = db.set_folder_scan_status(folder_id, "error");
+        })
+    }
+    .instrument(tracing::info_span!("file_discovery", folder_id))
+    .await?;
     scan_status.set_total(files.len() as i64);
     scan_status.set_status("scanning");
     emit_progress(app, &scan_status);
@@ -81,7 +87,10 @@ pub async fn run_scan(
             if let Err(e) = process_file(&db, folder_id, &path).await {
                 warn!(path = %path.display(), "failed to process file: {e}");
             }
-            scan_status.increment_scanned();
+            let scanned = scan_status.increment_scanned();
+            if scanned % 100 == 0 {
+                memory::log_memory("scan_progress");
+            }
             emit_progress(&app, &scan_status);
         }
     }))
@@ -95,11 +104,29 @@ pub async fn run_scan(
     db.set_folder_scan_status(folder_id, "idle")?;
     scan_status.set_status("complete");
     emit_progress(app, &scan_status);
+    memory::log_memory("scan_end");
+    info!(
+        folder_id,
+        total = scan_status.snapshot().scanned,
+        "scan complete"
+    );
 
     Ok(())
 }
 
 async fn process_file(db: &Database, folder_id: i64, path: &Path) -> lightframe_core::Result<()> {
+    let path_str = path.to_string_lossy().to_string();
+    let span = tracing::info_span!("process_file", path = %path_str);
+    process_file_inner(db, folder_id, path)
+        .instrument(span)
+        .await
+}
+
+async fn process_file_inner(
+    db: &Database,
+    folder_id: i64,
+    path: &Path,
+) -> lightframe_core::Result<()> {
     let path = path.to_path_buf();
     let media_type = classify_extension(&path);
 
@@ -135,22 +162,30 @@ async fn process_file(db: &Database, folder_id: i64, path: &Path) -> lightframe_
         media_type,
         MediaType::Photo | MediaType::Raw | MediaType::Screenshot
     ) {
-        tokio::task::spawn_blocking({
-            let path = path.clone();
-            move || lightframe_metadata::extract(&path)
-        })
-        .await
-        .map_err(|e| lightframe_core::Error::Other(e.to_string()))??
+        async {
+            tokio::task::spawn_blocking({
+                let path = path.clone();
+                move || lightframe_metadata::extract(&path)
+            })
+            .await
+            .map_err(|e| lightframe_core::Error::Other(e.to_string()))?
+        }
+        .instrument(tracing::info_span!("metadata_extraction"))
+        .await?
     } else {
         lightframe_metadata::PhotoMetadata::default()
     };
 
-    let blake3_hash = tokio::task::spawn_blocking({
-        let path = path.clone();
-        move || lightframe_dedup::file_hash(&path)
-    })
-    .await
-    .map_err(|e| lightframe_core::Error::Other(e.to_string()))??;
+    let blake3_hash = async {
+        tokio::task::spawn_blocking({
+            let path = path.clone();
+            move || lightframe_dedup::file_hash(&path)
+        })
+        .await
+        .map_err(|e| lightframe_core::Error::Other(e.to_string()))?
+    }
+    .instrument(tracing::info_span!("blake3_hashing"))
+    .await?;
 
     let is_image = matches!(
         media_type,
@@ -158,39 +193,43 @@ async fn process_file(db: &Database, folder_id: i64, path: &Path) -> lightframe_
     );
 
     let (dhash, phash, image_micro_blob) = if is_image {
-        tokio::task::spawn_blocking({
-            let path = path.clone();
-            let hash = blake3_hash.clone();
-            move || -> (Option<u64>, Option<u64>, Option<Vec<u8>>) {
-                let decoded = match lightframe_core::decode::decode_image(&path) {
-                    Ok(d) => d,
-                    Err(e) => {
-                        tracing::warn!(path = %path.display(), "decode failed: {e}");
-                        return (None, None, None);
-                    }
-                };
+        async {
+            tokio::task::spawn_blocking({
+                let path = path.clone();
+                let hash = blake3_hash.clone();
+                move || -> (Option<u64>, Option<u64>, Option<Vec<u8>>) {
+                    let decoded = match lightframe_core::decode::decode_image(&path) {
+                        Ok(d) => d,
+                        Err(e) => {
+                            tracing::warn!(path = %path.display(), "decode failed: {e}");
+                            return (None, None, None);
+                        }
+                    };
 
-                let dhash = Some(lightframe_dedup::dhash_from_decoded(&decoded));
-                let phash = Some(lightframe_dedup::phash_from_decoded(&decoded));
+                    let dhash = Some(lightframe_dedup::dhash_from_decoded(&decoded));
+                    let phash = Some(lightframe_dedup::phash_from_decoded(&decoded));
 
-                let _ = lightframe_thumbnail::generate_from_decoded(
-                    &decoded,
-                    &hash,
-                    ThumbnailSize::Micro,
-                );
-                let _ = lightframe_thumbnail::generate_from_decoded(
-                    &decoded,
-                    &hash,
-                    ThumbnailSize::Small,
-                );
+                    let _ = lightframe_thumbnail::generate_from_decoded(
+                        &decoded,
+                        &hash,
+                        ThumbnailSize::Micro,
+                    );
+                    let _ = lightframe_thumbnail::generate_from_decoded(
+                        &decoded,
+                        &hash,
+                        ThumbnailSize::Small,
+                    );
 
-                let micro = lightframe_thumbnail::micro_blob_from_decoded(&decoded).ok();
+                    let micro = lightframe_thumbnail::micro_blob_from_decoded(&decoded).ok();
 
-                (dhash, phash, micro)
-            }
-        })
-        .await
-        .map_err(|e| lightframe_core::Error::Other(e.to_string()))?
+                    (dhash, phash, micro)
+                }
+            })
+            .await
+            .map_err(|e| lightframe_core::Error::Other(e.to_string()))
+        }
+        .instrument(tracing::info_span!("thumbnail_generation"))
+        .await?
     } else {
         (None, None, None)
     };
@@ -281,7 +320,10 @@ async fn process_file(db: &Database, folder_id: i64, path: &Path) -> lightframe_
         longitude: meta.longitude,
     };
 
-    let media_id = db.upsert_media(folder_id, &media)?;
+    let media_id = {
+        let _span = tracing::info_span!("db_upsert").entered();
+        db.upsert_media(folder_id, &media)?
+    };
     if let Some(blob) = micro_blob {
         let _ = db.set_micro_thumb(media_id, &blob);
     }

@@ -124,14 +124,28 @@ jobs:
 
       - run: pnpm install
 
-      - name: Verify version
+      - name: Verify version alignment
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           CONF_VERSION=$(grep -o '"version": "[^"]*"' src-tauri/tauri.conf.json | head -1 | cut -d'"' -f4)
+          PKG_VERSION=$(grep -o '"version": "[^"]*"' package.json | head -1 | cut -d'"' -f4)
+          CARGO_VERSION=$(grep '^version' Cargo.toml | head -1 | cut -d'"' -f2)
+
+          ERR=0
           if [ "$TAG_VERSION" != "$CONF_VERSION" ]; then
-            echo "::warning::Tag version ($TAG_VERSION) doesn't match tauri.conf.json version ($CONF_VERSION)"
+            echo "::error::Tag version ($TAG_VERSION) doesn't match tauri.conf.json ($CONF_VERSION)"
+            ERR=1
           fi
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) doesn't match package.json ($PKG_VERSION)"
+            ERR=1
+          fi
+          if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
+            echo "::error::Tag version ($TAG_VERSION) doesn't match Cargo.toml ($CARGO_VERSION)"
+            ERR=1
+          fi
+          exit $ERR
 
       - name: Verify AppImage tooling (linuxdeploy)
         if: runner.os == 'Linux'
@@ -141,13 +155,16 @@ jobs:
 
       - name: Build (native target)
         if: "!contains(matrix.label, 'arm64')"
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build
-        # Future: sign Windows/macOS artifacts here — see docs/SIGNING.md
-        # Example (Windows, after configuring secrets):
-        #   signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a "target/release/bundle/nsis/*.exe"
 
       - name: Build (cross-compile arm64)
         if: contains(matrix.label, 'arm64')
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build --target ${{ matrix.target }}
 
       - name: Collect release artifacts
@@ -174,6 +191,16 @@ jobs:
               cp "$f" "release-artifacts/${NEW_NAME}"
               echo "  => release-artifacts/${NEW_NAME}"
             done
+
+            # Collect updater bundles and signatures when signing keys are configured
+            if [ -n "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
+              mkdir -p "release-artifacts/updater/${LABEL}"
+              for f in $(find "$SEARCH_DIR" -type f \( -name "*.sig" -o -name "*.nsis.zip" -o -name "*.app.tar.gz" -o -name "*.AppImage.tar.gz" \) 2>/dev/null); do
+                BASENAME="$(basename "$f")"
+                cp "$f" "release-artifacts/updater/${LABEL}/${BASENAME}"
+                echo "  => release-artifacts/updater/${LABEL}/${BASENAME}"
+              done
+            fi
           else
             echo "WARNING: Bundle directory not found: $SEARCH_DIR"
             find target -type d -name "bundle" 2>/dev/null || echo "No bundle directories found"
@@ -185,7 +212,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: lightframe-${{ matrix.label }}
-          path: release-artifacts/*
+          path: release-artifacts/**
           retention-days: 30
           if-no-files-found: warn
 
@@ -206,6 +233,80 @@ jobs:
         run: |
           echo "=== Release artifacts ==="
           find artifacts -type f | sort || echo "No artifacts found"
+
+      - name: Generate latest.json for auto-updater
+        if: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          REPO="${{ github.repository }}"
+          PUB_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+          RELEASE_URL="https://github.com/${REPO}/releases/download/${GITHUB_REF_NAME}"
+
+          declare -A PLATFORM_MAP=(
+            ["windows-amd64"]="windows-x86_64"
+            ["linux-amd64"]="linux-x86_64"
+            ["macos-amd64"]="darwin-x86_64"
+            ["macos-arm64"]="darwin-aarch64"
+          )
+
+          declare -A INSTALLER_MAP=(
+            ["windows-amd64"]="LightFrame-${VERSION}-windows-amd64-setup.exe"
+            ["linux-amd64"]="LightFrame-${VERSION}-linux-amd64.AppImage"
+            ["macos-amd64"]="LightFrame-${VERSION}-macos-amd64.dmg"
+            ["macos-arm64"]="LightFrame-${VERSION}-macos-arm64.dmg"
+          )
+
+          PLATFORMS="{}"
+          for label_dir in artifacts/updater/*/; do
+            [ -d "$label_dir" ] || continue
+            label="$(basename "$label_dir")"
+            platform="${PLATFORM_MAP[$label]:-}"
+            [ -n "$platform" ] || continue
+
+            sig_file=""
+            for sig in "$label_dir"*.sig; do
+              [ -f "$sig" ] || continue
+              sig_file="$sig"
+              break
+            done
+            [ -n "$sig_file" ] || continue
+
+            signature="$(cat "$sig_file")"
+            installer_name="${INSTALLER_MAP[$label]:-}"
+            if [ -n "$installer_name" ] && find artifacts -name "$installer_name" -type f | grep -q .; then
+              download_url="${RELEASE_URL}/${installer_name}"
+            else
+              bundle_file="${sig_file%.sig}"
+              download_url="${RELEASE_URL}/$(basename "$bundle_file")"
+            fi
+
+            PLATFORMS="$(echo "$PLATFORMS" | jq \
+              --arg platform "$platform" \
+              --arg url "$download_url" \
+              --arg signature "$signature" \
+              '. + {($platform): {url: $url, signature: $signature}}')"
+          done
+
+          if [ "$(echo "$PLATFORMS" | jq 'length')" -eq 0 ]; then
+            echo "No signed updater platforms found; skipping latest.json"
+            exit 0
+          fi
+
+          jq -n \
+            --arg version "$VERSION" \
+            --arg pub_date "$PUB_DATE" \
+            --argjson platforms "$PLATFORMS" \
+            '{version: $version, notes: "", pub_date: $pub_date, platforms: $platforms}' \
+            > artifacts/latest.json
+
+          echo "=== Generated latest.json ==="
+          cat artifacts/latest.json
+
+      - name: Flatten updater bundles for release upload
+        run: |
+          find artifacts -type f -path "*/updater/*" | while read -r f; do
+            cp "$f" "artifacts/$(basename "$f")"
+          done
 
       - uses: softprops/action-gh-release@v2
         with:

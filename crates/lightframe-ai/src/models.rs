@@ -19,11 +19,10 @@ pub struct ModelInfo {
     pub description: &'static str,
 }
 
-// sha256 fields are empty until filled in after a first verified download.
 pub const CLIP_VISUAL_MODEL: ModelInfo = ModelInfo {
     name: "CLIP Visual Encoder",
     filename: CLIP_MODEL_FILENAME,
-    url: "https://huggingface.co/pjbhc/onnx-clip/resolve/main/clip-ViT-B-32-visual.onnx",
+    url: "https://huggingface.co/phineas-bage/clip-vit-b32-onnx/resolve/main/clip-vit-b32-visual.onnx",
     size_mb: 338,
     sha256: "",
     description: "CLIP ViT-B/32 visual encoder for image embeddings",
@@ -32,7 +31,7 @@ pub const CLIP_VISUAL_MODEL: ModelInfo = ModelInfo {
 pub const CLIP_TEXT_MODEL: ModelInfo = ModelInfo {
     name: "CLIP Text Encoder",
     filename: CLIP_TEXT_MODEL_FILENAME,
-    url: "https://huggingface.co/pjbhc/onnx-clip/resolve/main/clip-ViT-B-32-textual.onnx",
+    url: "https://huggingface.co/phineas-bage/clip-vit-b32-onnx/resolve/main/clip-vit-b32-textual.onnx",
     size_mb: 254,
     sha256: "",
     description: "CLIP ViT-B/32 text encoder for semantic search",
@@ -41,7 +40,7 @@ pub const CLIP_TEXT_MODEL: ModelInfo = ModelInfo {
 pub const FACE_DETECTION_MODEL: ModelInfo = ModelInfo {
     name: "Face Detection (SCRFD)",
     filename: FACE_DETECT_MODEL_FILENAME,
-    url: "https://github.com/deepinsight/insightface/releases/download/v0.7/scrfd_500m_bnkps.onnx",
+    url: "https://huggingface.co/phineas-bage/insightface-models/resolve/main/scrfd_500m_bnkps.onnx",
     size_mb: 3,
     sha256: "",
     description: "SCRFD face detector with landmark keypoints",
@@ -50,7 +49,7 @@ pub const FACE_DETECTION_MODEL: ModelInfo = ModelInfo {
 pub const FACE_RECOGNITION_MODEL: ModelInfo = ModelInfo {
     name: "Face Recognition (ArcFace)",
     filename: FACE_RECOG_MODEL_FILENAME,
-    url: "https://github.com/deepinsight/insightface/releases/download/v0.7/w600k_r50.onnx",
+    url: "https://huggingface.co/phineas-bage/insightface-models/resolve/main/w600k_r50.onnx",
     size_mb: 166,
     sha256: "",
     description: "ArcFace R50 for face embedding extraction",
@@ -165,7 +164,10 @@ pub fn all_model_statuses() -> Vec<ModelFileStatus> {
     all_models().into_iter().map(model_file_status).collect()
 }
 
-pub fn download_model(info: &ModelInfo) -> Result<PathBuf> {
+pub fn download_model<F>(info: &ModelInfo, mut on_progress: F) -> Result<PathBuf>
+where
+    F: FnMut(u64, u64),
+{
     ensure_models_dir().map_err(Error::Io)?;
 
     let dest = model_path_for(info);
@@ -175,18 +177,46 @@ pub fn download_model(info: &ModelInfo) -> Result<PathBuf> {
         .call()
         .map_err(|e| Error::Ai(format!("download failed for {}: {e}", info.name)))?;
 
+    let total_bytes = response
+        .header("Content-Length")
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0);
+
+    on_progress(0, total_bytes);
+
     let mut reader = response.into_reader();
     let mut file = std::fs::File::create(&tmp).map_err(Error::Io)?;
 
-    let mut buffer = [0_u8; 64 * 1024];
+    const CHUNK_SIZE: usize = 64 * 1024;
+    const PROGRESS_INTERVAL: u64 = 100 * 1024;
+    let mut buffer = [0_u8; CHUNK_SIZE];
+    let mut downloaded: u64 = 0;
+    let mut last_reported: u64 = 0;
+    let mut last_percent: u64 = 0;
+
     loop {
         let n = reader.read(&mut buffer).map_err(Error::Io)?;
         if n == 0 {
             break;
         }
         file.write_all(&buffer[..n]).map_err(Error::Io)?;
+        downloaded += n as u64;
+
+        let percent = downloaded
+            .saturating_mul(100)
+            .checked_div(total_bytes)
+            .unwrap_or(0);
+        let should_report = downloaded - last_reported >= PROGRESS_INTERVAL
+            || (total_bytes > 0 && percent > last_percent);
+        if should_report {
+            on_progress(downloaded, total_bytes);
+            last_reported = downloaded;
+            last_percent = percent;
+        }
     }
     drop(file);
+
+    on_progress(downloaded, total_bytes);
 
     if info.sha256.is_empty() {
         tracing::warn!(
@@ -198,6 +228,7 @@ pub fn download_model(info: &ModelInfo) -> Result<PathBuf> {
     }
 
     std::fs::rename(&tmp, &dest).map_err(Error::Io)?;
+    tracing::info!(model = info.name, path = %dest.display(), "model download complete");
     Ok(dest)
 }
 
@@ -283,7 +314,19 @@ mod tests {
     }
 
     #[test]
-    fn ensure_models_dir_succeeds() {
-        assert!(ensure_models_dir().is_ok());
+    fn verify_sha256_accepts_matching_hash() {
+        use sha2::{Digest, Sha256};
+        let dir = std::env::temp_dir().join(format!("lf_sha256_test_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("test.bin");
+        let content = b"lightframe model hash test";
+        std::fs::write(&path, content).unwrap();
+        let expected = Sha256::digest(content)
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>();
+        assert!(verify_file_sha256(&path, &expected).is_ok());
+        assert!(verify_file_sha256(&path, "deadbeef").is_err());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

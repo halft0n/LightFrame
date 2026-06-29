@@ -178,7 +178,7 @@ async fn e2e_add_folder_scan_and_browse() {
         );
     }
 
-    let timeline = env.db.get_timeline_groups(10, 0).unwrap();
+    let timeline = env.db.get_timeline_groups(10, None).unwrap();
     assert!(!timeline.is_empty());
     assert!(timeline.iter().any(|g| g.count >= 1));
 

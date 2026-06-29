@@ -10,7 +10,7 @@ use lightframe_db::{
 };
 use lightframe_thumbnail::thumb_path;
 use serde::Serialize;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Emitter, State};
 
 const MAX_BATCH_SIZE: usize = 1000;
 
@@ -382,13 +382,17 @@ pub fn stop_watching(state: State<'_, AppState>) -> Result<(), String> {
 pub fn get_timeline_groups(
     state: State<'_, AppState>,
     limit: Option<i64>,
-    offset: Option<i64>,
+    cursor_created_at: Option<String>,
+    cursor_id: Option<i64>,
 ) -> Result<Vec<TimelineGroup>, String> {
     let limit = limit.unwrap_or(200).clamp(1, 500);
-    let offset = offset.unwrap_or(0).max(0);
+    let cursor = match (cursor_created_at, cursor_id) {
+        (Some(ts), Some(id)) => Some((ts, id)),
+        _ => None,
+    };
     state
         .db
-        .get_timeline_groups(limit, offset)
+        .get_timeline_groups(limit, cursor)
         .map_err(|e| e.to_string())
 }
 
@@ -589,15 +593,34 @@ pub async fn get_model_status() -> Result<ModelStatus, String> {
     })
 }
 
+#[derive(Clone, serde::Serialize)]
+struct ModelDownloadProgress {
+    filename: String,
+    downloaded: u64,
+    total: u64,
+}
+
 #[tauri::command]
-pub async fn download_model(filename: String) -> Result<String, String> {
+pub async fn download_model(app: AppHandle, filename: String) -> Result<String, String> {
     let model = lightframe_ai::model_by_filename(&filename)
         .ok_or_else(|| format!("unknown model: {filename}"))?;
 
-    let path = tokio::task::spawn_blocking(move || lightframe_ai::download_model(model))
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
+    let emit_filename = filename.clone();
+    let path = tokio::task::spawn_blocking(move || {
+        lightframe_ai::download_model(model, move |downloaded, total| {
+            let _ = app.emit(
+                "model-download-progress",
+                ModelDownloadProgress {
+                    filename: emit_filename.clone(),
+                    downloaded,
+                    total,
+                },
+            );
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())?;
 
     Ok(path.to_string_lossy().to_string())
 }
@@ -935,38 +958,83 @@ pub struct SearchResult {
     pub relevance: f32,
 }
 
-/// Ranked text search placeholder for future CLIP vector search.
-///
-/// The command name `semantic_search` is kept for frontend compatibility. Until CLIP text
-/// encoder and embedding index are available, this uses SQLite FTS5 keyword matching and
-/// assigns a descending pseudo-relevance score by result order.
+#[derive(Serialize)]
+pub struct SemanticSearchResponse {
+    pub results: Vec<SearchResult>,
+    pub used_semantic: bool,
+}
+
+const SEMANTIC_SEARCH_THRESHOLD: f32 = 0.15;
+
+/// CLIP vector search when text embedding is available; otherwise FTS5 keyword fallback.
 #[tauri::command]
-pub fn semantic_search(
+pub async fn semantic_search(
     state: State<'_, AppState>,
     query_text: String,
     limit: Option<usize>,
-) -> Result<Vec<SearchResult>, String> {
-    let limit = limit.unwrap_or(50).clamp(1, 500) as i64;
+) -> Result<SemanticSearchResponse, String> {
+    let limit = limit.unwrap_or(50).clamp(1, 500);
     let trimmed = query_text.trim();
     if trimmed.is_empty() {
-        return Ok(Vec::new());
+        return Ok(SemanticSearchResponse {
+            results: Vec::new(),
+            used_semantic: false,
+        });
     }
 
+    let text_embedding = {
+        let mut ai = state.ai.lock().await;
+        ai.ensure_python()
+            .await
+            .map_err(|e| format!("semantic_search: {e}"))?;
+        ai.compute_text_embedding(trimmed)
+            .await
+            .map_err(|e| format!("semantic_search({trimmed}): {e}"))?
+    };
+
+    if let Some(embedding) = text_embedding {
+        tracing::info!(query = trimmed, "semantic search using CLIP text embedding");
+        let matches = state
+            .db
+            .semantic_search_by_embedding(&embedding, SEMANTIC_SEARCH_THRESHOLD, limit)
+            .map_err(|e| db_err("semantic_search", trimmed, e))?;
+
+        return Ok(SemanticSearchResponse {
+            used_semantic: true,
+            results: matches
+                .into_iter()
+                .map(|(m, score)| SearchResult {
+                    media_id: m.id,
+                    file_name: m.filename,
+                    file_path: m.path,
+                    relevance: score,
+                })
+                .collect(),
+        });
+    }
+
+    tracing::info!(
+        query = trimmed,
+        "CLIP text embedding unavailable, falling back to FTS5"
+    );
     let media = state
         .db
-        .search_media(trimmed, limit, 0)
+        .search_media(trimmed, limit as i64, 0)
         .map_err(|e| db_err("semantic_search", trimmed, e))?;
 
-    Ok(media
-        .into_iter()
-        .enumerate()
-        .map(|(i, m)| SearchResult {
-            media_id: m.id,
-            file_name: m.filename,
-            file_path: m.path,
-            relevance: 1.0 - (i as f32 * 0.01).min(0.9),
-        })
-        .collect())
+    Ok(SemanticSearchResponse {
+        used_semantic: false,
+        results: media
+            .into_iter()
+            .enumerate()
+            .map(|(i, m)| SearchResult {
+                media_id: m.id,
+                file_name: m.filename,
+                file_path: m.path,
+                relevance: 1.0 - (i as f32 * 0.01).min(0.9),
+            })
+            .collect(),
+    })
 }
 
 #[tauri::command]
@@ -1063,9 +1131,20 @@ pub struct SimilarPhoto {
 #[derive(Serialize)]
 pub struct FaceInfo {
     pub id: i64,
+    pub media_id: i64,
     pub bbox: [f32; 4],
     pub confidence: f32,
     pub person_id: Option<i64>,
+}
+
+fn face_record_to_info(r: lightframe_db::FaceDetectionRecord) -> FaceInfo {
+    FaceInfo {
+        id: r.id,
+        media_id: r.media_id,
+        bbox: [r.bbox_x, r.bbox_y, r.bbox_x + r.bbox_w, r.bbox_y + r.bbox_h],
+        confidence: r.confidence,
+        person_id: r.person_id,
+    }
 }
 
 const SIMILAR_THRESHOLD: f32 = 0.65;
@@ -1101,6 +1180,77 @@ pub async fn compute_clip_embedding(
         .db
         .store_clip_embedding(media_id, &embedding)
         .map_err(|e| e.to_string())
+}
+
+#[derive(Serialize)]
+pub struct BatchEmbedResult {
+    pub processed: usize,
+    pub succeeded: usize,
+    pub failed: usize,
+    pub errors: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn compute_clip_embeddings_batch(
+    state: State<'_, AppState>,
+    limit: Option<usize>,
+) -> Result<BatchEmbedResult, String> {
+    let limit = limit.unwrap_or(32).clamp(1, 256) as i64;
+    let candidates = state
+        .db
+        .list_media_without_clip_embedding(limit)
+        .map_err(|e| e.to_string())?;
+
+    if candidates.is_empty() {
+        return Ok(BatchEmbedResult {
+            processed: 0,
+            succeeded: 0,
+            failed: 0,
+            errors: Vec::new(),
+        });
+    }
+
+    let mut ai = state.ai.lock().await;
+    ai.ensure_python().await.map_err(|e| e.to_string())?;
+
+    let mut succeeded = 0usize;
+    let mut failed = 0usize;
+    let mut errors = Vec::new();
+
+    for (media_id, path_str) in &candidates {
+        let path = std::path::Path::new(path_str);
+        if !path.is_file() {
+            failed += 1;
+            errors.push(format!("media {media_id}: file not found"));
+            continue;
+        }
+
+        match ai.compute_embedding(path).await {
+            Ok(Some(embedding)) => {
+                if let Err(e) = state.db.store_clip_embedding(*media_id, &embedding) {
+                    failed += 1;
+                    errors.push(format!("media {media_id}: {e}"));
+                } else {
+                    succeeded += 1;
+                }
+            }
+            Ok(None) => {
+                failed += 1;
+                errors.push(format!("media {media_id}: CLIP embedding unavailable"));
+            }
+            Err(e) => {
+                failed += 1;
+                errors.push(format!("media {media_id}: {e}"));
+            }
+        }
+    }
+
+    Ok(BatchEmbedResult {
+        processed: candidates.len(),
+        succeeded,
+        failed,
+        errors,
+    })
 }
 
 #[tauri::command]
@@ -1188,15 +1338,7 @@ pub async fn detect_faces(
         .get_faces_for_media(media_id)
         .map_err(|e| e.to_string())?;
 
-    Ok(records
-        .into_iter()
-        .map(|r| FaceInfo {
-            id: r.id,
-            bbox: [r.bbox_x, r.bbox_y, r.bbox_x + r.bbox_w, r.bbox_y + r.bbox_h],
-            confidence: r.confidence,
-            person_id: r.person_id,
-        })
-        .collect())
+    Ok(records.into_iter().map(face_record_to_info).collect())
 }
 
 #[tauri::command]
@@ -1206,15 +1348,125 @@ pub fn get_faces(state: State<'_, AppState>, media_id: i64) -> Result<Vec<FaceIn
         .get_faces_for_media(media_id)
         .map_err(|e| e.to_string())?;
 
-    Ok(records
-        .into_iter()
-        .map(|r| FaceInfo {
-            id: r.id,
-            bbox: [r.bbox_x, r.bbox_y, r.bbox_x + r.bbox_w, r.bbox_y + r.bbox_h],
-            confidence: r.confidence,
-            person_id: r.person_id,
-        })
-        .collect())
+    Ok(records.into_iter().map(face_record_to_info).collect())
+}
+
+#[derive(Serialize, Clone)]
+pub struct FaceDetectionProgress {
+    pub processed: i64,
+    pub total: i64,
+    pub faces_found: i64,
+    pub status: String,
+}
+
+#[derive(Serialize)]
+pub struct FaceDetectionBatchResult {
+    pub media_processed: i64,
+    pub faces_found: i64,
+}
+
+#[tauri::command]
+pub async fn detect_faces_batch(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<FaceDetectionBatchResult, String> {
+    let media_ids = state
+        .db
+        .get_media_ids_without_faces()
+        .map_err(|e| e.to_string())?;
+
+    let total = media_ids.len() as i64;
+    let mut processed = 0i64;
+    let mut faces_found = 0i64;
+
+    let emit_progress = |processed: i64, faces_found: i64, status: &str| {
+        let payload = FaceDetectionProgress {
+            processed,
+            total,
+            faces_found,
+            status: status.to_string(),
+        };
+        if let Err(e) = app.emit("face-detection-progress", &payload) {
+            tracing::warn!("failed to emit face-detection-progress: {e}");
+        }
+    };
+
+    emit_progress(0, 0, "detecting");
+
+    {
+        let mut ai = state.ai.lock().await;
+        ai.ensure_python().await.map_err(|e| e.to_string())?;
+    }
+
+    for media_id in media_ids {
+        match detect_faces_for_media(&state, media_id).await {
+            Ok(count) => faces_found += count,
+            Err(e) => tracing::warn!(media_id, "face detection failed: {e}"),
+        }
+        processed += 1;
+        emit_progress(processed, faces_found, "detecting");
+    }
+
+    emit_progress(processed, faces_found, "complete");
+
+    Ok(FaceDetectionBatchResult {
+        media_processed: processed,
+        faces_found,
+    })
+}
+
+async fn detect_faces_for_media(state: &AppState, media_id: i64) -> Result<i64, String> {
+    let media = state
+        .db
+        .get_media_by_id(media_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("media {media_id} not found"))?;
+
+    let path = std::path::Path::new(&media.path);
+    if !path.is_file() {
+        return Err(format!("media file not found: {}", media.path));
+    }
+
+    let ai = state.ai.lock().await;
+    let faces = ai
+        .detect_faces_in_image(path)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let count = faces.len() as i64;
+    if !faces.is_empty() {
+        let inputs: Vec<lightframe_db::FaceDetectionInput> = faces
+            .iter()
+            .map(|f| lightframe_db::FaceDetectionInput {
+                bbox: f.bbox,
+                confidence: f.confidence,
+                embedding: f.embedding.clone(),
+            })
+            .collect();
+        state
+            .db
+            .store_face_detections(media_id, &inputs)
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(count)
+}
+
+#[tauri::command]
+pub fn get_person_faces(
+    state: State<'_, AppState>,
+    person_id: i64,
+    limit: i64,
+    offset: i64,
+) -> Result<Vec<FaceInfo>, String> {
+    let limit = limit.clamp(1, 500);
+    let offset = offset.max(0);
+    let records = state
+        .db
+        .get_faces_for_person(person_id, limit, offset)
+        .map_err(|e| e.to_string())?;
+
+    Ok(records.into_iter().map(face_record_to_info).collect())
 }
 
 #[tauri::command]

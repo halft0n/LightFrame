@@ -10,6 +10,7 @@ import {
   loadMoreMedia,
   openViewer,
   selectMediaRange,
+  setMediaScrollIndex,
   setMediaSelection,
   setSingleMediaSelection,
   setThumbnailSize,
@@ -150,6 +151,14 @@ export function PhotoGrid({
   useEffect(() => {
     rowVirtualizer.measure();
   }, [rowHeight, columnCount, rowVirtualizer]);
+
+  useEffect(() => {
+    const virtualItems = rowVirtualizer.getVirtualItems();
+    if (virtualItems.length === 0) return;
+    const center = virtualItems[Math.floor(virtualItems.length / 2)];
+    const centerIndex = center.index * columnCount;
+    setMediaScrollIndex(Math.min(centerIndex, Math.max(0, mediaItems.length - 1)));
+  }, [rowVirtualizer.range, columnCount, mediaItems.length]);
 
   const handleScroll = useCallback(() => {
     const el = parentRef.current;

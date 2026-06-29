@@ -94,6 +94,6 @@ describe("TimelineView", () => {
 
     expect(await screen.findByText(/共 3 项/)).toBeInTheDocument();
     expect(screen.getByText(/时间线/)).toBeInTheDocument();
-    expect(getTimelineGroups).toHaveBeenCalledWith(200, 0);
+    expect(getTimelineGroups).toHaveBeenCalledWith(200);
   });
 });

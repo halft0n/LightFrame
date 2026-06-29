@@ -23,11 +23,20 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' original: thumb: asset: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost; font-src 'self' data:"
+      "csp": "default-src 'self'; img-src 'self' original: thumb: face: asset: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost; font-src 'self' data:"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/halft0n/LightFrame/releases/latest/download/latest.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdGM0VFREU4RkU4RTA2RjgKUldUNEJvNys2TzArZi90dmRMdlBkQ0plV2lOS0dZMXhqQmVTejVkaUQ5SS9uMHBRRWtGWlltbVUK"
     }
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["deb", "rpm", "appimage", "nsis", "msi", "dmg", "app"],
     "icon": [
       "icons/32x32.png",

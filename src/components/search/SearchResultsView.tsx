@@ -69,6 +69,7 @@ export function SearchResultsView() {
   const parentRef = useRef<HTMLDivElement>(null);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [relevanceById, setRelevanceById] = useState<Map<number, number>>(new Map());
+  const [usedSemantic, setUsedSemantic] = useState<boolean | null>(null);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -87,16 +88,18 @@ export function SearchResultsView() {
       setMedia([]);
       setTotalCount(0);
       setRelevanceById(new Map());
+      setUsedSemantic(null);
       return;
     }
 
     setLoading(true);
     try {
       if (mode === "semantic") {
-        const results = await semanticSearch(trimmed, PAGE_SIZE);
-        setMedia(results.map(searchResultToMediaItem));
-        setRelevanceById(new Map(results.map((r) => [r.media_id, r.relevance])));
-        setTotalCount(results.length);
+        const response = await semanticSearch(trimmed, PAGE_SIZE);
+        setMedia(response.results.map(searchResultToMediaItem));
+        setRelevanceById(new Map(response.results.map((r) => [r.media_id, r.relevance])));
+        setUsedSemantic(response.used_semantic);
+        setTotalCount(response.results.length);
       } else {
         const [items, count] = await Promise.all([
           searchMedia(trimmed, PAGE_SIZE, 0),
@@ -104,6 +107,7 @@ export function SearchResultsView() {
         ]);
         setMedia(items);
         setRelevanceById(new Map());
+        setUsedSemantic(null);
         setTotalCount(count);
       }
     } catch (err) {
@@ -202,11 +206,17 @@ export function SearchResultsView() {
             <span
               className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
                 searchMode === "semantic"
-                  ? "bg-violet-500/15 text-violet-700 dark:text-violet-300"
+                  ? usedSemantic === false
+                    ? "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+                    : "bg-violet-500/15 text-violet-700 dark:text-violet-300"
                   : "bg-neutral-500/10 text-neutral-600 dark:text-neutral-400"
               }`}
             >
-              {searchMode === "semantic" ? t("search.modeSemantic") : t("search.modeText")}
+              {searchMode === "semantic"
+                ? usedSemantic === false
+                  ? t("search.modeKeywordFallback")
+                  : t("search.modeSemantic")
+                : t("search.modeText")}
             </span>
           </div>
           <p className="mt-0.5 text-sm text-neutral-500">
@@ -224,7 +234,20 @@ export function SearchResultsView() {
         <SearchModeToggle mode={searchMode} onChange={handleModeChange} />
       </div>
 
-      {searchMode === "semantic" && aiStatus && !aiStatus.clip_available && (
+      {searchMode === "semantic" && usedSemantic === false && (
+        <div className="border-b border-amber-200/80 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+          <p>{t("search.semanticFallback")}</p>
+          <p className="mt-1 text-xs opacity-90">{t("search.semanticDownloadHint")}</p>
+        </div>
+      )}
+
+      {searchMode === "semantic" && usedSemantic === true && (
+        <div className="border-b border-violet-200/80 bg-violet-50 px-4 py-2 text-sm text-violet-900 dark:border-violet-900/50 dark:bg-violet-950/40 dark:text-violet-200">
+          <p>{t("search.semanticActive")}</p>
+        </div>
+      )}
+
+      {searchMode === "semantic" && aiStatus && !aiStatus.clip_available && usedSemantic === null && (
         <div className="border-b border-amber-200/80 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
           <p>{t("search.semanticFallback")}</p>
           <p className="mt-1 text-xs opacity-90">{t("search.semanticDownloadHint")}</p>
@@ -256,8 +279,13 @@ export function SearchResultsView() {
                     onOpen={openViewer}
                   />
                   {relevance != null && (
-                    <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1.5 py-0.5 text-[10px] tabular-nums text-white">
-                      {t("search.relevance")}: {(relevance * 100).toFixed(0)}%
+                    <span
+                      className={`absolute bottom-1 right-1 rounded px-1.5 py-0.5 text-[10px] tabular-nums text-white ${
+                        usedSemantic ? "bg-violet-600/80" : "bg-black/60"
+                      }`}
+                    >
+                      {usedSemantic ? t("search.similarity") : t("search.relevance")}:{" "}
+                      {(relevance * 100).toFixed(0)}%
                     </span>
                   )}
                 </div>

@@ -5,6 +5,8 @@ import { getMediaCount, getMediaPage } from "@/lib/tauri";
 export type MediaCursor = [string, number] | null;
 
 const MEDIA_PAGE_SIZE = 60;
+const MAX_MEDIA_ITEMS = 5000;
+const MEDIA_WINDOW_HALF = MAX_MEDIA_ITEMS / 2;
 
 export type AppView =
   | "all"
@@ -51,6 +53,7 @@ export interface AppState {
   mediaItems: MediaItem[];
   totalCount: number;
   mediaCursor: MediaCursor;
+  mediaScrollIndex: number;
   isScanning: boolean;
   scanProgress: ScanProgress | null;
   viewingMediaId: number | null;
@@ -74,6 +77,7 @@ const initialState: AppState = {
   mediaItems: [],
   totalCount: 0,
   mediaCursor: null,
+  mediaScrollIndex: 0,
   isScanning: false,
   scanProgress: null,
   viewingMediaId: null,
@@ -194,13 +198,38 @@ export function updateFolder(id: number, update: Partial<WatchedFolder>) {
   });
 }
 
+function trimMediaItems(items: MediaItem[], scrollIndex: number): MediaItem[] {
+  if (items.length <= MAX_MEDIA_ITEMS) return items;
+  const start = Math.max(0, scrollIndex - MEDIA_WINDOW_HALF);
+  const end = Math.min(items.length, start + MAX_MEDIA_ITEMS);
+  const adjustedStart = Math.max(0, end - MAX_MEDIA_ITEMS);
+  return items.slice(adjustedStart, end);
+}
+
+export function setMediaScrollIndex(index: number) {
+  const clamped = Math.max(0, index);
+  if (clamped === state.mediaScrollIndex) return;
+  const mediaItems = trimMediaItems(state.mediaItems, clamped);
+  setState({
+    mediaScrollIndex: clamped,
+    mediaItems,
+    mediaCursor: mediaCursorFromItems(mediaItems),
+  });
+}
+
 export function setMedia(items: MediaItem[], totalCount: number) {
-  setState({ mediaItems: items, totalCount, mediaCursor: mediaCursorFromItems(items) });
+  const mediaItems = trimMediaItems(items, state.mediaScrollIndex);
+  setState({
+    mediaItems,
+    totalCount,
+    mediaCursor: mediaCursorFromItems(mediaItems),
+  });
 }
 
 export function appendMedia(items: MediaItem[]) {
   if (items.length === 0) return;
-  const mediaItems = [...state.mediaItems, ...items];
+  const combined = [...state.mediaItems, ...items];
+  const mediaItems = trimMediaItems(combined, state.mediaScrollIndex);
   setState({ mediaItems, mediaCursor: mediaCursorFromItems(mediaItems) });
 }
 

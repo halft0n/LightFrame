@@ -89,14 +89,17 @@ describe("SearchResultsView", () => {
     setSearchQuery("beach");
     searchMedia.mockResolvedValue([]);
     searchMediaCount.mockResolvedValue(0);
-    semanticSearch.mockResolvedValue([
-      {
-        media_id: 5,
-        file_path: "/photos/beach.jpg",
-        file_name: "beach.jpg",
-        relevance: 0.88,
-      },
-    ]);
+    semanticSearch.mockResolvedValue({
+      used_semantic: true,
+      results: [
+        {
+          media_id: 5,
+          file_path: "/photos/beach.jpg",
+          file_name: "beach.jpg",
+          relevance: 0.88,
+        },
+      ],
+    });
 
     render(<SearchResultsView />);
     await waitFor(() => {
@@ -107,7 +110,7 @@ describe("SearchResultsView", () => {
 
     await waitFor(() => {
       expect(semanticSearch).toHaveBeenCalledWith("beach", 60);
-      expect(screen.getByText(/相关度/)).toBeInTheDocument();
+      expect(screen.getByText(/相似度: 88%/)).toBeInTheDocument();
     });
   });
 

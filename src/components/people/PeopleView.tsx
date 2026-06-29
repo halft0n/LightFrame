@@ -1,12 +1,15 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   clusterFaces,
+  detectFacesBatch,
   getAiStatus,
   getThumbnailUrl,
   listPersons,
   mergePersons,
+  onFaceDetectionProgress,
   renamePerson,
   type AiStatus,
+  type FaceDetectionProgress,
   type Person,
 } from "@/lib/tauri";
 import { openPersonDetail } from "@/store/appStore";
@@ -126,6 +129,9 @@ export function PeopleView() {
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [clustering, setClustering] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const [detectionProgress, setDetectionProgress] = useState<FaceDetectionProgress | null>(null);
+  const [detectionResult, setDetectionResult] = useState<string | null>(null);
   const [merging, setMerging] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [visibleCount, setVisibleCount] = useState(CARD_PAGE_SIZE);
@@ -172,6 +178,41 @@ export function PeopleView() {
       // ignore
     }
   }, []);
+
+  const handleDetectFaces = useCallback(async () => {
+    setDetecting(true);
+    setDetectionResult(null);
+    setDetectionProgress(null);
+    try {
+      const result = await detectFacesBatch();
+      setDetectionResult(
+        t("people.facesFound", { count: result.faces_found }),
+      );
+      await clusterFaces();
+      setSelectedIds(new Set());
+      await load();
+    } catch {
+      // ignore
+    } finally {
+      setDetecting(false);
+      setDetectionProgress(null);
+    }
+  }, [load, t]);
+
+  useEffect(() => {
+    if (!detecting) return;
+
+    let unlisten: (() => void) | undefined;
+    void onFaceDetectionProgress((progress) => {
+      setDetectionProgress(progress);
+    }).then((fn) => {
+      unlisten = fn;
+    });
+
+    return () => {
+      unlisten?.();
+    };
+  }, [detecting]);
 
   const handleCluster = useCallback(async () => {
     setClustering(true);
@@ -233,12 +274,30 @@ export function PeopleView() {
           )}
           <button
             type="button"
+            onClick={() => void handleDetectFaces()}
+            disabled={detecting || !aiReady}
+            className="rounded-lg border border-neutral-600 px-3 py-1 text-xs text-neutral-300 transition hover:bg-neutral-800 disabled:opacity-50"
+          >
+            {detecting
+              ? detectionProgress && detectionProgress.total > 0
+                ? t("people.detectionProgress", {
+                    processed: detectionProgress.processed,
+                    total: detectionProgress.total,
+                  })
+                : t("people.detectingFaces")
+              : t("people.detectFaces")}
+          </button>
+          <button
+            type="button"
             onClick={() => void handleCluster()}
-            disabled={clustering}
+            disabled={clustering || detecting}
             className="rounded-lg border border-neutral-600 px-3 py-1 text-xs text-neutral-300 transition hover:bg-neutral-800 disabled:opacity-50"
           >
             {clustering ? t("people.clustering") : t("people.clusterFaces")}
           </button>
+          {detectionResult && !detecting && (
+            <span className="text-xs text-green-400">{detectionResult}</span>
+          )}
           {aiStatus && (
             <span
               className={`text-xs ${aiReady ? "text-green-400" : "text-neutral-500"}`}
@@ -259,8 +318,16 @@ export function PeopleView() {
           </p>
           <button
             type="button"
+            onClick={() => void handleDetectFaces()}
+            disabled={detecting || !aiReady}
+            className="rounded-lg border border-neutral-600 px-4 py-2 text-sm text-neutral-300 transition hover:bg-neutral-800 disabled:opacity-50"
+          >
+            {detecting ? t("people.detectingFaces") : t("people.detectFaces")}
+          </button>
+          <button
+            type="button"
             onClick={() => void handleCluster()}
-            disabled={clustering}
+            disabled={clustering || detecting}
             className="rounded-lg border border-neutral-600 px-4 py-2 text-sm text-neutral-300 transition hover:bg-neutral-800 disabled:opacity-50"
           >
             {clustering ? t("people.clustering") : t("people.clusterFaces")}

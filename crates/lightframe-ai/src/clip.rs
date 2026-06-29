@@ -7,6 +7,9 @@ use ort::session::Session;
 use ort::value::TensorRef;
 use std::path::Path;
 
+#[cfg(feature = "clip")]
+use crate::models::clip_text_model_path;
+
 const INPUT_SIZE: u32 = 224;
 const MEAN: [f32; 3] = [0.481_454_66, 0.457_827_5, 0.408_210_73];
 #[allow(clippy::excessive_precision)]
@@ -92,6 +95,49 @@ fn preprocess_image(path: &Path) -> Result<Array4<f32>> {
     }
 
     Ok(array)
+}
+
+/// CLIP text encoder (ONNX). Text tokenization is not implemented in Rust;
+/// use the Python sidecar via [`crate::dispatcher::AiDispatcher::compute_text_embedding`].
+#[cfg(feature = "clip")]
+pub struct ClipTextEncoder {
+    session: Session,
+}
+
+#[cfg(feature = "clip")]
+impl ClipTextEncoder {
+    pub fn new(model_path: &Path) -> Result<Self> {
+        if !model_exists(model_path) {
+            return Err(lightframe_core::Error::Ai(format!(
+                "CLIP text model not found at {}",
+                model_path.display()
+            )));
+        }
+
+        let session = Session::builder()
+            .map_err(|e| lightframe_core::Error::Ai(format!("CLIP text session builder: {e}")))?
+            .commit_from_file(model_path)
+            .map_err(|e| {
+                lightframe_core::Error::Ai(format!(
+                    "failed to load CLIP text model at {}: {e}",
+                    model_path.display()
+                ))
+            })?;
+
+        Ok(Self { session })
+    }
+
+    pub fn try_default() -> Result<Self> {
+        Self::new(&clip_text_model_path())
+    }
+
+    /// ONNX text encoding requires CLIP BPE tokenization — not available in Rust yet.
+    pub fn encode_text(&mut self, _text: &str) -> Result<Vec<f32>> {
+        let _ = &self.session;
+        Err(lightframe_core::Error::Ai(
+            "CLIP text encoding requires the Python sidecar (open-clip-torch)".into(),
+        ))
+    }
 }
 
 #[allow(dead_code)]
