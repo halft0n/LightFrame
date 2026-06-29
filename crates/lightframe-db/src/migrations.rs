@@ -56,6 +56,10 @@ pub fn run(conn: &Connection) -> lightframe_core::Result<()> {
         v10(conn)?;
     }
 
+    if current < 11 {
+        v11(conn)?;
+    }
+
     Ok(())
 }
 
@@ -412,6 +416,19 @@ fn v10(conn: &Connection) -> lightframe_core::Result<()> {
     conn.execute(
         "INSERT OR IGNORE INTO schema_version (version) VALUES (10)",
         [],
+    )
+    .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+fn v11(conn: &Connection) -> lightframe_core::Result<()> {
+    conn.execute_batch(
+        "INSERT INTO smart_albums (name, icon, rule_json)
+        SELECT 'RAW Photos', '📷', '{\"media_type\":\"Raw\"}'
+        WHERE NOT EXISTS (SELECT 1 FROM smart_albums WHERE name = 'RAW Photos');
+
+        INSERT OR IGNORE INTO schema_version (version) VALUES (11);",
     )
     .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
 

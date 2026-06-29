@@ -84,6 +84,27 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
         );
     }
 
+    if lightframe_core::decode::is_raw_path(&canonical) {
+        match lightframe_core::decode::extract_raw_preview_bytes(&canonical) {
+            Ok(jpeg) => {
+                return finish_response(
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .header(header::CONTENT_TYPE, "image/jpeg")
+                        .header(header::CACHE_CONTROL, "max-age=3600")
+                        .header("Access-Control-Allow-Origin", "*"),
+                    jpeg,
+                );
+            }
+            Err(e) => {
+                tracing::debug!(
+                    path = %canonical.display(),
+                    "RAW preview extraction failed, serving raw bytes: {e}"
+                );
+            }
+        }
+    }
+
     match std::fs::read(&canonical) {
         Ok(bytes) => finish_response(
             Response::builder()
@@ -253,6 +274,10 @@ fn guess_mime(path: &Path) -> &'static str {
         Some("svg") => "image/svg+xml",
         Some("heic" | "heif") => "image/heif",
         Some("avif") => "image/avif",
+        Some(
+            "cr2" | "cr3" | "nef" | "nrw" | "arw" | "dng" | "orf" | "rw2" | "pef" | "raf" | "rwl"
+            | "3fr" | "srw" | "raw",
+        ) => "application/x-raw",
         Some("mp4") => "video/mp4",
         Some("mov") => "video/quicktime",
         Some("avi") => "video/x-msvideo",
@@ -522,6 +547,39 @@ mod tests {
             Some("image/png")
         );
         assert_eq!(*resp.body(), b"\x89PNG\r\n".to_vec());
+    }
+
+    #[test]
+    fn handle_serves_raw_preview_as_jpeg() {
+        use image::{ImageBuffer, Rgb};
+
+        let dir = tempfile::tempdir().unwrap();
+        let state = test_state_with_watched_dir(dir.path());
+        let file = dir.path().join("sample.cr2");
+
+        let img: ImageBuffer<Rgb<u8>, Vec<u8>> =
+            ImageBuffer::from_fn(8, 8, |x, y| Rgb([(x * 30) as u8, (y * 30) as u8, 128]));
+        let mut jpeg = Vec::new();
+        img.write_to(
+            &mut std::io::Cursor::new(&mut jpeg),
+            image::ImageFormat::Jpeg,
+        )
+        .expect("encode jpeg");
+
+        let mut data = b"fake-cr2-header".to_vec();
+        data.extend_from_slice(&jpeg);
+        std::fs::write(&file, &data).unwrap();
+
+        let resp = handle(&state, &request_path_for_file(&file));
+
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            resp.headers()
+                .get(header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok()),
+            Some("image/jpeg")
+        );
+        assert!(resp.body().starts_with(&[0xFF, 0xD8]));
     }
 
     #[test]

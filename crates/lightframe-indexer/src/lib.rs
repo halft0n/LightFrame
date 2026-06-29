@@ -13,7 +13,8 @@ use std::path::{Path, PathBuf};
 
 const PHOTO_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "tif", "heic", "heif", "avif", "svg",
-    "ico", "raw", "cr2", "cr3", "nef", "arw", "dng", "orf", "rw2", "pef", "raf",
+    "ico", "raw", "cr2", "cr3", "nef", "nrw", "arw", "dng", "orf", "rw2", "pef", "raf", "rwl",
+    "3fr", "srw",
 ];
 
 const VIDEO_EXTENSIONS: &[&str] = &[
@@ -23,8 +24,9 @@ const VIDEO_EXTENSIONS: &[&str] = &[
 #[cfg(target_os = "windows")]
 const MEDIA_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "png", "gif", "bmp", "webp", "tiff", "tif", "heic", "heif", "avif", "svg",
-    "ico", "raw", "cr2", "cr3", "nef", "arw", "dng", "orf", "rw2", "pef", "raf", "mp4", "mov",
-    "avi", "mkv", "wmv", "flv", "webm", "m4v", "3gp", "mts", "m2ts", "ts",
+    "ico", "raw", "cr2", "cr3", "nef", "nrw", "arw", "dng", "orf", "rw2", "pef", "raf", "rwl",
+    "3fr", "srw", "mp4", "mov", "avi", "mkv", "wmv", "flv", "webm", "m4v", "3gp", "mts", "m2ts",
+    "ts",
 ];
 
 #[cfg(target_os = "windows")]
@@ -58,7 +60,8 @@ pub fn classify_extension(path: &Path) -> lightframe_core::media::MediaType {
     }
 
     let raw_exts = [
-        "raw", "cr2", "cr3", "nef", "arw", "dng", "orf", "rw2", "pef", "raf",
+        "raw", "cr2", "cr3", "nef", "nrw", "arw", "dng", "orf", "rw2", "pef", "raf", "rwl", "3fr",
+        "srw",
     ];
     if raw_exts.contains(&ext.as_str()) {
         return lightframe_core::media::MediaType::Raw;
@@ -150,6 +153,10 @@ mod tests {
         assert_eq!(classify_extension(Path::new("b.nef")), MediaType::Raw);
         assert_eq!(classify_extension(Path::new("c.dng")), MediaType::Raw);
         assert_eq!(classify_extension(Path::new("d.arw")), MediaType::Raw);
+        assert_eq!(classify_extension(Path::new("e.nrw")), MediaType::Raw);
+        assert_eq!(classify_extension(Path::new("f.rwl")), MediaType::Raw);
+        assert_eq!(classify_extension(Path::new("g.3fr")), MediaType::Raw);
+        assert_eq!(classify_extension(Path::new("h.srw")), MediaType::Raw);
     }
 
     #[test]

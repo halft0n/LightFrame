@@ -19,6 +19,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rusqlite = { version = "0.33", features = ["bundled", "blob"] }
 blake3 = "1"
 image = { version = "0.25", features = ["avif"] }
+kamadak-exif = "0.5"
 lightframe-core = { path = "crates/lightframe-core" }
 lightframe-db = { path = "crates/lightframe-db" }
 lightframe-indexer = { path = "crates/lightframe-indexer" }

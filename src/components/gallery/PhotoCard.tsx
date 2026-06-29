@@ -31,6 +31,7 @@ export const PhotoCard = memo(function PhotoCard({
   const [error, setError] = useState(false);
 
   const isVideo = item.media_type === "Video";
+  const isRaw = item.media_type === "Raw";
 
   const handleDragStart = useCallback(
     (e: React.DragEvent) => {
@@ -92,6 +93,12 @@ export const PhotoCard = memo(function PhotoCard({
       {isVideo && item.duration_sec != null && (
         <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1 py-0.5 text-[10px] font-medium tabular-nums text-white">
           {formatDuration(item.duration_sec)}
+        </span>
+      )}
+
+      {isRaw && (
+        <span className="absolute left-1 top-1 rounded bg-amber-600 px-1 text-xs text-white">
+          RAW
         </span>
       )}
 

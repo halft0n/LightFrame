@@ -29,6 +29,15 @@ const videoItem: MediaItem = {
   duration_sec: 125,
 };
 
+const rawItem: MediaItem = {
+  id: 3,
+  path: "/photos/shot.cr2",
+  filename: "shot.cr2",
+  media_type: "Raw",
+  size_bytes: 8192,
+  modified_at: "2024-01-01T00:00:00",
+};
+
 describe("PhotoCard", () => {
   it("does not show filename overlay", () => {
     render(<PhotoCard item={photoItem} selected={false} selectedMediaIds={[]} onSelect={vi.fn()} />);
@@ -50,6 +59,16 @@ describe("PhotoCard", () => {
   it("does not show duration for photo items", () => {
     render(<PhotoCard item={photoItem} selected={false} selectedMediaIds={[]} onSelect={vi.fn()} />);
     expect(screen.queryByText(/\d+:\d{2}/)).not.toBeInTheDocument();
+  });
+
+  it("shows RAW badge for raw items", () => {
+    render(<PhotoCard item={rawItem} selected={false} selectedMediaIds={[]} onSelect={vi.fn()} />);
+    expect(screen.getByText("RAW")).toBeInTheDocument();
+  });
+
+  it("does not show RAW badge for photo items", () => {
+    render(<PhotoCard item={photoItem} selected={false} selectedMediaIds={[]} onSelect={vi.fn()} />);
+    expect(screen.queryByText("RAW")).not.toBeInTheDocument();
   });
 
   it("calls onSelect when clicked", () => {
