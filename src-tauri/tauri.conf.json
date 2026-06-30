@@ -1,6 +1,6 @@
 {
   "productName": "LightFrame",
-  "version": "0.0.15",
+  "version": "0.0.16",
   "identifier": "com.lightframe.app",
   "build": {
     "frontendDist": "../dist",
