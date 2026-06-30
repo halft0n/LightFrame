@@ -9,7 +9,6 @@ dist-ssr/
 # Rust / Cargo
 target/
 **/*.rs.bk
-Cargo.lock
 
 # Tauri
 src-tauri/target/
