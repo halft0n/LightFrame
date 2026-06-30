@@ -102,6 +102,11 @@ const initialState: AppState = {
 let state: AppState = { ...initialState };
 const listeners = new Set<() => void>();
 
+export function resetStore() {
+  state = { ...initialState };
+  emit();
+}
+
 function emit() {
   for (const listener of listeners) {
     listener();

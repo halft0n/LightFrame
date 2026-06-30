@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { t } from "@/i18n";
 import { localizeError } from "./errors";
@@ -236,11 +236,14 @@ export interface PersonClusterInfo {
   avg_intra_cluster_distance: number;
 }
 
+/**
+ * Build a custom-protocol URL using Tauri's native platform detection.
+ * On Windows (WebView2): `http://{scheme}.localhost/{path}`
+ * On macOS/Linux:        `{scheme}://localhost/{path}`
+ */
 export function protocolUrl(scheme: string, path: string): string {
-  const isWindows = navigator.userAgent.includes("Windows");
-  return isWindows
-    ? `http://${scheme}.localhost/${path}`
-    : `${scheme}://localhost/${path}`;
+  const base = convertFileSrc("", scheme);
+  return `${base}${path}`;
 }
 
 export function getFaceThumbnailUrl(faceId: number): string {

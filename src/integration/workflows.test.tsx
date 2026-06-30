@@ -10,9 +10,9 @@ import userEvent from "@testing-library/user-event";
 import App from "@/App";
 import { setLocale } from "@/i18n/index";
 import {
-  clearMediaSelection,
   getSnapshot,
   openViewer,
+  resetStore,
   setMediaSelection,
   setSearchQuery,
 } from "@/store/appStore";
@@ -22,6 +22,7 @@ import { invoke } from "@tauri-apps/api/core";
 const listWatchedFolders = vi.fn();
 const onScanProgress = vi.fn();
 const onFolderChanged = vi.fn();
+const onMediaBatchReady = vi.fn();
 const scanFolder = vi.fn();
 const getMediaPage = vi.fn();
 const getMediaCount = vi.fn();
@@ -41,6 +42,9 @@ vi.mock("@/lib/tauri", async (importOriginal) => {
       onScanProgress(cb),
     onFolderChanged: (cb: Parameters<typeof actual.onFolderChanged>[0]) =>
       onFolderChanged(cb),
+    onMediaBatchReady: (
+      cb: Parameters<typeof actual.onMediaBatchReady>[0],
+    ) => onMediaBatchReady(cb),
     scanFolder: (...args: Parameters<typeof actual.scanFolder>) =>
       scanFolder(...args),
     getMediaPage: (...args: Parameters<typeof actual.getMediaPage>) =>
@@ -65,7 +69,10 @@ vi.mock("@/lib/tauri", async (importOriginal) => {
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn().mockResolvedValue(null),
-  convertFileSrc: vi.fn((path: string) => `file://${path}`),
+  convertFileSrc: vi.fn(
+    (filePath: string, protocol: string = "asset") =>
+      `${protocol}://localhost/${filePath}`,
+  ),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
@@ -127,6 +134,7 @@ function setupDefaultMocks() {
   listWatchedFolders.mockResolvedValue([watchedFolder]);
   onScanProgress.mockResolvedValue(() => {});
   onFolderChanged.mockResolvedValue(() => {});
+  onMediaBatchReady.mockResolvedValue(() => {});
   getMediaPage.mockResolvedValue(sampleMedia);
   getMediaCount.mockResolvedValue(sampleMedia.length);
   searchMedia.mockResolvedValue([sampleMedia[0]]);
@@ -159,10 +167,7 @@ function setupViewerInvoke() {
         });
       }
       if (cmd === "get_media_window") {
-        const mediaId = (args?.mediaId as number | undefined) ?? 1;
-        const item =
-          sampleMedia.find((m) => m.id === mediaId) ?? sampleMedia[0];
-        return Promise.resolve([{ ...item, id: mediaId }]);
+        return Promise.resolve([...sampleMedia]);
       }
       if (cmd === "has_edits") return Promise.resolve(false);
       if (cmd === "get_edit") return Promise.resolve(null);
@@ -175,9 +180,8 @@ function setupViewerInvoke() {
 
 beforeEach(() => {
   localStorage.clear();
+  resetStore();
   setLocale("zh-CN");
-  clearMediaSelection();
-  setSearchQuery("");
   setupMatchMedia(false);
   vi.clearAllMocks();
   setupDefaultMocks();
@@ -340,6 +344,11 @@ describe("Keyboard navigation workflow", () => {
     fireEvent.keyDown(window, { key: "ArrowLeft" });
     await waitFor(() => {
       expect(getSnapshot().viewingMediaId).toBe(1);
+    });
+
+    fireEvent.keyDown(window, { key: "ArrowRight" });
+    await waitFor(() => {
+      expect(getSnapshot().viewingMediaId).toBe(2);
     });
 
     fireEvent.keyDown(window, { key: "ArrowRight" });

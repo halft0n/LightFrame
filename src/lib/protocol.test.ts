@@ -1,4 +1,16 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(),
+  convertFileSrc: vi.fn(
+    (filePath: string, protocol: string = "asset") =>
+      `${protocol}://localhost/${filePath}`,
+  ),
+}));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn().mockResolvedValue(() => {}),
+}));
+
 import { getOriginalUrl, getThumbnailUrl } from "@/lib/tauri";
 
 describe("protocol URL generation", () => {

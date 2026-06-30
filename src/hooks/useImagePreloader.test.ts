@@ -6,6 +6,10 @@ import type { MediaItem } from "@/lib/tauri";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
+  convertFileSrc: vi.fn(
+    (filePath: string, protocol: string = "asset") =>
+      `${protocol}://localhost/${filePath}`,
+  ),
 }));
 
 const mockPhoto = (id: number, path = `/photos/${id}.jpg`): MediaItem => ({

@@ -4,6 +4,17 @@ import userEvent from "@testing-library/user-event";
 import { DeletedView } from "./DeletedView";
 import { setLocale } from "@/i18n/index";
 
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(),
+  convertFileSrc: vi.fn(
+    (filePath: string, protocol: string = "asset") =>
+      `${protocol}://localhost/${filePath}`,
+  ),
+}));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn().mockResolvedValue(() => {}),
+}));
+
 const getDeletedMedia = vi.fn();
 const restoreMedia = vi.fn();
 const permanentlyDelete = vi.fn();

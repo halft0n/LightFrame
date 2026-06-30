@@ -43,6 +43,10 @@ vi.mock("@tauri-apps/api/core", () => ({
     if (cmd === "list_albums") return Promise.resolve([]);
     return Promise.resolve(null);
   }),
+  convertFileSrc: vi.fn(
+    (filePath: string, protocol: string = "asset") =>
+      `${protocol}://localhost/${filePath}`,
+  ),
 }));
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn().mockResolvedValue(() => {}),

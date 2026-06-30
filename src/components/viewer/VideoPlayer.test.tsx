@@ -6,6 +6,10 @@ import { setLocale } from "@/i18n/index";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
+  convertFileSrc: vi.fn(
+    (filePath: string, protocol: string = "asset") =>
+      `${protocol}://localhost/${filePath}`,
+  ),
 }));
 
 beforeEach(() => {

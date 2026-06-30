@@ -1,14 +1,15 @@
 use crate::memory;
 use crate::state::{AppState, ScanQueue, ScanStatus};
+use chrono::Timelike;
 use futures::stream::{self, StreamExt};
 use lightframe_core::media::{MediaFile, MediaType, ThumbnailSize};
 use lightframe_db::Database;
-use lightframe_indexer::{classify_extension, scan_folder as discover_files};
+use lightframe_indexer::{classify_extension, scan_folder_streaming};
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 use tracing::{Instrument, error, info, warn};
@@ -65,7 +66,7 @@ impl MediaBatchEmitter {
     }
 
     fn emit_locked(&self, buffer: &mut Vec<MediaFile>) {
-        let items: Vec<MediaFile> = buffer.drain(..).collect();
+        let items: Vec<MediaFile> = std::mem::take(buffer);
         if items.is_empty() {
             return;
         }
@@ -159,8 +160,14 @@ impl ScanQueue {
         tauri::async_runtime::spawn(async move {
             while let Some(folder_id) = rx.recv().await {
                 running.store(true, Ordering::SeqCst);
-                let result =
-                    run_scan(&app, db.clone(), scan_status.clone(), concurrency, folder_id).await;
+                let result = run_scan(
+                    &app,
+                    db.clone(),
+                    scan_status.clone(),
+                    concurrency,
+                    folder_id,
+                )
+                .await;
                 if let Err(e) = result {
                     error!(folder_id, "scan failed: {e}");
                     scan_status.set_status("error");
@@ -198,53 +205,66 @@ pub async fn run_scan(
     memory::log_memory("scan_start");
 
     let root = PathBuf::from(&folder.path);
-    let files = async {
-        discover_files(&root).await.inspect_err(|_| {
-            let _ = db.set_folder_scan_status(folder_id, "error");
-        })
-    }
-    .instrument(tracing::info_span!("file_discovery", folder_id))
-    .await?;
-    scan_status.set_total(files.len() as i64);
+
+    // Phase 1: Streaming discovery + fast index (metadata + DB only, no heavy work)
+    let rx = scan_folder_streaming(&root);
+    let discovered = Arc::new(AtomicI64::new(0));
+    let discovered_for_stream = Arc::clone(&discovered);
+
+    let file_stream = futures::stream::unfold(rx, move |mut rx| {
+        let discovered = Arc::clone(&discovered_for_stream);
+        async move {
+            let path = rx.recv().await?;
+            let count = discovered.fetch_add(1, Ordering::Relaxed) + 1;
+            Some(((path, count), rx))
+        }
+    });
+
     scan_status.set_status("scanning");
     let progress = Arc::new(ProgressThrottler::new());
     progress.maybe_emit(app, &scan_status, true);
     let batch_emitter = Arc::new(MediaBatchEmitter::new(app.clone(), folder_id));
+    let media_ids_to_enrich: Arc<Mutex<Vec<i64>>> = Arc::new(Mutex::new(Vec::new()));
 
-    stream::iter(files.into_iter().map(|path| {
-        let db = Arc::clone(&db);
-        let scan_status = scan_status.clone();
-        let app = app.clone();
-        let progress = Arc::clone(&progress);
-        let batch_emitter = Arc::clone(&batch_emitter);
-        async move {
-            match process_file(&db, folder_id, &path).await {
-                Ok(Some(media_id)) => match db.get_media_by_id(media_id) {
-                    Ok(Some(media)) => batch_emitter.push(media),
-                    Ok(None) => {
-                        warn!(media_id, path = %path.display(), "processed media not found in db");
+    file_stream
+        .map(|(path, _discovered_count)| {
+            let db = Arc::clone(&db);
+            let scan_status = scan_status.clone();
+            let app = app.clone();
+            let progress = Arc::clone(&progress);
+            let batch_emitter = Arc::clone(&batch_emitter);
+            let discovered = Arc::clone(&discovered);
+            let enrich_list = Arc::clone(&media_ids_to_enrich);
+            async move {
+                scan_status.set_total(discovered.load(Ordering::Relaxed));
+
+                match quick_index_file(&db, folder_id, &path).await {
+                    Ok(Some((media_id, media))) => {
+                        batch_emitter.push(media);
+                        enrich_list
+                            .lock()
+                            .unwrap_or_else(|e| e.into_inner())
+                            .push(media_id);
                     }
+                    Ok(None) => {}
                     Err(e) => {
-                        warn!(media_id, path = %path.display(), "failed to read processed media: {e}");
+                        warn!(path = %path.display(), "failed to index file: {e}");
+                        scan_status.increment_errors();
                     }
-                },
-                Ok(None) => {}
-                Err(e) => {
-                    warn!(path = %path.display(), "failed to process file: {e}");
-                    scan_status.increment_errors();
                 }
+                let scanned = scan_status.increment_scanned();
+                if scanned % 100 == 0 {
+                    memory::log_memory("scan_progress");
+                }
+                progress.maybe_emit(&app, &scan_status, false);
             }
-            let scanned = scan_status.increment_scanned();
-            if scanned % 100 == 0 {
-                memory::log_memory("scan_progress");
-            }
-            progress.maybe_emit(&app, &scan_status, false);
-        }
-    }))
-    .buffer_unordered(concurrency)
-    .collect::<()>()
-    .await;
+        })
+        .buffer_unordered(concurrency)
+        .collect::<()>()
+        .await;
 
+    let total_discovered = discovered.load(Ordering::Relaxed);
+    scan_status.set_total(total_discovered);
     batch_emitter.flush();
 
     db.update_last_scan_at(folder_id).inspect_err(|_| {
@@ -253,33 +273,63 @@ pub async fn run_scan(
     db.set_folder_scan_status(folder_id, "idle")?;
     scan_status.set_status("complete");
     progress.maybe_emit(app, &scan_status, true);
-    memory::log_memory("scan_end");
+
     info!(
         folder_id,
-        total = scan_status.snapshot().scanned,
-        "scan complete"
+        total = total_discovered,
+        "phase 1 (index) complete"
     );
 
+    // Phase 2: Background enrichment (thumbnails, hashes, etc.)
+    let ids = std::mem::take(
+        &mut *media_ids_to_enrich
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()),
+    );
+    if !ids.is_empty() {
+        info!(
+            folder_id,
+            count = ids.len(),
+            "starting phase 2 (enrichment)"
+        );
+        let enrich_concurrency = concurrency.min(4);
+        stream::iter(ids.into_iter().map(|media_id| {
+            let db = Arc::clone(&db);
+            async move {
+                if let Err(e) = enrich_media(&db, media_id).await {
+                    warn!(media_id, "enrichment failed: {e}");
+                }
+            }
+        }))
+        .buffer_unordered(enrich_concurrency)
+        .collect::<()>()
+        .await;
+        info!(folder_id, "phase 2 (enrichment) complete");
+    }
+
+    memory::log_memory("scan_end");
     Ok(())
 }
 
-async fn process_file(
+/// Phase 1: Fast index — stat, skip check, EXIF metadata, DB upsert.
+/// Returns `(media_id, MediaFile)` for newly indexed files, `None` for skipped.
+async fn quick_index_file(
     db: &Database,
     folder_id: i64,
     path: &Path,
-) -> lightframe_core::Result<Option<i64>> {
+) -> lightframe_core::Result<Option<(i64, MediaFile)>> {
     let path_str = path.to_string_lossy().to_string();
-    let span = tracing::info_span!("process_file", path = %path_str);
-    process_file_inner(db, folder_id, path)
+    let span = tracing::info_span!("quick_index", path = %path_str);
+    quick_index_inner(db, folder_id, path)
         .instrument(span)
         .await
 }
 
-async fn process_file_inner(
+async fn quick_index_inner(
     db: &Database,
     folder_id: i64,
     path: &Path,
-) -> lightframe_core::Result<Option<i64>> {
+) -> lightframe_core::Result<Option<(i64, MediaFile)>> {
     let path = path.to_path_buf();
     let media_type = classify_extension(&path);
 
@@ -293,7 +343,10 @@ async fn process_file_inner(
     let modified_at = fs_meta
         .modified()
         .ok()
-        .map(|t| chrono::DateTime::<chrono::Utc>::from(t).naive_utc())
+        .map(|t| {
+            let dt = chrono::DateTime::<chrono::Utc>::from(t).naive_utc();
+            dt.with_nanosecond(0).unwrap_or(dt)
+        })
         .unwrap_or_default();
 
     let path_str = path.to_string_lossy();
@@ -315,78 +368,105 @@ async fn process_file_inner(
         media_type,
         MediaType::Photo | MediaType::Raw | MediaType::Screenshot
     ) {
-        async {
-            tokio::task::spawn_blocking({
-                let path = path.clone();
-                move || lightframe_metadata::extract(&path)
-            })
-            .await
-            .map_err(|e| lightframe_core::Error::Other(e.to_string()))?
-        }
-        .instrument(tracing::info_span!("metadata_extraction"))
-        .await?
+        tokio::task::spawn_blocking({
+            let path = path.clone();
+            move || lightframe_metadata::extract(&path)
+        })
+        .await
+        .map_err(|e| lightframe_core::Error::Other(e.to_string()))??
     } else {
         lightframe_metadata::PhotoMetadata::default()
     };
 
-    let blake3_hash = async {
-        tokio::task::spawn_blocking({
-            let path = path.clone();
-            move || lightframe_dedup::file_hash(&path)
-        })
-        .await
-        .map_err(|e| lightframe_core::Error::Other(e.to_string()))?
+    let media = MediaFile {
+        id: 0,
+        path: path.to_string_lossy().to_string(),
+        filename,
+        media_type,
+        size_bytes: fs_meta.len(),
+        width: meta.width,
+        height: meta.height,
+        created_at: meta.date_taken,
+        modified_at,
+        blake3_hash: None,
+        dhash: None,
+        phash: None,
+        latitude: meta.latitude,
+        longitude: meta.longitude,
+    };
+
+    let media_id = db.upsert_media(folder_id, &media)?;
+    let mut stored = media;
+    stored.id = media_id;
+
+    if let (Some(lat), Some(lon)) = (stored.latitude, stored.longitude)
+        && let Some(loc) = lightframe_geo::reverse_geocode(lat, lon)
+    {
+        let country = loc.country.as_deref().unwrap_or("");
+        let city = loc.city.as_deref().unwrap_or("");
+        if !country.is_empty() {
+            let _ = db.update_media_location(media_id, city, country);
+        }
     }
-    .instrument(tracing::info_span!("blake3_hashing"))
-    .await?;
+
+    Ok(Some((media_id, stored)))
+}
+
+/// Phase 2: Background enrichment — blake3 hash, thumbnails, dhash/phash,
+/// screenshot detection. Runs after the main index loop reports "complete".
+async fn enrich_media(db: &Database, media_id: i64) -> lightframe_core::Result<()> {
+    let media = db
+        .get_media_by_id(media_id)?
+        .ok_or_else(|| lightframe_core::Error::Other(format!("media {media_id} not found")))?;
+
+    let path = PathBuf::from(&media.path);
+    let media_type = media.media_type;
+
+    let blake3_hash = tokio::task::spawn_blocking({
+        let path = path.clone();
+        move || lightframe_dedup::file_hash(&path)
+    })
+    .await
+    .map_err(|e| lightframe_core::Error::Other(e.to_string()))??;
 
     let is_image = matches!(
         media_type,
         MediaType::Photo | MediaType::Raw | MediaType::Screenshot
     );
 
-    let (dhash, phash, image_micro_blob) = if is_image {
-        async {
-            tokio::task::spawn_blocking({
-                let path = path.clone();
-                let hash = blake3_hash.clone();
-                move || -> (Option<u64>, Option<u64>, Option<Vec<u8>>) {
-                    let decoded = match lightframe_core::decode::decode_image(&path) {
-                        Ok(d) => d,
-                        Err(e) => {
-                            tracing::warn!(path = %path.display(), "decode failed: {e}");
-                            return (None, None, None);
-                        }
-                    };
-
-                    let dhash = lightframe_dedup::dhash_from_decoded(&decoded).ok();
-                    let phash = lightframe_dedup::phash_from_decoded(&decoded).ok();
-
-                    if let Err(e) = lightframe_thumbnail::generate_from_decoded(
-                        &decoded,
-                        &hash,
-                        ThumbnailSize::Micro,
-                    ) {
-                        tracing::warn!(path = %path.display(), "thumbnail generation failed: {e}");
+    let (dhash, phash, micro_blob) = if is_image {
+        tokio::task::spawn_blocking({
+            let path = path.clone();
+            let hash = blake3_hash.clone();
+            move || -> (Option<u64>, Option<u64>, Option<Vec<u8>>) {
+                let decoded = match lightframe_core::decode::decode_image(&path) {
+                    Ok(d) => d,
+                    Err(e) => {
+                        tracing::warn!(path = %path.display(), "decode failed: {e}");
+                        return (None, None, None);
                     }
-                    if let Err(e) = lightframe_thumbnail::generate_from_decoded(
-                        &decoded,
-                        &hash,
-                        ThumbnailSize::Small,
-                    ) {
-                        tracing::warn!(path = %path.display(), "thumbnail generation failed: {e}");
-                    }
+                };
 
-                    let micro = lightframe_thumbnail::micro_blob_from_decoded(&decoded).ok();
+                let dhash = lightframe_dedup::dhash_from_decoded(&decoded).ok();
+                let phash = lightframe_dedup::phash_from_decoded(&decoded).ok();
 
-                    (dhash, phash, micro)
-                }
-            })
-            .await
-            .map_err(|e| lightframe_core::Error::Other(e.to_string()))
-        }
-        .instrument(tracing::info_span!("thumbnail_generation"))
-        .await?
+                let _ = lightframe_thumbnail::generate_from_decoded(
+                    &decoded,
+                    &hash,
+                    ThumbnailSize::Micro,
+                );
+                let _ = lightframe_thumbnail::generate_from_decoded(
+                    &decoded,
+                    &hash,
+                    ThumbnailSize::Small,
+                );
+
+                let micro = lightframe_thumbnail::micro_blob_from_decoded(&decoded).ok();
+                (dhash, phash, micro)
+            }
+        })
+        .await
+        .map_err(|e| lightframe_core::Error::Other(e.to_string()))?
     } else {
         (None, None, None)
     };
@@ -406,20 +486,16 @@ async fn process_file_inner(
                     let frame = temp_frame.clone();
                     let hash_clone = hash.clone();
                     let _ = tokio::task::spawn_blocking(move || {
-                        if let Err(e) = lightframe_thumbnail::generate(
+                        let _ = lightframe_thumbnail::generate(
                             &frame,
                             &hash_clone,
                             ThumbnailSize::Micro,
-                        ) {
-                            tracing::warn!(path = %frame.display(), "thumbnail generation failed: {e}");
-                        }
-                        if let Err(e) = lightframe_thumbnail::generate(
+                        );
+                        let _ = lightframe_thumbnail::generate(
                             &frame,
                             &hash_clone,
                             ThumbnailSize::Small,
-                        ) {
-                            tracing::warn!(path = %frame.display(), "thumbnail generation failed: {e}");
-                        }
+                        );
                         let _ = std::fs::remove_file(&frame);
                     })
                     .await;
@@ -431,22 +507,7 @@ async fn process_file_inner(
         }
     }
 
-    let media_type = if matches!(media_type, MediaType::Photo) {
-        if let (Some(w), Some(h)) = (meta.width, meta.height) {
-            if lightframe_ai::detect_screenshot(&path, w, h)
-                .map(|score| score.is_likely_screenshot())
-                .unwrap_or(false)
-            {
-                MediaType::Screenshot
-            } else {
-                media_type
-            }
-        } else {
-            media_type
-        }
-    } else {
-        media_type
-    };
+    db.update_media_hashes(media_id, &blake3_hash, dhash, phash)?;
 
     let micro_blob = if matches!(media_type, MediaType::Video) {
         let hash = blake3_hash.clone();
@@ -461,56 +522,32 @@ async fn process_file_inner(
         .await
         .map_err(|e| lightframe_core::Error::Other(e.to_string()))?
     } else {
-        image_micro_blob
+        micro_blob
     };
 
-    let media = MediaFile {
-        id: 0,
-        path: path.to_string_lossy().to_string(),
-        filename,
-        media_type,
-        size_bytes: fs_meta.len(),
-        width: meta.width,
-        height: meta.height,
-        created_at: meta.date_taken,
-        modified_at,
-        blake3_hash: Some(blake3_hash),
-        dhash,
-        phash,
-        latitude: meta.latitude,
-        longitude: meta.longitude,
-    };
-
-    let media_id = {
-        let _span = tracing::info_span!("db_upsert").entered();
-        db.upsert_media(folder_id, &media)?
-    };
-    if let Some(blob) = micro_blob
-        && let Err(e) = db.set_micro_thumb(media_id, &blob)
-    {
-        tracing::warn!(media_id, "failed to set micro thumb: {e}");
+    if let Some(blob) = micro_blob {
+        let _ = db.set_micro_thumb(media_id, &blob);
     }
 
-    if matches!(media_type, MediaType::Screenshot)
-        && let Ok(screenshot_type) = lightframe_ai::classify_screenshot(&path)
-        && let Err(e) = db.set_screenshot_type(media_id, screenshot_type.label())
-    {
-        tracing::warn!(media_id, "failed to set screenshot type: {e}");
-    }
-
-    if let (Some(lat), Some(lon)) = (media.latitude, media.longitude)
-        && let Some(loc) = lightframe_geo::reverse_geocode(lat, lon)
-    {
-        let country = loc.country.as_deref().unwrap_or("");
-        let city = loc.city.as_deref().unwrap_or("");
-        if !country.is_empty()
-            && let Err(e) = db.update_media_location(media_id, city, country)
-        {
-            tracing::warn!(media_id, "failed to update media location: {e}");
+    if matches!(media_type, MediaType::Screenshot) || matches!(media_type, MediaType::Photo) {
+        let mt = media_type;
+        if matches!(mt, MediaType::Photo) {
+            if let (Some(w), Some(h)) = (media.width, media.height)
+                && lightframe_ai::detect_screenshot(&path, w, h)
+                    .map(|s| s.is_likely_screenshot())
+                    .unwrap_or(false)
+            {
+                let _ = db.set_media_type(media_id, "Screenshot");
+                if let Ok(st) = lightframe_ai::classify_screenshot(&path) {
+                    let _ = db.set_screenshot_type(media_id, st.label());
+                }
+            }
+        } else if let Ok(st) = lightframe_ai::classify_screenshot(&path) {
+            let _ = db.set_screenshot_type(media_id, st.label());
         }
     }
 
-    Ok(Some(media_id))
+    Ok(())
 }
 
 #[cfg(test)]
@@ -518,6 +555,10 @@ mod tests {
     use super::*;
     use std::fs;
     use std::path::{Path, PathBuf};
+
+    async fn discover_files(path: &Path) -> lightframe_core::Result<Vec<PathBuf>> {
+        lightframe_indexer::scan_folder(path).await
+    }
 
     #[test]
     fn scan_module_compiles() {
@@ -816,7 +857,7 @@ mod tests {
         }
 
         fn drain_to_batch(&self, buffer: &mut Vec<MediaFile>) {
-            let items: Vec<MediaFile> = buffer.drain(..).collect();
+            let items: Vec<MediaFile> = std::mem::take(buffer);
             if !items.is_empty() {
                 self.batches
                     .lock()
@@ -833,18 +874,11 @@ mod tests {
         }
 
         fn pending_count(&self) -> usize {
-            self.buffer
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .len()
+            self.buffer.lock().unwrap_or_else(|e| e.into_inner()).len()
         }
 
         fn total_items(&self) -> usize {
-            self.batches()
-                .iter()
-                .map(|b| b.len())
-                .sum::<usize>()
-                + self.pending_count()
+            self.batches().iter().map(|b| b.len()).sum::<usize>() + self.pending_count()
         }
     }
 
@@ -899,15 +933,17 @@ mod tests {
         std::fs::metadata(path)
             .ok()
             .and_then(|m| m.modified().ok())
-            .map(|t| chrono::DateTime::<chrono::Utc>::from(t).naive_utc())
+            .map(|t| {
+                let dt = chrono::DateTime::<chrono::Utc>::from(t).naive_utc();
+                dt.with_nanosecond(0).unwrap_or(dt)
+            })
             .unwrap_or_default()
     }
 
     fn sync_db_modified_at_from_filesystem(db: &Database, path: &Path) {
         let path_str = path.to_string_lossy();
         let mtime = fs_modified_at(path);
-        // NaiveDateTime::to_string() is not reliably parsed by get_media_by_path; use RFC3339.
-        let formatted = mtime.format("%Y-%m-%dT%H:%M:%S%.9f").to_string();
+        let formatted = mtime.format("%Y-%m-%dT%H:%M:%S").to_string();
         let conn = db.conn().unwrap();
         conn.execute(
             "UPDATE media_files SET modified_at = ?1 WHERE path = ?2",
@@ -917,13 +953,18 @@ mod tests {
     }
 
     #[test]
-    fn rfc3339_modified_at_parses_for_skip_check() {
+    fn modified_at_truncated_to_seconds_parses_for_skip_check() {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("mtime.jpg");
         fs::write(&file, b"x").unwrap();
         let mtime = fs_modified_at(&file);
-        let formatted = mtime.format("%Y-%m-%dT%H:%M:%S%.9f").to_string();
-        let parsed: chrono::NaiveDateTime = formatted.parse().expect("RFC3339 should parse");
+        assert_eq!(
+            mtime.nanosecond(),
+            0,
+            "fs_modified_at should truncate to seconds"
+        );
+        let formatted = mtime.format("%Y-%m-%dT%H:%M:%S").to_string();
+        let parsed: chrono::NaiveDateTime = formatted.parse().expect("should parse");
         assert_eq!(parsed, mtime);
     }
 
@@ -931,9 +972,8 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let watched = root.path().join("photos");
         fs::create_dir_all(&watched).unwrap();
-        let watched_canonical = crate::original_protocol::strip_extended_prefix(
-            fs::canonicalize(&watched).unwrap(),
-        );
+        let watched_canonical =
+            crate::original_protocol::strip_extended_prefix(fs::canonicalize(&watched).unwrap());
         // In-memory DB avoids WAL read-replica lag between writer and reader connections.
         let db = Arc::new(Database::open(Path::new(":memory:")).unwrap());
         let folder_id = db
@@ -944,12 +984,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn process_file_persists_to_db_before_events() {
+    async fn quick_index_persists_to_db() {
         let (_root, db, folder_id, watched) = setup_test_db_and_folder();
         let file = watched.join("persist.jpg");
         fs::write(&file, b"fake-jpeg-bytes").unwrap();
 
-        let media_id = process_file_inner(&db, folder_id, &file)
+        let (media_id, media) = quick_index_inner(&db, folder_id, &file)
             .await
             .unwrap()
             .expect("first scan should insert media");
@@ -957,6 +997,7 @@ mod tests {
         let stored = db.get_media_by_id(media_id).unwrap().unwrap();
         assert_eq!(stored.path, file.to_string_lossy());
         assert_eq!(stored.filename, "persist.jpg");
+        assert_eq!(media.filename, "persist.jpg");
     }
 
     #[tokio::test]
@@ -965,14 +1006,14 @@ mod tests {
         let file = watched.join("unchanged.jpg");
         fs::write(&file, b"same-content").unwrap();
 
-        let first = process_file_inner(&db, folder_id, &file)
+        let (first, _) = quick_index_inner(&db, folder_id, &file)
             .await
             .unwrap()
             .expect("first scan should insert");
         sync_db_modified_at_from_filesystem(&db, &file);
 
-        let second = process_file_inner(&db, folder_id, &file).await.unwrap();
-        assert_eq!(second, None);
+        let second = quick_index_inner(&db, folder_id, &file).await.unwrap();
+        assert!(second.is_none());
         assert!(
             db.get_media_by_id(first).unwrap().is_some(),
             "original record should remain in db"
@@ -980,25 +1021,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn process_file_returns_none_for_unchanged() {
+    async fn quick_index_returns_none_for_unchanged() {
         let (_root, db, folder_id, watched) = setup_test_db_and_folder();
         let file = watched.join("skip.jpg");
         fs::write(&file, b"unchanged-payload").unwrap();
 
-        process_file_inner(&db, folder_id, &file)
+        quick_index_inner(&db, folder_id, &file)
             .await
             .unwrap()
             .expect("initial insert");
         sync_db_modified_at_from_filesystem(&db, &file);
-        let skipped = process_file_inner(&db, folder_id, &file).await.unwrap();
+        let skipped = quick_index_inner(&db, folder_id, &file).await.unwrap();
         assert!(skipped.is_none());
     }
 
     #[tokio::test]
-    async fn process_file_with_missing_file_returns_error() {
+    async fn quick_index_with_missing_file_returns_error() {
         let (_root, db, folder_id, _watched) = setup_test_db_and_folder();
         let missing = PathBuf::from("/nonexistent/lightframe/missing-file.jpg");
-        let result = process_file_inner(&db, folder_id, &missing).await;
+        let result = quick_index_inner(&db, folder_id, &missing).await;
         assert!(result.is_err());
     }
 
@@ -1006,8 +1047,11 @@ mod tests {
     async fn scan_empty_folder_completes_without_error() {
         let (_root, db, folder_id, watched) = setup_test_db_and_folder();
 
-        let files = discover_files(&watched).await.unwrap();
-        assert!(files.is_empty(), "empty watched folder should yield no media files");
+        let files = lightframe_indexer::scan_folder(&watched).await.unwrap();
+        assert!(
+            files.is_empty(),
+            "empty watched folder should yield no media files"
+        );
 
         db.set_folder_scan_status(folder_id, "scanning").unwrap();
         db.update_last_scan_at(folder_id).unwrap();
@@ -1015,5 +1059,27 @@ mod tests {
 
         let folder = db.get_watched_folder(folder_id).unwrap().unwrap();
         assert_eq!(folder.scan_status, "idle");
+    }
+
+    #[tokio::test]
+    async fn update_media_hashes_persists() {
+        let (_root, db, folder_id, watched) = setup_test_db_and_folder();
+        let file = watched.join("hash-test.jpg");
+        fs::write(&file, b"test-content").unwrap();
+
+        let (media_id, _) = quick_index_inner(&db, folder_id, &file)
+            .await
+            .unwrap()
+            .expect("should index");
+
+        let before = db.get_media_by_id(media_id).unwrap().unwrap();
+        assert!(before.blake3_hash.is_none());
+
+        db.update_media_hashes(media_id, "abc123", Some(42), Some(99))
+            .unwrap();
+        let after = db.get_media_by_id(media_id).unwrap().unwrap();
+        assert_eq!(after.blake3_hash.as_deref(), Some("abc123"));
+        assert_eq!(after.dhash, Some(42));
+        assert_eq!(after.phash, Some(99));
     }
 }

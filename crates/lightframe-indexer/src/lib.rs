@@ -73,6 +73,10 @@ pub fn classify_extension(path: &Path) -> lightframe_core::media::MediaType {
     lightframe_core::media::MediaType::Unknown
 }
 
+pub fn scan_folder_streaming(folder: &Path) -> tokio::sync::mpsc::Receiver<PathBuf> {
+    scanner::scan_streaming(folder)
+}
+
 pub async fn scan_folder(folder: &Path) -> Result<Vec<PathBuf>> {
     #[cfg(target_os = "windows")]
     {

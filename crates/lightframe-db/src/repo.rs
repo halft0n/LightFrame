@@ -388,7 +388,7 @@ impl Database {
                 media.width,
                 media.height,
                 media.created_at.map(|d| d.to_string()),
-                media.modified_at.to_string(),
+                media.modified_at.format("%Y-%m-%dT%H:%M:%S").to_string(),
                 media.blake3_hash,
                 media.dhash,
                 media.phash,
@@ -407,6 +407,32 @@ impl Database {
             .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
 
         Ok(id)
+    }
+
+    pub fn update_media_hashes(
+        &self,
+        media_id: i64,
+        blake3_hash: &str,
+        dhash: Option<u64>,
+        phash: Option<u64>,
+    ) -> lightframe_core::Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "UPDATE media_files SET blake3_hash = ?1, dhash = ?2, phash = ?3 WHERE id = ?4",
+            params![blake3_hash, dhash, phash, media_id],
+        )
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn set_media_type(&self, media_id: i64, media_type: &str) -> lightframe_core::Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "UPDATE media_files SET media_type = ?1 WHERE id = ?2",
+            params![media_type, media_id],
+        )
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        Ok(())
     }
 
     pub fn set_micro_thumb(&self, media_id: i64, blob: &[u8]) -> lightframe_core::Result<()> {

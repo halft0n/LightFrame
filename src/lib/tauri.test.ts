@@ -1,9 +1,13 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
+  convertFileSrc: vi.fn(
+    (filePath: string, protocol: string = "asset") =>
+      `${protocol}://localhost/${filePath}`,
+  ),
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
@@ -115,29 +119,22 @@ beforeEach(() => {
 });
 
 describe("protocolUrl", () => {
-  const originalUserAgent = navigator.userAgent;
-
   afterEach(() => {
-    Object.defineProperty(navigator, "userAgent", {
-      value: originalUserAgent,
-      configurable: true,
-    });
+    vi.mocked(convertFileSrc).mockImplementation(
+      (filePath: string, protocol: string = "asset") =>
+        `${protocol}://localhost/${filePath}`,
+    );
   });
 
-  it("uses scheme://localhost/ format on non-Windows", () => {
-    Object.defineProperty(navigator, "userAgent", {
-      value: "Mozilla/5.0 (X11; Linux x86_64)",
-      configurable: true,
-    });
+  it("uses scheme://localhost/ format on non-Windows (via convertFileSrc)", () => {
     expect(protocolUrl("thumb", "42/small")).toBe("thumb://localhost/42/small");
   });
 
-  it("uses http://{scheme}.localhost/ format on Windows", () => {
-    Object.defineProperty(navigator, "userAgent", {
-      value:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      configurable: true,
-    });
+  it("uses http://{scheme}.localhost/ format on Windows (via convertFileSrc)", () => {
+    vi.mocked(convertFileSrc).mockImplementation(
+      (filePath: string, protocol: string = "asset") =>
+        `http://${protocol}.localhost/${filePath}`,
+    );
     expect(protocolUrl("thumb", "42/small")).toBe(
       "http://thumb.localhost/42/small",
     );
@@ -302,17 +299,15 @@ describe("getFaceThumbnailUrl", () => {
   });
 
   it("generates Windows-format face protocol URLs", () => {
-    const orig = navigator.userAgent;
-    Object.defineProperty(navigator, "userAgent", {
-      value:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      configurable: true,
-    });
+    vi.mocked(convertFileSrc).mockImplementation(
+      (filePath: string, protocol: string = "asset") =>
+        `http://${protocol}.localhost/${filePath}`,
+    );
     expect(getFaceThumbnailUrl(42)).toBe("http://face.localhost/42");
-    Object.defineProperty(navigator, "userAgent", {
-      value: orig,
-      configurable: true,
-    });
+    vi.mocked(convertFileSrc).mockImplementation(
+      (filePath: string, protocol: string = "asset") =>
+        `${protocol}://localhost/${filePath}`,
+    );
   });
 });
 

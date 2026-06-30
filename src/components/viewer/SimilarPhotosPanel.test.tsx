@@ -4,6 +4,17 @@ import userEvent from "@testing-library/user-event";
 import { SimilarPhotosPanel } from "./SimilarPhotosPanel";
 import { setLocale } from "@/i18n/index";
 
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(),
+  convertFileSrc: vi.fn(
+    (filePath: string, protocol: string = "asset") =>
+      `${protocol}://localhost/${filePath}`,
+  ),
+}));
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn().mockResolvedValue(() => {}),
+}));
+
 const findSimilarPhotos = vi.fn();
 const computeClipEmbedding = vi.fn();
 const openViewer = vi.fn();
