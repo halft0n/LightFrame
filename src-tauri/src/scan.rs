@@ -281,11 +281,26 @@ pub async fn run_scan(
     );
 
     // Phase 2: Background enrichment (thumbnails, hashes, etc.)
-    let ids = std::mem::take(
+    let mut ids = std::mem::take(
         &mut *media_ids_to_enrich
             .lock()
             .unwrap_or_else(|e| e.into_inner()),
     );
+    if let Ok(unenriched) = db.get_unenriched_media_ids(folder_id) {
+        let existing: std::collections::HashSet<i64> = ids.iter().copied().collect();
+        let new_count = unenriched
+            .into_iter()
+            .filter(|id| !existing.contains(id))
+            .inspect(|id| ids.push(*id))
+            .count();
+        if new_count > 0 {
+            info!(
+                folder_id,
+                count = new_count,
+                "re-enriching previously skipped files"
+            );
+        }
+    }
     if !ids.is_empty() {
         info!(
             folder_id,
@@ -330,7 +345,7 @@ async fn quick_index_inner(
     folder_id: i64,
     path: &Path,
 ) -> lightframe_core::Result<Option<(i64, MediaFile)>> {
-    let path = path.to_path_buf();
+    let path = crate::original_protocol::strip_extended_prefix(path.to_path_buf());
     let media_type = classify_extension(&path);
 
     let fs_meta = tokio::task::spawn_blocking({
@@ -1081,5 +1096,257 @@ mod tests {
         assert_eq!(after.blake3_hash.as_deref(), Some("abc123"));
         assert_eq!(after.dhash, Some(42));
         assert_eq!(after.phash, Some(99));
+    }
+
+    #[tokio::test]
+    async fn streaming_discovery_yields_all_media_files() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("a.jpg"), b"img-a").unwrap();
+        fs::write(dir.path().join("b.png"), b"img-b").unwrap();
+        fs::write(dir.path().join("readme.txt"), b"not media").unwrap();
+
+        let mut rx = lightframe_indexer::scan_folder_streaming(dir.path());
+        let mut paths = Vec::new();
+        while let Some(p) = rx.recv().await {
+            paths.push(p);
+        }
+        assert_eq!(paths.len(), 2);
+        let names: Vec<_> = paths
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        assert!(names.contains(&"a.jpg".to_string()));
+        assert!(names.contains(&"b.png".to_string()));
+    }
+
+    #[tokio::test]
+    async fn streaming_discovery_empty_dir_yields_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut rx = lightframe_indexer::scan_folder_streaming(dir.path());
+        assert!(rx.recv().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn quick_index_reindexes_after_mtime_change() {
+        let (_root, db, folder_id, watched) = setup_test_db_and_folder();
+        let file = watched.join("reindex.jpg");
+        fs::write(&file, b"first-version").unwrap();
+
+        let (first_id, _) = quick_index_inner(&db, folder_id, &file)
+            .await
+            .unwrap()
+            .expect("initial insert");
+        sync_db_modified_at_from_filesystem(&db, &file);
+
+        let skipped = quick_index_inner(&db, folder_id, &file).await.unwrap();
+        assert!(skipped.is_none(), "unchanged file should be skipped");
+
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        fs::write(&file, b"second-version-longer").unwrap();
+
+        let result = quick_index_inner(&db, folder_id, &file).await.unwrap();
+        assert!(result.is_some(), "modified file should be reindexed");
+        let (reindex_id, _) = result.unwrap();
+        assert_eq!(reindex_id, first_id, "reindex should upsert same record");
+    }
+
+    #[tokio::test]
+    async fn set_media_type_persists() {
+        let (_root, db, folder_id, watched) = setup_test_db_and_folder();
+        let file = watched.join("screenshot-test.jpg");
+        fs::write(&file, b"fake-jpg").unwrap();
+
+        let (media_id, media) = quick_index_inner(&db, folder_id, &file)
+            .await
+            .unwrap()
+            .expect("should index");
+        assert!(
+            matches!(media.media_type, MediaType::Photo),
+            "initial type should be Photo"
+        );
+
+        db.set_media_type(media_id, "Screenshot").unwrap();
+        let updated = db.get_media_by_id(media_id).unwrap().unwrap();
+        assert!(
+            matches!(updated.media_type, MediaType::Screenshot),
+            "type should be Screenshot after update"
+        );
+    }
+
+    #[tokio::test]
+    async fn quick_index_multiple_files_assigns_unique_ids() {
+        let (_root, db, folder_id, watched) = setup_test_db_and_folder();
+        let f1 = watched.join("multi1.jpg");
+        let f2 = watched.join("multi2.png");
+        let f3 = watched.join("multi3.jpeg");
+        fs::write(&f1, b"data1").unwrap();
+        fs::write(&f2, b"data2").unwrap();
+        fs::write(&f3, b"data3").unwrap();
+
+        let (id1, _) = quick_index_inner(&db, folder_id, &f1)
+            .await
+            .unwrap()
+            .expect("f1");
+        let (id2, _) = quick_index_inner(&db, folder_id, &f2)
+            .await
+            .unwrap()
+            .expect("f2");
+        let (id3, _) = quick_index_inner(&db, folder_id, &f3)
+            .await
+            .unwrap()
+            .expect("f3");
+
+        let mut ids = vec![id1, id2, id3];
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids.len(), 3, "all media IDs should be unique");
+    }
+
+    #[test]
+    fn batch_collector_auto_flushes_multiple_batches() {
+        let collector = TestBatchCollector::new();
+        for i in 0..55 {
+            collector.push(sample_media(&format!("/photos/batch{i}.jpg")));
+        }
+        let batches = collector.batches();
+        assert_eq!(
+            batches.len(),
+            2,
+            "55 items = 2 full batches ({0}+{0}) + 15 pending",
+            MEDIA_BATCH_SIZE
+        );
+        assert_eq!(batches[0].len(), MEDIA_BATCH_SIZE);
+        assert_eq!(batches[1].len(), MEDIA_BATCH_SIZE);
+        assert_eq!(collector.pending_count(), 55 - 2 * MEDIA_BATCH_SIZE);
+
+        collector.flush();
+        let batches = collector.batches();
+        assert_eq!(batches.len(), 3);
+        assert_eq!(batches[2].len(), 55 - 2 * MEDIA_BATCH_SIZE);
+        assert_eq!(collector.pending_count(), 0);
+    }
+
+    #[test]
+    fn batch_collector_total_items_across_batches_and_pending() {
+        let collector = TestBatchCollector::new();
+        for i in 0..33 {
+            collector.push(sample_media(&format!("/photos/total{i}.jpg")));
+        }
+        assert_eq!(collector.total_items(), 33);
+    }
+
+    #[tokio::test]
+    async fn quick_index_stores_file_size() {
+        let (_root, db, folder_id, watched) = setup_test_db_and_folder();
+        let file = watched.join("size-test.jpg");
+        let content = vec![0u8; 1234];
+        fs::write(&file, &content).unwrap();
+
+        let (media_id, media) = quick_index_inner(&db, folder_id, &file)
+            .await
+            .unwrap()
+            .expect("should index");
+        assert_eq!(media.size_bytes, 1234);
+
+        let stored = db.get_media_by_id(media_id).unwrap().unwrap();
+        assert_eq!(stored.size_bytes, 1234);
+    }
+
+    #[tokio::test]
+    async fn quick_index_blake3_hash_is_none_in_phase1() {
+        let (_root, db, folder_id, watched) = setup_test_db_and_folder();
+        let file = watched.join("no-hash.jpg");
+        fs::write(&file, b"test-data").unwrap();
+
+        let (media_id, media) = quick_index_inner(&db, folder_id, &file)
+            .await
+            .unwrap()
+            .expect("should index");
+        assert!(
+            media.blake3_hash.is_none(),
+            "phase 1 should NOT compute blake3_hash"
+        );
+
+        let stored = db.get_media_by_id(media_id).unwrap().unwrap();
+        assert!(
+            stored.blake3_hash.is_none(),
+            "stored blake3_hash should also be None after phase 1"
+        );
+    }
+
+    #[test]
+    fn modified_at_truncation_is_idempotent() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("idempotent.jpg");
+        fs::write(&file, b"x").unwrap();
+        let m1 = fs_modified_at(&file);
+        let m2 = fs_modified_at(&file);
+        assert_eq!(m1, m2, "fs_modified_at should be deterministic");
+        assert_eq!(m1.nanosecond(), 0);
+    }
+
+    #[tokio::test]
+    async fn reindex_clears_stale_hashes() {
+        let (_root, db, folder_id, watched) = setup_test_db_and_folder();
+        let file = watched.join("hash-stale.jpg");
+        fs::write(&file, b"original-content").unwrap();
+
+        let (media_id, _) = quick_index_inner(&db, folder_id, &file)
+            .await
+            .unwrap()
+            .expect("initial index");
+
+        db.update_media_hashes(media_id, "oldhash", Some(111), Some(222))
+            .unwrap();
+        let enriched = db.get_media_by_id(media_id).unwrap().unwrap();
+        assert_eq!(enriched.blake3_hash.as_deref(), Some("oldhash"));
+
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        fs::write(&file, b"modified-content-longer").unwrap();
+
+        let (reindex_id, _) = quick_index_inner(&db, folder_id, &file)
+            .await
+            .unwrap()
+            .expect("reindex after modification");
+        assert_eq!(reindex_id, media_id);
+
+        let after_reindex = db.get_media_by_id(media_id).unwrap().unwrap();
+        assert!(
+            after_reindex.blake3_hash.is_none(),
+            "reindex should clear stale blake3_hash"
+        );
+        assert!(
+            after_reindex.dhash.is_none(),
+            "reindex should clear stale dhash"
+        );
+        assert!(
+            after_reindex.phash.is_none(),
+            "reindex should clear stale phash"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_unenriched_media_ids_finds_null_hash_records() {
+        let (_root, db, folder_id, watched) = setup_test_db_and_folder();
+        let f1 = watched.join("enriched.jpg");
+        let f2 = watched.join("unenriched.jpg");
+        fs::write(&f1, b"data-e").unwrap();
+        fs::write(&f2, b"data-u").unwrap();
+
+        let (id1, _) = quick_index_inner(&db, folder_id, &f1)
+            .await
+            .unwrap()
+            .expect("f1");
+        let (id2, _) = quick_index_inner(&db, folder_id, &f2)
+            .await
+            .unwrap()
+            .expect("f2");
+
+        db.update_media_hashes(id1, "hash1", Some(1), Some(1))
+            .unwrap();
+
+        let unenriched = db.get_unenriched_media_ids(folder_id).unwrap();
+        assert_eq!(unenriched.len(), 1);
+        assert_eq!(unenriched[0], id2);
     }
 }

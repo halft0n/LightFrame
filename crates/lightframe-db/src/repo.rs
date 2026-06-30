@@ -372,9 +372,18 @@ impl Database {
                 height = COALESCE(excluded.height, height),
                 created_at = COALESCE(excluded.created_at, created_at),
                 modified_at = excluded.modified_at,
-                blake3_hash = COALESCE(excluded.blake3_hash, blake3_hash),
-                dhash = COALESCE(excluded.dhash, dhash),
-                phash = COALESCE(excluded.phash, phash),
+                blake3_hash = CASE
+                    WHEN excluded.size_bytes != size_bytes OR excluded.modified_at != modified_at
+                    THEN excluded.blake3_hash
+                    ELSE COALESCE(excluded.blake3_hash, blake3_hash) END,
+                dhash = CASE
+                    WHEN excluded.size_bytes != size_bytes OR excluded.modified_at != modified_at
+                    THEN excluded.dhash
+                    ELSE COALESCE(excluded.dhash, dhash) END,
+                phash = CASE
+                    WHEN excluded.size_bytes != size_bytes OR excluded.modified_at != modified_at
+                    THEN excluded.phash
+                    ELSE COALESCE(excluded.phash, phash) END,
                 latitude = COALESCE(excluded.latitude, latitude),
                 longitude = COALESCE(excluded.longitude, longitude),
                 is_deleted = 0,
@@ -607,6 +616,21 @@ impl Database {
             |row| row.get(0),
         )
         .map_err(|e| lightframe_core::Error::Database(e.to_string()))
+    }
+
+    pub fn get_unenriched_media_ids(&self, folder_id: i64) -> lightframe_core::Result<Vec<i64>> {
+        let conn = self.read_conn()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id FROM media_files
+                 WHERE folder_id = ?1 AND is_deleted = 0 AND blake3_hash IS NULL",
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        let ids = stmt
+            .query_map(params![folder_id], |row| row.get(0))
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        ids.collect::<Result<Vec<i64>, _>>()
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))
     }
 
     pub fn get_media_by_type(
