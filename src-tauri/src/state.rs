@@ -290,7 +290,9 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let watched = root.path().join("watched");
         std::fs::create_dir_all(&watched).unwrap();
-        let watched_canonical = std::fs::canonicalize(&watched).unwrap();
+        let watched_canonical = crate::original_protocol::strip_extended_prefix(
+            std::fs::canonicalize(&watched).unwrap(),
+        );
         let watched_str = watched_canonical.to_str().unwrap().to_string();
 
         let db_path = root.path().join("library.db");
@@ -323,12 +325,15 @@ mod tests {
         std::fs::create_dir_all(&watched).unwrap();
         std::fs::create_dir_all(&outside).unwrap();
 
-        let watched_str = std::fs::canonicalize(&watched)
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string();
-        let outside_canonical = std::fs::canonicalize(&outside).unwrap();
+        let watched_str = crate::original_protocol::strip_extended_prefix(
+            std::fs::canonicalize(&watched).unwrap(),
+        )
+        .to_str()
+        .unwrap()
+        .to_string();
+        let outside_canonical = crate::original_protocol::strip_extended_prefix(
+            std::fs::canonicalize(&outside).unwrap(),
+        );
         let outside_path = outside_canonical.join("expired.jpg");
         std::fs::write(&outside_path, b"jpeg-data").unwrap();
         let outside_str = outside_path.to_str().unwrap().to_string();
@@ -355,7 +360,9 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let watched = root.path().join("watched");
         std::fs::create_dir_all(&watched).unwrap();
-        let watched_canonical = std::fs::canonicalize(&watched).unwrap();
+        let watched_canonical = crate::original_protocol::strip_extended_prefix(
+            std::fs::canonicalize(&watched).unwrap(),
+        );
         let watched_str = watched_canonical.to_str().unwrap().to_string();
 
         let db_path = root.path().join("library.db");
@@ -379,7 +386,9 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let watched = root.path().join("watched");
         std::fs::create_dir_all(&watched).unwrap();
-        let watched_canonical = std::fs::canonicalize(&watched).unwrap();
+        let watched_canonical = crate::original_protocol::strip_extended_prefix(
+            std::fs::canonicalize(&watched).unwrap(),
+        );
         let watched_str = watched_canonical.to_str().unwrap().to_string();
 
         let db_path = root.path().join("library.db");

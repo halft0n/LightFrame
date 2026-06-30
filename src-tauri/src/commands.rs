@@ -624,7 +624,9 @@ mod batch_export_tests {
         let root = tempfile::tempdir().unwrap();
         let watched = root.path().join("photos");
         std::fs::create_dir_all(&watched).unwrap();
-        let watched_canonical = std::fs::canonicalize(&watched).unwrap();
+        let watched_canonical = crate::original_protocol::strip_extended_prefix(
+            std::fs::canonicalize(&watched).unwrap(),
+        );
         let watched_str = watched_canonical.to_str().unwrap().to_string();
 
         let db_path = root.path().join("library.db");
@@ -712,18 +714,22 @@ mod batch_export_tests {
         let outside = root.path().join("outside");
         std::fs::create_dir_all(&watched).unwrap();
         std::fs::create_dir_all(&outside).unwrap();
-        let watched_str = std::fs::canonicalize(&watched)
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string();
+        let watched_str = crate::original_protocol::strip_extended_prefix(
+            std::fs::canonicalize(&watched).unwrap(),
+        )
+        .to_str()
+        .unwrap()
+        .to_string();
 
         let db_path = root.path().join("library.db");
         let db = Arc::new(lightframe_db::Database::open(&db_path).unwrap());
         let folder_id = db.add_watched_folder(&watched_str).unwrap().id;
         let state = test_app_state(db);
 
-        let outside_file = outside.join("secret.jpg");
+        let outside_canonical = crate::original_protocol::strip_extended_prefix(
+            std::fs::canonicalize(&outside).unwrap(),
+        );
+        let outside_file = outside_canonical.join("secret.jpg");
         std::fs::write(&outside_file, b"jpeg").unwrap();
         let media_id = state
             .db

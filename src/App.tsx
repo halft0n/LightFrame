@@ -224,7 +224,7 @@ export default function App() {
         </>
       )}
 
-      <main className="flex flex-1 flex-col overflow-hidden">
+      <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <header className="header-glass sticky top-0 z-10 flex h-[44px] shrink-0 items-center gap-3 border-b border-neutral-200/70 px-4 dark:border-neutral-800/70">
           <button
             type="button"
@@ -405,7 +405,7 @@ export default function App() {
             </span>
           )}
         </header>
-        <div className="main-content-enter flex flex-1 flex-col overflow-hidden min-w-0">
+        <div className="main-content-enter flex min-h-0 flex-1 flex-col overflow-hidden min-w-0">
           <MainContent />
         </div>
       </main>

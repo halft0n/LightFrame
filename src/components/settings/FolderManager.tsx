@@ -193,7 +193,7 @@ export function FolderManager() {
 
   return (
     <div
-      className="page-enter flex flex-1 flex-col overflow-y-auto"
+      className="page-enter flex min-h-0 flex-1 flex-col overflow-y-auto"
       data-testid="folder-manager"
     >
       <section className="settings-section px-6 py-5">

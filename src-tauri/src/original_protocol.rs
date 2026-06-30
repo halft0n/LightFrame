@@ -243,6 +243,7 @@ fn normalize_windows_path_str(decoded: &str) -> String {
 }
 
 fn normalize_file_path(decoded: &str) -> PathBuf {
+    let decoded = decoded.strip_prefix("\\\\?\\").unwrap_or(decoded);
     if looks_like_windows_path(decoded) || decoded.contains('\\') {
         PathBuf::from(normalize_windows_path_str(decoded))
     } else {
