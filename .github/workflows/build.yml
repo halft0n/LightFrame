@@ -148,12 +148,12 @@ jobs:
           fi
           exit $ERR
 
-      - name: Build (native target)
-        if: "!contains(matrix.label, 'arm64')"
+      - name: Build (Windows native)
+        if: runner.os == 'Windows'
         run: pnpm tauri build
 
-      - name: Build (cross-compile arm64)
-        if: contains(matrix.label, 'arm64')
+      - name: Build (Unix with explicit target)
+        if: runner.os != 'Windows'
         run: pnpm tauri build --target ${{ matrix.target }}
 
       - name: Collect release artifacts
@@ -163,9 +163,10 @@ jobs:
           LABEL="${{ matrix.label }}"
           mkdir -p release-artifacts
 
-          SEARCH_DIR="target/release/bundle"
-          BIN_DIR="target/release"
-          if [[ "$LABEL" == *"arm64"* ]]; then
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            SEARCH_DIR="target/release/bundle"
+            BIN_DIR="target/release"
+          else
             SEARCH_DIR="target/${{ matrix.target }}/release/bundle"
             BIN_DIR="target/${{ matrix.target }}/release"
           fi

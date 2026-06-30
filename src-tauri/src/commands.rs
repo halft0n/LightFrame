@@ -88,8 +88,8 @@ pub fn get_log_config() -> lightframe_core::config::LogConfig {
 
 #[tauri::command]
 pub fn set_log_config(config: lightframe_core::config::LogConfig) -> Result<(), String> {
-    crate::logging::set_log_config(config);
-    Ok(())
+    crate::logging::set_log_config(config.clone());
+    lightframe_core::config::update_log_config(&config).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -252,6 +252,7 @@ pub(crate) fn batch_export_impl(
     }
 
     let mut exported = 0usize;
+    let mut copy_attempts = 0usize;
     for media_id in media_ids {
         let Some(media) = state
             .db
@@ -277,9 +278,20 @@ pub(crate) fn batch_export_impl(
         if !dest.starts_with(output) {
             return Err("invalid export path".to_string());
         }
-        std::fs::copy(source, &dest)
-            .map_err(|e| format!("failed to copy {} to {}: {e}", media.path, dest.display()))?;
+        copy_attempts += 1;
+        if let Err(e) = std::fs::copy(source, &dest) {
+            tracing::warn!(
+                "batch export: failed to copy {} to {}: {e}",
+                media.path,
+                dest.display()
+            );
+            continue;
+        }
         exported += 1;
+    }
+
+    if copy_attempts > 0 && exported == 0 {
+        return Err("batch export failed for all items".to_string());
     }
 
     Ok(exported)
@@ -601,6 +613,7 @@ mod batch_export_tests {
             scanning: Arc::new(AtomicBool::new(false)),
             face_detecting: Arc::new(AtomicBool::new(false)),
             dedup_scanning: Arc::new(AtomicBool::new(false)),
+            thumb_regenerating: Arc::new(AtomicBool::new(false)),
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: crate::thumb_cache::ThumbCache::new(),
             ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
@@ -611,17 +624,14 @@ mod batch_export_tests {
         let root = tempfile::tempdir().unwrap();
         let watched = root.path().join("photos");
         std::fs::create_dir_all(&watched).unwrap();
-        let watched_str = std::fs::canonicalize(&watched)
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string();
+        let watched_canonical = std::fs::canonicalize(&watched).unwrap();
+        let watched_str = watched_canonical.to_str().unwrap().to_string();
 
         let db_path = root.path().join("library.db");
         let db = Arc::new(lightframe_db::Database::open(&db_path).unwrap());
         let folder_id = db.add_watched_folder(&watched_str).unwrap().id;
         let state = test_app_state(db);
-        (root, state, folder_id, watched)
+        (root, state, folder_id, watched_canonical)
     }
 
     #[test]
@@ -745,6 +755,55 @@ mod batch_export_tests {
 }
 
 #[cfg(test)]
+mod rename_person_tests {
+    use super::*;
+    use crate::state::ScanStatus;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+
+    fn test_app_state(db: Arc<lightframe_db::Database>) -> AppState {
+        AppState {
+            db,
+            config: lightframe_core::config::AppConfig::default(),
+            scan_status: ScanStatus::new(),
+            scan_concurrency: 4,
+            scanning: Arc::new(AtomicBool::new(false)),
+            face_detecting: Arc::new(AtomicBool::new(false)),
+            dedup_scanning: Arc::new(AtomicBool::new(false)),
+            thumb_regenerating: Arc::new(AtomicBool::new(false)),
+            watch_manager: crate::watcher::WatchManager::new(),
+            thumb_cache: crate::thumb_cache::ThumbCache::new(),
+            ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
+        }
+    }
+
+    #[test]
+    fn rename_person_rejects_empty_and_whitespace_names() {
+        let root = tempfile::tempdir().unwrap();
+        let db = Arc::new(lightframe_db::Database::open(&root.path().join("library.db")).unwrap());
+        let state = test_app_state(db.clone());
+        let person_id = db.create_person(Some("Original")).unwrap();
+
+        for name in ["", "  ", "\t", "   \n  "] {
+            let err = rename_person_impl(&state, person_id, name.to_string()).unwrap_err();
+            assert!(err.contains("cannot be empty"), "name={name:?}: {err}");
+        }
+    }
+
+    #[test]
+    fn rename_person_trims_whitespace() {
+        let root = tempfile::tempdir().unwrap();
+        let db = Arc::new(lightframe_db::Database::open(&root.path().join("library.db")).unwrap());
+        let state = test_app_state(db.clone());
+        let person_id = db.create_person(Some("Original")).unwrap();
+
+        rename_person_impl(&state, person_id, "  Alicia  ".to_string()).unwrap();
+        let persons = db.list_persons().unwrap();
+        assert_eq!(persons[0].name.as_deref(), Some("Alicia"));
+    }
+}
+
+#[cfg(test)]
 mod edit_persistence_tests {
     use super::*;
     use crate::state::ScanStatus;
@@ -813,6 +872,7 @@ mod edit_persistence_tests {
             scanning: Arc::new(AtomicBool::new(false)),
             face_detecting: Arc::new(AtomicBool::new(false)),
             dedup_scanning: Arc::new(AtomicBool::new(false)),
+            thumb_regenerating: Arc::new(AtomicBool::new(false)),
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: crate::thumb_cache::ThumbCache::new(),
             ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
@@ -1965,20 +2025,18 @@ async fn detect_and_store_faces_for_media(state: &AppState, media_id: i64) -> Re
     };
 
     let count = faces.len() as i64;
-    if !faces.is_empty() {
-        let inputs: Vec<lightframe_db::FaceDetectionInput> = faces
-            .iter()
-            .map(|f| lightframe_db::FaceDetectionInput {
-                bbox: f.bbox,
-                confidence: f.confidence,
-                embedding: f.embedding.clone(),
-            })
-            .collect();
-        state
-            .db
-            .store_face_detections(media_id, &inputs)
-            .map_err(|e| e.to_string())?;
-    }
+    let inputs: Vec<lightframe_db::FaceDetectionInput> = faces
+        .iter()
+        .map(|f| lightframe_db::FaceDetectionInput {
+            bbox: f.bbox,
+            confidence: f.confidence,
+            embedding: f.embedding.clone(),
+        })
+        .collect();
+    state
+        .db
+        .store_face_detections(media_id, &inputs)
+        .map_err(|e| e.to_string())?;
 
     Ok(count)
 }
@@ -2020,16 +2078,28 @@ pub fn get_person_media(
         .map_err(|e| e.to_string())
 }
 
+pub(crate) fn rename_person_impl(
+    state: &AppState,
+    person_id: i64,
+    name: String,
+) -> Result<(), String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("person name cannot be empty".to_string());
+    }
+    state
+        .db
+        .rename_person(person_id, &name)
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn rename_person(
     state: State<'_, AppState>,
     person_id: i64,
     name: String,
 ) -> Result<(), String> {
-    state
-        .db
-        .rename_person(person_id, &name)
-        .map_err(|e| e.to_string())
+    rename_person_impl(&state, person_id, name)
 }
 
 #[derive(Serialize)]

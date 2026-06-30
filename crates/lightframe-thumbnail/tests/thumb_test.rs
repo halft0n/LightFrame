@@ -194,7 +194,7 @@ fn micro_blob_from_decoded_returns_jpeg() {
 fn regenerate_from_decoded_overwrites_and_stays_valid() {
     let decoded = synthetic_decoded_image(200, 150);
     let hash = "ccccddddeeeeffffccccddddeeeeffffccccddddeeeeffffccccddddeeeeffff";
-    let out = generate_from_decoded(&decoded, hash, ThumbnailSize::Small).expect("initial");
+    let out = regenerate_from_decoded(&decoded, hash, ThumbnailSize::Small).expect("initial");
     assert!(out.exists());
     let first_len = out.metadata().unwrap().len();
 

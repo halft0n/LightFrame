@@ -3,7 +3,7 @@ members = ["src-tauri", "crates/*"]
 resolver = "2"
 
 [workspace.package]
-version = "0.0.14"
+version = "0.0.15"
 edition = "2024"
 license = "MIT"
 authors = ["LightFrame Contributors"]
@@ -19,6 +19,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rusqlite = { version = "0.33", features = ["bundled", "blob"] }
 blake3 = "1"
 image = { version = "0.25", features = ["avif"] }
+webp = "0.3"
 kamadak-exif = "0.5"
 rawloader = "0.37"
 lightframe-core = { path = "crates/lightframe-core" }

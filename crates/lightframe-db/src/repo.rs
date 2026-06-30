@@ -376,7 +376,9 @@ impl Database {
                 dhash = COALESCE(excluded.dhash, dhash),
                 phash = COALESCE(excluded.phash, phash),
                 latitude = COALESCE(excluded.latitude, latitude),
-                longitude = COALESCE(excluded.longitude, longitude)",
+                longitude = COALESCE(excluded.longitude, longitude),
+                is_deleted = 0,
+                deleted_at = NULL",
             params![
                 folder_id,
                 media.path,
@@ -3438,5 +3440,74 @@ impl UnionFind {
         if root_a != root_b {
             self.parent.insert(root_b, root_a);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDateTime;
+    use lightframe_core::media::{MediaFile, MediaType};
+    use std::path::Path;
+
+    fn sample_media(path: &str) -> MediaFile {
+        MediaFile {
+            id: 0,
+            path: path.to_string(),
+            filename: path.rsplit('/').next().unwrap_or(path).to_string(),
+            media_type: MediaType::Photo,
+            size_bytes: 2048,
+            width: Some(100),
+            height: Some(100),
+            created_at: None,
+            modified_at: NaiveDateTime::default(),
+            blake3_hash: None,
+            dhash: None,
+            phash: None,
+            latitude: None,
+            longitude: None,
+        }
+    }
+
+    fn test_db() -> crate::Database {
+        crate::Database::open(Path::new(":memory:")).expect("open in-memory db")
+    }
+
+    #[test]
+    fn upsert_media_clears_is_deleted_on_rescan() {
+        let db = test_db();
+        let folder_id = db.add_watched_folder("/photos").unwrap().id;
+        let path = "/photos/rescan.jpg";
+        let media_id = db.upsert_media(folder_id, &sample_media(path)).unwrap();
+
+        db.set_deleted(media_id, true).unwrap();
+        assert!(db.get_media_by_id(media_id).unwrap().is_none());
+
+        let same_id = db.upsert_media(folder_id, &sample_media(path)).unwrap();
+        assert_eq!(same_id, media_id);
+        assert!(db.get_media_by_id(media_id).unwrap().is_some());
+    }
+
+    #[test]
+    fn store_face_detections_empty_clears_previous() {
+        let db = test_db();
+        let folder_id = db.add_watched_folder("/photos").unwrap().id;
+        let media_id = db
+            .upsert_media(folder_id, &sample_media("/photos/face.jpg"))
+            .unwrap();
+
+        db.store_face_detections(
+            media_id,
+            &[FaceDetectionInput {
+                bbox: [0.0, 0.0, 10.0, 10.0],
+                confidence: 0.95,
+                embedding: vec![1.0, 0.0, 0.0],
+            }],
+        )
+        .unwrap();
+        assert_eq!(db.get_faces_for_media(media_id).unwrap().len(), 1);
+
+        db.store_face_detections(media_id, &[]).unwrap();
+        assert!(db.get_faces_for_media(media_id).unwrap().is_empty());
     }
 }

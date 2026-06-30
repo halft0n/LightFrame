@@ -37,6 +37,15 @@ fn open_source_image(src: &Path) -> Result<image::DynamicImage> {
     decoded.to_dynamic_image()
 }
 
+fn save_webp(thumb: &image::DynamicImage, path: &Path) -> Result<()> {
+    let rgb = thumb.to_rgb8();
+    let (width, height) = rgb.dimensions();
+    let quality = config::thumbnail_quality() as f32;
+    let encoded = webp::Encoder::from_rgb(&rgb, width, height).encode(quality);
+    std::fs::write(path, &*encoded)?;
+    Ok(())
+}
+
 pub fn generate(src: &Path, hash: &str, size: ThumbnailSize) -> Result<PathBuf> {
     let out = thumb_path(hash, size);
 
@@ -54,9 +63,7 @@ pub fn generate(src: &Path, hash: &str, size: ThumbnailSize) -> Result<PathBuf> 
     let pixels = size.pixels();
     let thumb = img.thumbnail(pixels, pixels);
 
-    thumb
-        .save(&out)
-        .map_err(|e| lightframe_core::Error::Thumbnail(e.to_string()))?;
+    save_webp(&thumb, &out).map_err(|e| lightframe_core::Error::Thumbnail(e.to_string()))?;
 
     debug!(path = %out.display(), size = pixels, "thumbnail generated");
     Ok(out)
@@ -99,9 +106,7 @@ pub fn generate_from_decoded(
     let img = decoded.to_dynamic_image()?;
     let pixels = size.pixels();
     let thumb = img.thumbnail(pixels, pixels);
-    thumb
-        .save(&out)
-        .map_err(|e| lightframe_core::Error::Thumbnail(e.to_string()))?;
+    save_webp(&thumb, &out).map_err(|e| lightframe_core::Error::Thumbnail(e.to_string()))?;
     debug!(path = %out.display(), size = pixels, "thumbnail generated");
     Ok(out)
 }
@@ -122,9 +127,7 @@ pub fn regenerate_from_decoded(
     let img = decoded.to_dynamic_image()?;
     let pixels = size.pixels();
     let thumb = img.thumbnail(pixels, pixels);
-    thumb
-        .save(&out)
-        .map_err(|e| lightframe_core::Error::Thumbnail(e.to_string()))?;
+    save_webp(&thumb, &out).map_err(|e| lightframe_core::Error::Thumbnail(e.to_string()))?;
     debug!(path = %out.display(), size = pixels, "thumbnail regenerated");
     Ok(out)
 }
@@ -142,9 +145,7 @@ pub fn regenerate(src: &Path, hash: &str, size: ThumbnailSize) -> Result<PathBuf
         open_source_image(src).map_err(|e| lightframe_core::Error::Thumbnail(e.to_string()))?;
     let pixels = size.pixels();
     let thumb = img.thumbnail(pixels, pixels);
-    thumb
-        .save(&out)
-        .map_err(|e| lightframe_core::Error::Thumbnail(e.to_string()))?;
+    save_webp(&thumb, &out).map_err(|e| lightframe_core::Error::Thumbnail(e.to_string()))?;
     debug!(path = %out.display(), size = pixels, "thumbnail regenerated");
     Ok(out)
 }

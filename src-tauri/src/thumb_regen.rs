@@ -4,6 +4,7 @@ use lightframe_db::Database;
 use lightframe_thumbnail::{thumb_file_needs_regeneration, thumb_path};
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{AppHandle, Emitter};
 
 const PAGE_SIZE: i64 = 200;
@@ -159,6 +160,22 @@ pub async fn regenerate_all_thumbnails(
     app: AppHandle,
     state: &AppState,
 ) -> Result<ThumbnailRegenResult, String> {
+    if state
+        .thumb_regenerating
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Err("thumbnail regeneration already in progress".to_string());
+    }
+
+    struct ThumbRegeneratingGuard(Arc<AtomicBool>);
+    impl Drop for ThumbRegeneratingGuard {
+        fn drop(&mut self) {
+            self.0.store(false, Ordering::SeqCst);
+        }
+    }
+    let _guard = ThumbRegeneratingGuard(Arc::clone(&state.thumb_regenerating));
+
     let total = state.db.get_media_count().map_err(|e| e.to_string())?;
     let mut processed = 0i64;
     let mut regenerated = 0i64;
@@ -281,6 +298,7 @@ mod tests {
                 scanning: Arc::new(AtomicBool::new(false)),
                 face_detecting: Arc::new(AtomicBool::new(false)),
                 dedup_scanning: Arc::new(AtomicBool::new(false)),
+                thumb_regenerating: Arc::new(AtomicBool::new(false)),
                 watch_manager: crate::watcher::WatchManager::new(),
                 thumb_cache: crate::thumb_cache::ThumbCache::new(),
                 ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),

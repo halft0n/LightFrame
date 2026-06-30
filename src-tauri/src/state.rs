@@ -92,6 +92,7 @@ pub struct AppState {
     pub scanning: Arc<AtomicBool>,
     pub face_detecting: Arc<AtomicBool>,
     pub dedup_scanning: Arc<AtomicBool>,
+    pub thumb_regenerating: Arc<AtomicBool>,
     pub watch_manager: WatchManager,
     pub thumb_cache: ThumbCache,
     pub ai: Arc<tokio::sync::Mutex<AiDispatcher>>,
@@ -155,7 +156,7 @@ impl AppState {
             let db_clone = Arc::clone(&db);
             std::thread::spawn(move || purge_expired_trash(&db_clone));
         }
-        let config = load_config();
+        let config = config::load_config();
         let cpus = std::thread::available_parallelism()
             .map(|n| n.get())
             .unwrap_or(4);
@@ -170,6 +171,7 @@ impl AppState {
             scanning: Arc::new(AtomicBool::new(false)),
             face_detecting: Arc::new(AtomicBool::new(false)),
             dedup_scanning: Arc::new(AtomicBool::new(false)),
+            thumb_regenerating: Arc::new(AtomicBool::new(false)),
             watch_manager: WatchManager::new(),
             thumb_cache: ThumbCache::new(),
             ai: Arc::new(tokio::sync::Mutex::new(AiDispatcher::new())),
@@ -179,28 +181,7 @@ impl AppState {
 
 #[cfg(test)]
 pub(crate) fn load_config_from_path(path: &std::path::Path) -> AppConfig {
-    match std::fs::read_to_string(path) {
-        Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
-        Err(_) => AppConfig::default(),
-    }
-}
-
-fn load_config() -> AppConfig {
-    match std::fs::read_to_string(config::config_path()) {
-        Ok(s) => match serde_json::from_str(&s) {
-            Ok(cfg) => cfg,
-            Err(e) => {
-                tracing::warn!("failed to parse config, using defaults: {e}");
-                AppConfig::default()
-            }
-        },
-        Err(e) => {
-            if e.kind() != std::io::ErrorKind::NotFound {
-                tracing::warn!("failed to read config file, using defaults: {e}");
-            }
-            AppConfig::default()
-        }
-    }
+    config::load_config_from(path)
 }
 
 #[cfg(test)]
@@ -281,7 +262,7 @@ mod tests {
         let path = dir.path().join("config.json");
         std::fs::write(
             &path,
-            r#"{"locale":"en-US","thumbnail_quality":92,"ai_enabled":true,"watched_folders":[],"python_path":null,"log":{"level":"debug","retention_days":21,"max_size_mb":250}}"#,
+            r#"{"locale":"en-US","thumbnail_quality":92,"ai_enabled":true,"python_path":null,"log":{"level":"debug","retention_days":21,"max_size_mb":250}}"#,
         )
         .unwrap();
 
@@ -309,17 +290,14 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let watched = root.path().join("watched");
         std::fs::create_dir_all(&watched).unwrap();
-        let watched_str = std::fs::canonicalize(&watched)
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string();
+        let watched_canonical = std::fs::canonicalize(&watched).unwrap();
+        let watched_str = watched_canonical.to_str().unwrap().to_string();
 
         let db_path = root.path().join("library.db");
         let db = Database::open(&db_path).unwrap();
         let folder_id = db.add_watched_folder(&watched_str).unwrap().id;
 
-        let inside_path = watched.join("expired.jpg");
+        let inside_path = watched_canonical.join("expired.jpg");
         std::fs::write(&inside_path, b"jpeg-data").unwrap();
         let inside_str = inside_path.to_str().unwrap().to_string();
 
@@ -350,7 +328,8 @@ mod tests {
             .to_str()
             .unwrap()
             .to_string();
-        let outside_path = outside.join("expired.jpg");
+        let outside_canonical = std::fs::canonicalize(&outside).unwrap();
+        let outside_path = outside_canonical.join("expired.jpg");
         std::fs::write(&outside_path, b"jpeg-data").unwrap();
         let outside_str = outside_path.to_str().unwrap().to_string();
 
@@ -376,17 +355,14 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let watched = root.path().join("watched");
         std::fs::create_dir_all(&watched).unwrap();
-        let watched_str = std::fs::canonicalize(&watched)
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string();
+        let watched_canonical = std::fs::canonicalize(&watched).unwrap();
+        let watched_str = watched_canonical.to_str().unwrap().to_string();
 
         let db_path = root.path().join("library.db");
         let db = Database::open(&db_path).unwrap();
         let folder_id = db.add_watched_folder(&watched_str).unwrap().id;
 
-        let file_path = watched.join("old.jpg");
+        let file_path = watched_canonical.join("old.jpg");
         std::fs::write(&file_path, b"jpeg").unwrap();
         let media_id = db
             .upsert_media(folder_id, &sample_media(&file_path.to_string_lossy()))
@@ -403,17 +379,14 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let watched = root.path().join("watched");
         std::fs::create_dir_all(&watched).unwrap();
-        let watched_str = std::fs::canonicalize(&watched)
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_string();
+        let watched_canonical = std::fs::canonicalize(&watched).unwrap();
+        let watched_str = watched_canonical.to_str().unwrap().to_string();
 
         let db_path = root.path().join("library.db");
         let db = Database::open(&db_path).unwrap();
         let folder_id = db.add_watched_folder(&watched_str).unwrap().id;
 
-        let file_path = watched.join("recent.jpg");
+        let file_path = watched_canonical.join("recent.jpg");
         std::fs::write(&file_path, b"jpeg").unwrap();
         let media_id = db
             .upsert_media(folder_id, &sample_media(&file_path.to_string_lossy()))
