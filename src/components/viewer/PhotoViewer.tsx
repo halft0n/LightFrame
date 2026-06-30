@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getMediaById,
   getMediaNeighbors,
@@ -94,7 +94,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   const { t, locale } = useTranslation();
   const { mediaItems: contextItems } = useAppStore();
   const [media, setMedia] = useState<MediaItem | null>(null);
-  const [neighbors, setNeighbors] = useState<{
+  const [dbNeighbors, setDbNeighbors] = useState<{
     prev_id: number | null;
     next_id: number | null;
   }>({
@@ -102,6 +102,17 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
     next_id: null,
   });
   const [filmstrip, setFilmstrip] = useState<MediaItem[]>([]);
+  const neighbors = useMemo(() => {
+    const idx = filmstrip.findIndex((m) => m.id === mediaId);
+    if (idx === -1) return dbNeighbors;
+    return {
+      prev_id: idx > 0 ? filmstrip[idx - 1].id : dbNeighbors.prev_id,
+      next_id:
+        idx < filmstrip.length - 1
+          ? filmstrip[idx + 1].id
+          : dbNeighbors.next_id,
+    };
+  }, [filmstrip, mediaId, dbNeighbors]);
   const [showInfo, setShowInfo] = useState(false);
   const [showSimilar, setShowSimilar] = useState(false);
   const [zoom, setZoom] = useState(1);
@@ -178,7 +189,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
       ]);
       if (cancelled) return;
       setMedia(item);
-      setNeighbors(nb);
+      setDbNeighbors(nb);
       setFilmstrip(strip ?? []);
       setEdited(hasEdit);
       setIsFavorite(favoriteState);
@@ -502,6 +513,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
       aria-modal="true"
       aria-label={t("viewer.title")}
       tabIndex={-1}
+      onContextMenu={(e) => e.preventDefault()}
       className={`flex min-h-0 flex-1 flex-col overflow-hidden bg-neutral-950 text-white outline-none ${
         closing ? "photo-viewer-exit" : "photo-viewer-enter"
       }`}

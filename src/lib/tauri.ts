@@ -236,20 +236,27 @@ export interface PersonClusterInfo {
   avg_intra_cluster_distance: number;
 }
 
+export function protocolUrl(scheme: string, path: string): string {
+  const isWindows = navigator.userAgent.includes("Windows");
+  return isWindows
+    ? `http://${scheme}.localhost/${path}`
+    : `${scheme}://localhost/${path}`;
+}
+
 export function getFaceThumbnailUrl(faceId: number): string {
-  return `face://localhost/${faceId}`;
+  return protocolUrl("face", `${faceId}`);
 }
 
 export function getThumbnailUrl(
   id: number,
   size: "small" | "large" | "micro" = "small",
 ): string {
-  return `thumb://localhost/${id}/${size}`;
+  return protocolUrl("thumb", `${id}/${size}`);
 }
 
 export function getOriginalUrl(path: string): string {
   const normalized = path.replace(/\\/g, "/");
-  return `original://localhost/${encodeURIComponent(normalized)}`;
+  return protocolUrl("original", encodeURIComponent(normalized));
 }
 
 export async function addWatchedFolder(path: string): Promise<WatchedFolder> {

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
@@ -11,6 +11,7 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 import {
+  protocolUrl,
   getOriginalUrl,
   getThumbnailUrl,
   getFaceThumbnailUrl,
@@ -111,6 +112,40 @@ beforeEach(() => {
   mockInvoke.mockReset();
   mockListen.mockReset();
   mockListen.mockResolvedValue(() => {});
+});
+
+describe("protocolUrl", () => {
+  const originalUserAgent = navigator.userAgent;
+
+  afterEach(() => {
+    Object.defineProperty(navigator, "userAgent", {
+      value: originalUserAgent,
+      configurable: true,
+    });
+  });
+
+  it("uses scheme://localhost/ format on non-Windows", () => {
+    Object.defineProperty(navigator, "userAgent", {
+      value: "Mozilla/5.0 (X11; Linux x86_64)",
+      configurable: true,
+    });
+    expect(protocolUrl("thumb", "42/small")).toBe("thumb://localhost/42/small");
+  });
+
+  it("uses http://{scheme}.localhost/ format on Windows", () => {
+    Object.defineProperty(navigator, "userAgent", {
+      value:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      configurable: true,
+    });
+    expect(protocolUrl("thumb", "42/small")).toBe(
+      "http://thumb.localhost/42/small",
+    );
+    expect(protocolUrl("original", "C%3A%2FUsers%2Fphoto.jpg")).toBe(
+      "http://original.localhost/C%3A%2FUsers%2Fphoto.jpg",
+    );
+    expect(protocolUrl("face", "7")).toBe("http://face.localhost/7");
+  });
 });
 
 describe("getThumbnailUrl", () => {
@@ -264,6 +299,20 @@ describe("async tauri functions", () => {
 describe("getFaceThumbnailUrl", () => {
   it("generates face protocol URLs", () => {
     expect(getFaceThumbnailUrl(42)).toBe("face://localhost/42");
+  });
+
+  it("generates Windows-format face protocol URLs", () => {
+    const orig = navigator.userAgent;
+    Object.defineProperty(navigator, "userAgent", {
+      value:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      configurable: true,
+    });
+    expect(getFaceThumbnailUrl(42)).toBe("http://face.localhost/42");
+    Object.defineProperty(navigator, "userAgent", {
+      value: orig,
+      configurable: true,
+    });
   });
 });
 

@@ -267,6 +267,7 @@ export function SlideshowView() {
       aria-modal="true"
       aria-label={t("slideshow.title")}
       tabIndex={-1}
+      onContextMenu={(e) => e.preventDefault()}
       onMouseMove={showControls}
       onFocus={showControls}
     >

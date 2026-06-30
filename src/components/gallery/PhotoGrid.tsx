@@ -113,12 +113,16 @@ export function PhotoGrid({
 
   const loadingMore = loadingMoreProp ?? internalLoadingMore;
   const columnWidth = THUMBNAIL_WIDTHS[thumbnailSize];
-  const rowHeight = columnWidth + GAP;
 
   const columnCount = Math.max(
     containerWidth > 0 && containerWidth < 768 ? 2 : 1,
     Math.floor((containerWidth + GAP) / (columnWidth + GAP)),
   );
+  const cellWidth =
+    containerWidth > 0 && columnCount > 0
+      ? (containerWidth - (columnCount - 1) * GAP) / columnCount
+      : columnWidth;
+  const rowHeight = Math.ceil(cellWidth) + GAP;
   const rowCount = Math.ceil(mediaItems.length / columnCount);
   const hasMore = mediaItems.length < totalCount;
 
