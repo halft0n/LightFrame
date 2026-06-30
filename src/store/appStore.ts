@@ -69,6 +69,7 @@ export interface AppState {
   slideshowMediaIds: number[];
   slideshowIndex: number;
   slideshowSpeed: SlideshowSpeed;
+  mediaLoadError: string | null;
 }
 
 const initialState: AppState = {
@@ -97,6 +98,7 @@ const initialState: AppState = {
   slideshowMediaIds: [],
   slideshowIndex: 0,
   slideshowSpeed: 5,
+  mediaLoadError: null,
 };
 
 let state: AppState = { ...initialState };
@@ -305,6 +307,7 @@ function mediaCursorFromItems(items: MediaItem[]): MediaCursor {
 }
 
 export async function loadMedia() {
+  setState({ mediaLoadError: null });
   try {
     const [items, totalCount] = await Promise.all([
       getMediaPage(MEDIA_PAGE_SIZE),
@@ -313,19 +316,28 @@ export async function loadMedia() {
     setMedia(items, totalCount);
   } catch (error) {
     console.error("Failed to load media:", error);
+    setState({
+      mediaLoadError: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
+let loadMoreInFlight = false;
+
 export async function loadMoreMedia() {
+  if (loadMoreInFlight) return;
   const { mediaItems, totalCount, mediaCursor } = state;
   if (mediaItems.length >= totalCount) return;
 
+  loadMoreInFlight = true;
   try {
     const items = await getMediaPage(MEDIA_PAGE_SIZE, mediaCursor ?? undefined);
     appendMedia(items);
   } catch (error) {
     console.error("Failed to load more media:", error);
     throw error;
+  } finally {
+    loadMoreInFlight = false;
   }
 }
 

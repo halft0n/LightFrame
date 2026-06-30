@@ -36,6 +36,7 @@ export function SlideshowView() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [progress, setProgress] = useState(0);
+  const [slideError, setSlideError] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const hideTimerRef = useRef<number | null>(null);
   const shuffleHistoryRef = useRef<number[]>([]);
@@ -109,11 +110,16 @@ export function SlideshowView() {
       return;
     }
     let cancelled = false;
-    void getMediaById(currentId).then((item) => {
-      if (cancelled || !item) return;
-      setPreviousMedia(currentMediaRef.current);
-      setCurrentMedia(item);
-    });
+    setSlideError(false);
+    void getMediaById(currentId)
+      .then((item) => {
+        if (cancelled || !item) return;
+        setPreviousMedia(currentMediaRef.current);
+        setCurrentMedia(item);
+      })
+      .catch(() => {
+        if (!cancelled) setSlideError(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -398,6 +404,18 @@ export function SlideshowView() {
                 ? "in"
                 : "static",
             )}
+          </div>
+        ) : slideError ? (
+          <div className="flex flex-col items-center gap-3 text-neutral-400">
+            <span className="text-4xl">⚠</span>
+            <p>{t("viewer.loadError")}</p>
+            <button
+              type="button"
+              onClick={goNext}
+              className="rounded-lg bg-white/10 px-4 py-1.5 text-sm transition hover:bg-white/20"
+            >
+              {t("viewer.next")}
+            </button>
           </div>
         ) : (
           <p className="text-neutral-500">{t("gallery.loading")}</p>

@@ -216,6 +216,7 @@ export function AiSettings() {
   useEffect(() => {
     if (!window.__TAURI_INTERNALS__) return;
 
+    let mounted = true;
     let unlisten: UnlistenFn | undefined;
     void listen<ModelDownloadProgress>("model-download-progress", (event) => {
       const { filename, downloaded, total } = event.payload;
@@ -234,10 +235,15 @@ export function AiSettings() {
       speedSampleRef.current = { downloaded, at: now };
       setDownloadProgress({ downloaded, total, speedBps });
     }).then((fn) => {
-      unlisten = fn;
+      if (mounted) {
+        unlisten = fn;
+      } else {
+        fn();
+      }
     });
 
     return () => {
+      mounted = false;
       void unlisten?.();
     };
   }, [downloadingFile]);

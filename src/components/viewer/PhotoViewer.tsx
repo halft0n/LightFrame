@@ -128,6 +128,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   const [closing, setClosing] = useState(false);
   const [currentImageLoaded, setCurrentImageLoaded] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const filmstripRef = useRef<HTMLDivElement>(null);
@@ -209,7 +210,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
     return () => {
       cancelled = true;
     };
-  }, [mediaId, resetView, contextItems]);
+  }, [mediaId, resetView, contextItems, retryKey]);
 
   useEffect(() => {
     previousFocusRef.current = document.activeElement as HTMLElement;
@@ -690,6 +691,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
               onClick={() => {
                 setLoadError(false);
                 setMedia(null);
+                setRetryKey((k) => k + 1);
               }}
               className="rounded-lg bg-white/10 px-4 py-1.5 text-sm transition hover:bg-white/20"
             >

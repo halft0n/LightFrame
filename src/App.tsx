@@ -36,6 +36,8 @@ export default function App() {
   const lastRescanRef = useRef(0);
   const searchContainerRef = useRef<HTMLDivElement>(null);
   const lastHistoryQueryRef = useRef("");
+  const tRef = useRef(t);
+  tRef.current = t;
 
   const RESCAN_COOLDOWN_MS = 5 * 60 * 1000;
 
@@ -119,7 +121,7 @@ export default function App() {
       if (progress.status === "error") {
         console.error(
           `Scan failed for folder ${progress.folder_id}:`,
-          localizeError(new Error(progress.status), t),
+          localizeError(new Error(progress.status), tRef.current),
         );
       }
 
@@ -158,7 +160,7 @@ export default function App() {
       updateFolder(folderId, { scan_status: "scanning" });
       void scanFolder(folderId).catch((err) => {
         console.error(`Failed to scan folder ${folderId}:`, err);
-        console.error(localizeError(err, t));
+        console.error(localizeError(err, tRef.current));
         updateFolder(folderId, { scan_status: "error" });
       });
     }).then((fn) => {
@@ -176,7 +178,8 @@ export default function App() {
       unlistenFolder?.();
       unlistenBatch?.();
     };
-  }, [t]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleVisibilityChange = useCallback(() => {
     if (document.hidden) return;
@@ -205,12 +208,13 @@ export default function App() {
           await scanFolder(folder.id);
         } catch (err) {
           console.error(`Failed to rescan folder ${folder.id}:`, err);
-          console.error(localizeError(err, t));
+          console.error(localizeError(err, tRef.current));
           updateFolder(folder.id, { scan_status: "error" });
         }
       }),
     );
-  }, [t]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     document.addEventListener("visibilitychange", handleVisibilityChange);

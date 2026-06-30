@@ -102,6 +102,7 @@ export function PhotoGrid({
   const storeTotalCount = useAppStoreSelector((s) => s.totalCount);
   const selectedMediaIds = useAppStoreSelector((s) => s.selectedMediaIds);
   const thumbnailSize = useAppStoreSelector((s) => s.thumbnailSize);
+  const mediaLoadError = useAppStoreSelector((s) => s.mediaLoadError);
   const mediaItems = itemsProp ?? storeItems;
   const totalCount = totalCountProp ?? storeTotalCount;
   const useStoreScroll = itemsProp == null;
@@ -279,6 +280,21 @@ export function PhotoGrid({
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [selectedMediaIds, mediaItems, t]);
+
+  if (mediaLoadError && mediaItems.length === 0) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-neutral-400">
+        <ErrorBanner message={mediaLoadError} />
+        <button
+          type="button"
+          onClick={() => void loadMedia()}
+          className="rounded-lg bg-white/10 px-4 py-1.5 text-sm transition hover:bg-white/20"
+        >
+          {t("viewer.retry")}
+        </button>
+      </div>
+    );
+  }
 
   if (mediaItems.length === 0) {
     return <EmptyState variant="photos" title={t("gallery.noPhotos")} />;
