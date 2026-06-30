@@ -385,9 +385,7 @@ impl Database {
                     THEN excluded.phash
                     ELSE COALESCE(excluded.phash, phash) END,
                 latitude = COALESCE(excluded.latitude, latitude),
-                longitude = COALESCE(excluded.longitude, longitude),
-                is_deleted = 0,
-                deleted_at = NULL",
+                longitude = COALESCE(excluded.longitude, longitude)",
             params![
                 folder_id,
                 media.path,
@@ -1458,7 +1456,7 @@ impl Database {
         Ok(candidates)
     }
 
-    fn get_duplicate_group_by_id(
+    pub fn get_duplicate_group_by_id(
         &self,
         group_id: i64,
     ) -> lightframe_core::Result<Option<DuplicateGroup>> {
@@ -3524,18 +3522,24 @@ mod tests {
     }
 
     #[test]
-    fn upsert_media_clears_is_deleted_on_rescan() {
+    fn upsert_media_preserves_is_deleted_on_rescan() {
         let db = test_db();
         let folder_id = db.add_watched_folder("/photos").unwrap().id;
         let path = "/photos/rescan.jpg";
         let media_id = db.upsert_media(folder_id, &sample_media(path)).unwrap();
 
         db.set_deleted(media_id, true).unwrap();
-        assert!(db.get_media_by_id(media_id).unwrap().is_none());
+        assert!(
+            db.get_media_by_id(media_id).unwrap().is_none(),
+            "deleted media should not appear in normal queries"
+        );
 
         let same_id = db.upsert_media(folder_id, &sample_media(path)).unwrap();
         assert_eq!(same_id, media_id);
-        assert!(db.get_media_by_id(media_id).unwrap().is_some());
+        assert!(
+            db.get_media_by_id(media_id).unwrap().is_none(),
+            "rescan should NOT restore soft-deleted media"
+        );
     }
 
     #[test]

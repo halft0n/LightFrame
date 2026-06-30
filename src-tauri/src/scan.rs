@@ -414,13 +414,18 @@ async fn quick_index_inner(
     let mut stored = media;
     stored.id = media_id;
 
-    if let (Some(lat), Some(lon)) = (stored.latitude, stored.longitude)
-        && let Some(loc) = lightframe_geo::reverse_geocode(lat, lon)
-    {
-        let country = loc.country.as_deref().unwrap_or("");
-        let city = loc.city.as_deref().unwrap_or("");
-        if !country.is_empty() {
-            let _ = db.update_media_location(media_id, city, country);
+    if let (Some(lat), Some(lon)) = (stored.latitude, stored.longitude) {
+        let geo_result =
+            tokio::task::spawn_blocking(move || lightframe_geo::reverse_geocode(lat, lon))
+                .await
+                .map_err(|e| lightframe_core::Error::Other(e.to_string()))?;
+
+        if let Some(loc) = geo_result {
+            let country = loc.country.as_deref().unwrap_or("");
+            let city = loc.city.as_deref().unwrap_or("");
+            if !country.is_empty() {
+                let _ = db.update_media_location(media_id, city, country);
+            }
         }
     }
 

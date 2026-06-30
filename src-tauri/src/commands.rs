@@ -1053,12 +1053,42 @@ pub async fn resolve_duplicate(
     delete_files: bool,
 ) -> Result<(), String> {
     let db = state.db.clone();
-    tokio::task::spawn_blocking(move || {
-        db.resolve_duplicate_group(group_id, keep_media_id, delete_files)
-            .map_err(|e| e.to_string())
+    let removed_ids: Vec<i64> = tokio::task::spawn_blocking(move || {
+        let group = db
+            .get_duplicate_group_by_id(group_id)
+            .map_err(|e| e.to_string())?
+            .ok_or_else(|| format!("group {group_id} not found"))?;
+
+        let others: Vec<i64> = group
+            .members
+            .iter()
+            .filter(|m| m.media_id != keep_media_id)
+            .map(|m| m.media_id)
+            .collect();
+
+        if delete_files {
+            for &media_id in &others {
+                if let Ok(Some(item)) = db.get_media_by_id(media_id) {
+                    db.permanently_delete_media(media_id).ok();
+                    remove_media_from_disk(&item.path, item.blake3_hash.as_deref(), &db);
+                }
+            }
+        } else {
+            for &media_id in &others {
+                db.set_deleted(media_id, true).map_err(|e| e.to_string())?;
+            }
+        }
+        db.delete_duplicate_group(group_id)
+            .map_err(|e| e.to_string())?;
+        Ok::<_, String>(others)
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())??;
+
+    for media_id in removed_ids {
+        state.thumb_cache.invalidate_media(media_id);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1419,11 +1449,11 @@ pub fn permanently_delete(state: State<'_, AppState>, media_id: i64) -> Result<(
         ));
     }
 
-    remove_media_from_disk(&path, hash.as_deref(), &state.db);
     state
         .db
         .permanently_delete_media(media_id)
         .map_err(|e| db_err("permanently_delete", &media_id.to_string(), e))?;
+    remove_media_from_disk(&path, hash.as_deref(), &state.db);
     state.thumb_cache.invalidate_media(media_id);
     Ok(())
 }
@@ -1505,10 +1535,6 @@ pub fn batch_permanent_delete(
         }
     }
 
-    for (path, hash) in &to_remove {
-        remove_media_from_disk(path, hash.as_deref(), &state.db);
-    }
-
     let affected = state.db.batch_permanent_delete(&media_ids).map_err(|e| {
         db_err(
             "batch_permanent_delete",
@@ -1516,6 +1542,10 @@ pub fn batch_permanent_delete(
             e,
         )
     })?;
+
+    for (path, hash) in &to_remove {
+        remove_media_from_disk(path, hash.as_deref(), &state.db);
+    }
 
     for media_id in &media_ids {
         state.thumb_cache.invalidate_media(*media_id);
@@ -2158,27 +2188,51 @@ pub async fn cluster_faces(
         }
 
         let clusters = lightframe_ai::cluster_face_embeddings(&faces, threshold);
-        let mut results = Vec::with_capacity(clusters.len());
 
-        for cluster in clusters {
-            let face_count = cluster.face_ids.len() as i64;
-            let person_id = db.create_person(None).map_err(|e| e.to_string())?;
-            for face_id in &cluster.face_ids {
-                db.assign_face_to_person(*face_id, person_id)
-                    .map_err(|e| e.to_string())?;
-            }
-            results.push(PersonClusterInfo {
-                person_id,
-                name: None,
-                face_count,
-                avg_intra_cluster_distance: cluster.avg_intra_cluster_distance,
-            });
-        }
-
-        db.delete_empty_unnamed_persons()
+        let conn = db.conn().map_err(|e| e.to_string())?;
+        conn.execute_batch("BEGIN IMMEDIATE")
             .map_err(|e| e.to_string())?;
 
-        Ok(results)
+        let result = (|| -> Result<Vec<PersonClusterInfo>, String> {
+            let mut results = Vec::with_capacity(clusters.len());
+            for cluster in &clusters {
+                let face_count = cluster.face_ids.len() as i64;
+                conn.execute("INSERT INTO persons (name) VALUES (NULL)", [])
+                    .map_err(|e| e.to_string())?;
+                let person_id = conn.last_insert_rowid();
+                for face_id in &cluster.face_ids {
+                    conn.execute(
+                        "UPDATE face_detections SET person_id = ?1 WHERE id = ?2",
+                        [person_id, *face_id],
+                    )
+                    .map_err(|e| e.to_string())?;
+                }
+                results.push(PersonClusterInfo {
+                    person_id,
+                    name: None,
+                    face_count,
+                    avg_intra_cluster_distance: cluster.avg_intra_cluster_distance,
+                });
+            }
+            conn.execute(
+                "DELETE FROM persons WHERE (name IS NULL OR TRIM(COALESCE(name, '')) = '')
+                 AND NOT EXISTS (SELECT 1 FROM face_detections WHERE person_id = persons.id)",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+            Ok(results)
+        })();
+
+        match result {
+            Ok(results) => {
+                conn.execute_batch("COMMIT").map_err(|e| e.to_string())?;
+                Ok(results)
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                Err(e)
+            }
+        }
     })
     .await
     .map_err(|e| e.to_string())?
@@ -2288,11 +2342,21 @@ pub async fn regenerate_thumbnails(
 }
 
 #[tauri::command]
-pub fn regenerate_thumbnail_single(
+pub async fn regenerate_thumbnail_single(
     state: State<'_, AppState>,
     media_id: i64,
 ) -> Result<bool, String> {
-    crate::thumb_regen::regenerate_thumbnails_for_media(&state, media_id)
+    let db = state.db.clone();
+    let regenerated = tokio::task::spawn_blocking(move || {
+        crate::thumb_regen::regenerate_thumbnails_for_media_db(&db, media_id)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+
+    if regenerated {
+        state.thumb_cache.invalidate_media(media_id);
+    }
+    Ok(regenerated)
 }
 
 #[tauri::command]

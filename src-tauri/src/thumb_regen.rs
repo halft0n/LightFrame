@@ -22,8 +22,18 @@ pub fn media_needs_thumbnail_regeneration(db: &Database, media_id: i64, hash: &s
 }
 
 pub fn regenerate_thumbnails_for_media(state: &AppState, media_id: i64) -> Result<bool, String> {
-    let media = state
-        .db
+    let result = regenerate_thumbnails_for_media_db(&state.db, media_id)?;
+    if result {
+        state.thumb_cache.invalidate_media(media_id);
+    }
+    Ok(result)
+}
+
+pub fn regenerate_thumbnails_for_media_db(
+    db: &Arc<Database>,
+    media_id: i64,
+) -> Result<bool, String> {
+    let media = db
         .get_media_by_id(media_id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("media {media_id} not found"))?;
@@ -32,7 +42,7 @@ pub fn regenerate_thumbnails_for_media(state: &AppState, media_id: i64) -> Resul
         return Ok(false);
     };
 
-    if !media_needs_thumbnail_regeneration(&state.db, media_id, &hash) {
+    if !media_needs_thumbnail_regeneration(db, media_id, &hash) {
         return Ok(false);
     }
 
@@ -48,7 +58,7 @@ pub fn regenerate_thumbnails_for_media(state: &AppState, media_id: i64) -> Resul
     );
 
     if is_image {
-        let db = Arc::clone(&state.db);
+        let db_ref = Arc::clone(db);
         let hash_clone = hash.clone();
         let path_buf = path.to_path_buf();
         let regenerated = std::thread::spawn(move || -> Result<bool, String> {
@@ -69,14 +79,13 @@ pub fn regenerate_thumbnails_for_media(state: &AppState, media_id: i64) -> Resul
             .map_err(|e| e.to_string())?;
 
             if let Ok(micro) = lightframe_thumbnail::micro_blob_from_decoded(&decoded) {
-                let _ = db.set_micro_thumb(media_id, &micro);
+                let _ = db_ref.set_micro_thumb(media_id, &micro);
             }
             Ok(true)
         })
         .join()
         .map_err(|_| "thumbnail regeneration thread panicked".to_string())??;
 
-        state.thumb_cache.invalidate_media(media_id);
         return Ok(regenerated);
     }
 
@@ -123,7 +132,7 @@ pub fn regenerate_thumbnails_for_media(state: &AppState, media_id: i64) -> Resul
         .map_err(|_| "video thumbnail regeneration thread panicked".to_string())??;
 
         if regenerated {
-            let db = Arc::clone(&state.db);
+            let db_ref = Arc::clone(db);
             let hash_for_micro = hash.clone();
             if let Ok(micro) = std::thread::spawn(move || {
                 let small = thumb_path(&hash_for_micro, ThumbnailSize::Small);
@@ -132,11 +141,10 @@ pub fn regenerate_thumbnails_for_media(state: &AppState, media_id: i64) -> Resul
             .join()
                 && let Ok(blob) = micro
             {
-                let _ = db.set_micro_thumb(media_id, &blob);
+                let _ = db_ref.set_micro_thumb(media_id, &blob);
             }
         }
 
-        state.thumb_cache.invalidate_media(media_id);
         return Ok(regenerated);
     }
 

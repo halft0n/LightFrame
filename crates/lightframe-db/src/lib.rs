@@ -12,6 +12,7 @@ use rusqlite::{Connection, OpenFlags};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+#[derive(Clone)]
 pub struct Database {
     writer: Arc<Mutex<Connection>>,
     reader: Arc<Mutex<Connection>>,
