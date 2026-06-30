@@ -1,9 +1,10 @@
 use crate::memory;
-use crate::state::{AppState, ScanStatus};
+use crate::state::{AppState, ScanQueue, ScanStatus};
 use futures::stream::{self, StreamExt};
 use lightframe_core::media::{MediaFile, MediaType, ThumbnailSize};
 use lightframe_db::Database;
 use lightframe_indexer::{classify_extension, scan_folder as discover_files};
+use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -14,6 +15,72 @@ use tracing::{Instrument, error, info, warn};
 
 const PROGRESS_EMIT_INTERVAL: Duration = Duration::from_millis(500);
 const PROGRESS_EMIT_FILE_INTERVAL: i64 = 50;
+const MEDIA_BATCH_SIZE: usize = 20;
+const MEDIA_BATCH_INTERVAL: Duration = Duration::from_secs(2);
+
+#[derive(Serialize, Clone)]
+struct MediaBatchPayload {
+    folder_id: i64,
+    items: Vec<MediaFile>,
+}
+
+struct MediaBatchEmitter {
+    app: AppHandle,
+    folder_id: i64,
+    buffer: Mutex<Vec<MediaFile>>,
+    last_emit: Mutex<Instant>,
+}
+
+impl MediaBatchEmitter {
+    fn new(app: AppHandle, folder_id: i64) -> Self {
+        Self {
+            app,
+            folder_id,
+            buffer: Mutex::new(Vec::new()),
+            last_emit: Mutex::new(Instant::now()),
+        }
+    }
+
+    fn push(&self, item: MediaFile) {
+        let mut buffer = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
+        buffer.push(item);
+
+        let emit_by_size = buffer.len() >= MEDIA_BATCH_SIZE;
+        let emit_by_time = self
+            .last_emit
+            .lock()
+            .map(|last| last.elapsed() >= MEDIA_BATCH_INTERVAL)
+            .unwrap_or(true);
+
+        if emit_by_size || emit_by_time {
+            self.emit_locked(&mut buffer);
+        }
+    }
+
+    fn flush(&self) {
+        let mut buffer = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
+        if !buffer.is_empty() {
+            self.emit_locked(&mut buffer);
+        }
+    }
+
+    fn emit_locked(&self, buffer: &mut Vec<MediaFile>) {
+        let items: Vec<MediaFile> = buffer.drain(..).collect();
+        if items.is_empty() {
+            return;
+        }
+        let payload = MediaBatchPayload {
+            folder_id: self.folder_id,
+            items,
+        };
+        if let Err(e) = self.app.emit("media-batch-ready", &payload) {
+            warn!("failed to emit media-batch-ready: {e}");
+        }
+        if let Ok(mut last) = self.last_emit.lock() {
+            *last = Instant::now();
+        }
+    }
+}
 
 fn emit_progress(app: &AppHandle, status: &ScanStatus) {
     let payload = status.snapshot();
@@ -65,37 +132,53 @@ impl ProgressThrottler {
 
 /// Start scanning watched folders.
 ///
-/// Only one scan runs at a time. If a scan is already in progress,
-/// new scan requests are ignored and `false` is returned. This prevents
-/// resource contention on disk I/O-heavy operations.
-///
-/// TODO: Implement per-folder scan queue for v0.2.0
+/// Scans are queued and processed sequentially by a background worker.
 pub fn spawn_scan(app: AppHandle, state: &AppState, folder_id: i64) -> bool {
-    if state
-        .scanning
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
-        warn!(folder_id, "scan already in progress, skipping");
-        return false;
+    start_scan_queue(&app, state);
+    if state.scan_queue.is_running() {
+        info!(folder_id, "scan queued while another scan is in progress");
     }
-
-    let app = app.clone();
-    let db = Arc::clone(&state.db);
-    let scan_status = state.scan_status.clone();
-    let concurrency = state.scan_concurrency;
-    let scanning = Arc::clone(&state.scanning);
-
-    tauri::async_runtime::spawn(async move {
-        let result = run_scan(&app, db, scan_status.clone(), concurrency, folder_id).await;
-        if let Err(e) = result {
-            error!(folder_id, "scan failed: {e}");
-            scan_status.set_status("error");
-            emit_progress(&app, &scan_status);
-        }
-        scanning.store(false, Ordering::SeqCst);
-    });
+    state.scan_queue.enqueue(folder_id);
     true
+}
+
+impl ScanQueue {
+    pub fn start(
+        &self,
+        app: AppHandle,
+        db: Arc<Database>,
+        scan_status: ScanStatus,
+        concurrency: usize,
+    ) {
+        let Some(mut rx) = self.try_start_worker() else {
+            return;
+        };
+
+        let running = self.running_flag();
+
+        tauri::async_runtime::spawn(async move {
+            while let Some(folder_id) = rx.recv().await {
+                running.store(true, Ordering::SeqCst);
+                let result =
+                    run_scan(&app, db.clone(), scan_status.clone(), concurrency, folder_id).await;
+                if let Err(e) = result {
+                    error!(folder_id, "scan failed: {e}");
+                    scan_status.set_status("error");
+                    emit_progress(&app, &scan_status);
+                }
+                running.store(false, Ordering::SeqCst);
+            }
+        });
+    }
+}
+
+fn start_scan_queue(app: &AppHandle, state: &AppState) {
+    state.scan_queue.start(
+        app.clone(),
+        Arc::clone(&state.db),
+        state.scan_status.clone(),
+        state.scan_concurrency,
+    );
 }
 
 pub async fn run_scan(
@@ -126,16 +209,30 @@ pub async fn run_scan(
     scan_status.set_status("scanning");
     let progress = Arc::new(ProgressThrottler::new());
     progress.maybe_emit(app, &scan_status, true);
+    let batch_emitter = Arc::new(MediaBatchEmitter::new(app.clone(), folder_id));
 
     stream::iter(files.into_iter().map(|path| {
         let db = Arc::clone(&db);
         let scan_status = scan_status.clone();
         let app = app.clone();
         let progress = Arc::clone(&progress);
+        let batch_emitter = Arc::clone(&batch_emitter);
         async move {
-            if let Err(e) = process_file(&db, folder_id, &path).await {
-                warn!(path = %path.display(), "failed to process file: {e}");
-                scan_status.increment_errors();
+            match process_file(&db, folder_id, &path).await {
+                Ok(Some(media_id)) => match db.get_media_by_id(media_id) {
+                    Ok(Some(media)) => batch_emitter.push(media),
+                    Ok(None) => {
+                        warn!(media_id, path = %path.display(), "processed media not found in db");
+                    }
+                    Err(e) => {
+                        warn!(media_id, path = %path.display(), "failed to read processed media: {e}");
+                    }
+                },
+                Ok(None) => {}
+                Err(e) => {
+                    warn!(path = %path.display(), "failed to process file: {e}");
+                    scan_status.increment_errors();
+                }
             }
             let scanned = scan_status.increment_scanned();
             if scanned % 100 == 0 {
@@ -147,6 +244,8 @@ pub async fn run_scan(
     .buffer_unordered(concurrency)
     .collect::<()>()
     .await;
+
+    batch_emitter.flush();
 
     db.update_last_scan_at(folder_id).inspect_err(|_| {
         let _ = db.set_folder_scan_status(folder_id, "error");
@@ -164,7 +263,11 @@ pub async fn run_scan(
     Ok(())
 }
 
-async fn process_file(db: &Database, folder_id: i64, path: &Path) -> lightframe_core::Result<()> {
+async fn process_file(
+    db: &Database,
+    folder_id: i64,
+    path: &Path,
+) -> lightframe_core::Result<Option<i64>> {
     let path_str = path.to_string_lossy().to_string();
     let span = tracing::info_span!("process_file", path = %path_str);
     process_file_inner(db, folder_id, path)
@@ -176,7 +279,7 @@ async fn process_file_inner(
     db: &Database,
     folder_id: i64,
     path: &Path,
-) -> lightframe_core::Result<()> {
+) -> lightframe_core::Result<Option<i64>> {
     let path = path.to_path_buf();
     let media_type = classify_extension(&path);
 
@@ -199,7 +302,7 @@ async fn process_file_inner(
         && existing.modified_at == modified_at
     {
         tracing::debug!("skipping unchanged file: {path_str}");
-        return Ok(());
+        return Ok(None);
     }
 
     let filename = path
@@ -407,7 +510,7 @@ async fn process_file_inner(
         }
     }
 
-    Ok(())
+    Ok(Some(media_id))
 }
 
 #[cfg(test)]

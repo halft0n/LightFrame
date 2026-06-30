@@ -295,7 +295,7 @@ mod tests {
                 config: AppConfig::default(),
                 scan_status: crate::state::ScanStatus::new(),
                 scan_concurrency: 2,
-                scanning: Arc::new(AtomicBool::new(false)),
+                scan_queue: crate::state::ScanQueue::new(),
                 face_detecting: Arc::new(AtomicBool::new(false)),
                 dedup_scanning: Arc::new(AtomicBool::new(false)),
                 thumb_regenerating: Arc::new(AtomicBool::new(false)),

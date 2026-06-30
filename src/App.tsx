@@ -5,6 +5,7 @@ import { useTranslation } from "@/i18n/useTranslation";
 import {
   listWatchedFolders,
   onFolderChanged,
+  onMediaBatchReady,
   onScanProgress,
   scanFolder,
 } from "@/lib/tauri";
@@ -14,6 +15,7 @@ import {
   clearSearchHistory,
   getSnapshot,
   loadMedia,
+  mergeNewMedia,
   setScanning,
   setSearchQuery,
   setSearchMode,
@@ -106,8 +108,7 @@ export default function App() {
 
     let unlistenProgress: (() => void) | undefined;
     let unlistenFolder: (() => void) | undefined;
-    let incrementalRefreshTimer: ReturnType<typeof setTimeout> | undefined;
-    let lastIncrementalScanned = 0;
+    let unlistenBatch: (() => void) | undefined;
 
     void onScanProgress((progress) => {
       setScanning(progress.status === "scanning", progress);
@@ -122,22 +123,7 @@ export default function App() {
         );
       }
 
-      if (progress.status === "scanning" && progress.scanned > lastIncrementalScanned + 9) {
-        lastIncrementalScanned = progress.scanned;
-        if (!incrementalRefreshTimer) {
-          incrementalRefreshTimer = setTimeout(() => {
-            incrementalRefreshTimer = undefined;
-            void loadMedia().catch(() => {});
-          }, 2000);
-        }
-      }
-
       if (progress.status === "complete") {
-        lastIncrementalScanned = 0;
-        if (incrementalRefreshTimer) {
-          clearTimeout(incrementalRefreshTimer);
-          incrementalRefreshTimer = undefined;
-        }
         void (async () => {
           try {
             const folders = await listWatchedFolders();
@@ -153,6 +139,16 @@ export default function App() {
     }).then((fn) => {
       if (mounted) {
         unlistenProgress = fn;
+      } else {
+        fn();
+      }
+    });
+
+    void onMediaBatchReady((batch) => {
+      mergeNewMedia(batch.items);
+    }).then((fn) => {
+      if (mounted) {
+        unlistenBatch = fn;
       } else {
         fn();
       }
@@ -178,7 +174,7 @@ export default function App() {
       cancelled = true;
       unlistenProgress?.();
       unlistenFolder?.();
-      if (incrementalRefreshTimer) clearTimeout(incrementalRefreshTimer);
+      unlistenBatch?.();
     };
   }, [t]);
 

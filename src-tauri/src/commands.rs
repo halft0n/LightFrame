@@ -610,7 +610,7 @@ mod batch_export_tests {
             config: lightframe_core::config::AppConfig::default(),
             scan_status: ScanStatus::new(),
             scan_concurrency: 4,
-            scanning: Arc::new(AtomicBool::new(false)),
+            scan_queue: crate::state::ScanQueue::new(),
             face_detecting: Arc::new(AtomicBool::new(false)),
             dedup_scanning: Arc::new(AtomicBool::new(false)),
             thumb_regenerating: Arc::new(AtomicBool::new(false)),
@@ -773,7 +773,7 @@ mod rename_person_tests {
             config: lightframe_core::config::AppConfig::default(),
             scan_status: ScanStatus::new(),
             scan_concurrency: 4,
-            scanning: Arc::new(AtomicBool::new(false)),
+            scan_queue: crate::state::ScanQueue::new(),
             face_detecting: Arc::new(AtomicBool::new(false)),
             dedup_scanning: Arc::new(AtomicBool::new(false)),
             thumb_regenerating: Arc::new(AtomicBool::new(false)),
@@ -875,7 +875,7 @@ mod edit_persistence_tests {
             config: lightframe_core::config::AppConfig::default(),
             scan_status: ScanStatus::new(),
             scan_concurrency: 4,
-            scanning: Arc::new(AtomicBool::new(false)),
+            scan_queue: crate::state::ScanQueue::new(),
             face_detecting: Arc::new(AtomicBool::new(false)),
             dedup_scanning: Arc::new(AtomicBool::new(false)),
             thumb_regenerating: Arc::new(AtomicBool::new(false)),
@@ -918,9 +918,7 @@ pub fn scan_folder(
         .map_err(|e| db_err("scan_folder", &folder_id.to_string(), e))?
         .ok_or_else(|| format!("scan_folder({folder_id}): folder not found"))?;
 
-    if !scan::spawn_scan(app, &state, folder_id) {
-        return Err("scan already in progress".to_string());
-    }
+    scan::spawn_scan(app, &state, folder_id);
     Ok(())
 }
 

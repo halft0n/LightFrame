@@ -384,6 +384,19 @@ export async function onFolderChanged(
   });
 }
 
+export interface MediaBatchPayload {
+  folder_id: number;
+  items: MediaItem[];
+}
+
+export async function onMediaBatchReady(
+  callback: (batch: MediaBatchPayload) => void,
+): Promise<() => void> {
+  return listen<MediaBatchPayload>("media-batch-ready", (event) => {
+    callback(event.payload);
+  });
+}
+
 export async function runDedupScan(): Promise<DedupScanResult> {
   return invoke<DedupScanResult>("run_dedup_scan");
 }

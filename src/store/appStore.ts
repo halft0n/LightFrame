@@ -273,6 +273,25 @@ export function appendMedia(items: MediaItem[]) {
   setState({ mediaItems, mediaCursor: mediaCursorFromItems(mediaItems) });
 }
 
+export function mergeNewMedia(items: MediaItem[]) {
+  if (items.length === 0) return;
+  const existingIds = new Set(state.mediaItems.map((m) => m.id));
+  const newItems = items.filter((m) => !existingIds.has(m.id));
+  if (newItems.length === 0) return;
+  const combined = [...newItems, ...state.mediaItems].sort((a, b) => {
+    const dateA = a.created_at ?? a.modified_at;
+    const dateB = b.created_at ?? b.modified_at;
+    if (dateA !== dateB) return dateB.localeCompare(dateA);
+    return b.id - a.id;
+  });
+  const mediaItems = trimMediaItems(combined, state.mediaScrollIndex);
+  setState({
+    mediaItems,
+    totalCount: state.totalCount + newItems.length,
+    mediaCursor: mediaCursorFromItems(mediaItems),
+  });
+}
+
 function mediaCursorFromItems(items: MediaItem[]): MediaCursor {
   if (items.length === 0) return null;
   const last = items[items.length - 1];

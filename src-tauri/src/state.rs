@@ -83,13 +83,65 @@ impl Default for ScanStatus {
 
 use crate::thumb_cache::ThumbCache;
 use crate::watcher::WatchManager;
+use std::sync::Mutex as StdMutex;
+use tokio::sync::mpsc;
+
+pub struct ScanQueue {
+    tx: mpsc::UnboundedSender<i64>,
+    rx: StdMutex<Option<mpsc::UnboundedReceiver<i64>>>,
+    running: Arc<AtomicBool>,
+    worker_started: AtomicBool,
+}
+
+impl ScanQueue {
+    pub fn new() -> Self {
+        let (tx, rx) = mpsc::unbounded_channel();
+        Self {
+            tx,
+            rx: StdMutex::new(Some(rx)),
+            running: Arc::new(AtomicBool::new(false)),
+            worker_started: AtomicBool::new(false),
+        }
+    }
+
+    pub fn enqueue(&self, folder_id: i64) {
+        if let Err(e) = self.tx.send(folder_id) {
+            tracing::warn!(folder_id, "failed to enqueue scan: {e}");
+        }
+    }
+
+    pub fn is_running(&self) -> bool {
+        self.running.load(Ordering::SeqCst)
+    }
+
+    pub(crate) fn try_start_worker(&self) -> Option<mpsc::UnboundedReceiver<i64>> {
+        if self
+            .worker_started
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
+        {
+            return None;
+        }
+        self.rx.lock().unwrap_or_else(|e| e.into_inner()).take()
+    }
+
+    pub(crate) fn running_flag(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.running)
+    }
+}
+
+impl Default for ScanQueue {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 pub struct AppState {
     pub db: Arc<Database>,
     pub config: AppConfig,
     pub scan_status: ScanStatus,
     pub scan_concurrency: usize,
-    pub scanning: Arc<AtomicBool>,
+    pub scan_queue: ScanQueue,
     pub face_detecting: Arc<AtomicBool>,
     pub dedup_scanning: Arc<AtomicBool>,
     pub thumb_regenerating: Arc<AtomicBool>,
@@ -168,7 +220,7 @@ impl AppState {
             config,
             scan_status: ScanStatus::new(),
             scan_concurrency: concurrency,
-            scanning: Arc::new(AtomicBool::new(false)),
+            scan_queue: ScanQueue::new(),
             face_detecting: Arc::new(AtomicBool::new(false)),
             dedup_scanning: Arc::new(AtomicBool::new(false)),
             thumb_regenerating: Arc::new(AtomicBool::new(false)),
@@ -214,6 +266,12 @@ mod tests {
             "UPDATE media_files SET deleted_at = datetime('now', '-{days_ago} days') WHERE id = {media_id}"
         );
         conn.execute_batch(&sql).unwrap();
+    }
+
+    #[test]
+    fn scan_queue_starts_not_running() {
+        let queue = ScanQueue::new();
+        assert!(!queue.is_running());
     }
 
     #[test]

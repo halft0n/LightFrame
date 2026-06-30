@@ -22,8 +22,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { UpdateChecker } from "@/components/settings/UpdateChecker";
 import { AiSettings } from "@/components/settings/AiSettings";
 import { LogSettings } from "@/components/settings/LogSettings";
-import type { ScanProgress } from "@/lib/tauri";
-
 function ScanIndicator({
   status,
   folderId,
@@ -32,7 +30,7 @@ function ScanIndicator({
   folderId: number;
 }) {
   const { t } = useTranslation();
-  const scanProgress = useAppStore((s) => s.scanProgress);
+  const { scanProgress } = useAppStore();
   const progress =
     scanProgress?.folder_id === folderId ? scanProgress : null;
 
