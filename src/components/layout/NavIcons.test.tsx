@@ -13,11 +13,16 @@ describe("NavIcons", () => {
 
   it("passes through additional svg props", () => {
     const { container } = render(<NavIconVideos aria-label="Videos" />);
-    expect(container.querySelector("svg")).toHaveAttribute("aria-label", "Videos");
+    expect(container.querySelector("svg")).toHaveAttribute(
+      "aria-label",
+      "Videos",
+    );
   });
 
   it("renders named icon via NavIcon wrapper", () => {
-    const { container } = render(<NavIcon name="settings" className="opacity-50" />);
+    const { container } = render(
+      <NavIcon name="settings" className="opacity-50" />,
+    );
     const svg = container.querySelector("svg");
     expect(svg).toHaveClass("h-4", "w-4", "opacity-50");
   });

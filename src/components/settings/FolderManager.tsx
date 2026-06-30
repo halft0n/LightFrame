@@ -9,7 +9,13 @@ import {
   type ScanStatus,
   type ThumbnailRegenProgress,
 } from "@/lib/tauri";
-import { addFolder, removeFolder, updateFolder, useAppStore, type Theme } from "@/store/appStore";
+import {
+  addFolder,
+  removeFolder,
+  updateFolder,
+  useAppStore,
+  type Theme,
+} from "@/store/appStore";
 import { changeTheme } from "@/hooks/useTheme";
 import { useTranslation } from "@/i18n/useTranslation";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -40,7 +46,10 @@ function ScanIndicator({ status }: { status: ScanStatus }) {
   return null;
 }
 
-function formatLastScan(value: string | null | undefined, notAvailable: string): string {
+function formatLastScan(
+  value: string | null | undefined,
+  notAvailable: string,
+): string {
   if (!value) return notAvailable;
   try {
     return new Date(value).toLocaleString();
@@ -49,9 +58,16 @@ function formatLastScan(value: string | null | undefined, notAvailable: string):
   }
 }
 
-function ThumbnailRegenProgressBar({ progress }: { progress: ThumbnailRegenProgress }) {
+function ThumbnailRegenProgressBar({
+  progress,
+}: {
+  progress: ThumbnailRegenProgress;
+}) {
   const { t } = useTranslation();
-  const pct = progress.total > 0 ? Math.round((progress.processed / progress.total) * 100) : 0;
+  const pct =
+    progress.total > 0
+      ? Math.round((progress.processed / progress.total) * 100)
+      : 0;
 
   return (
     <div className="mt-3 space-y-2">
@@ -83,9 +99,8 @@ export function FolderManager() {
   const [adding, setAdding] = useState(false);
   const [rescanningAll, setRescanningAll] = useState(false);
   const [regeneratingThumbs, setRegeneratingThumbs] = useState(false);
-  const [thumbRegenProgress, setThumbRegenProgress] = useState<ThumbnailRegenProgress | null>(
-    null,
-  );
+  const [thumbRegenProgress, setThumbRegenProgress] =
+    useState<ThumbnailRegenProgress | null>(null);
 
   const themeOptions: { value: Theme; labelKey: string }[] = [
     { value: "light", labelKey: "theme.light" },
@@ -157,7 +172,12 @@ export function FolderManager() {
     }
 
     setRegeneratingThumbs(true);
-    setThumbRegenProgress({ processed: 0, total: 0, regenerated: 0, status: "running" });
+    setThumbRegenProgress({
+      processed: 0,
+      total: 0,
+      regenerated: 0,
+      status: "running",
+    });
 
     let unlisten: (() => void) | undefined;
     try {
@@ -172,30 +192,10 @@ export function FolderManager() {
   };
 
   return (
-    <div className="page-enter flex flex-1 flex-col overflow-y-auto">
-      <section className="settings-section px-6 py-5">
-        <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
-          {t("theme.title")}
-        </h2>
-        <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">{t("theme.subtitle")}</p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {themeOptions.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => changeTheme(opt.value)}
-              className={`theme-pill px-5 py-2 text-sm font-medium ${
-                theme === opt.value
-                  ? "theme-pill-active text-white"
-                  : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
-              }`}
-            >
-              {t(opt.labelKey)}
-            </button>
-          ))}
-        </div>
-      </section>
-
+    <div
+      className="page-enter flex flex-1 flex-col overflow-y-auto"
+      data-testid="folder-manager"
+    >
       <section className="settings-section px-6 py-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -204,7 +204,12 @@ export function FolderManager() {
             </h2>
             <p className="mt-1 text-sm text-neutral-500">
               {watchedFolders.length > 0
-                ? t("gallery.count", { count: watchedFolders.reduce((n, f) => n + f.media_count, 0) })
+                ? t("gallery.count", {
+                    count: watchedFolders.reduce(
+                      (n, f) => n + f.media_count,
+                      0,
+                    ),
+                  })
                 : t("main.addFolder")}
             </p>
           </div>
@@ -213,10 +218,15 @@ export function FolderManager() {
               <button
                 type="button"
                 onClick={() => void handleRescanAll()}
-                disabled={rescanningAll || watchedFolders.some((f) => f.scan_status === "scanning")}
+                disabled={
+                  rescanningAll ||
+                  watchedFolders.some((f) => f.scan_status === "scanning")
+                }
                 className="rounded-lg border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
               >
-                {rescanningAll ? t("settings.scanning") : t("settings.rescanAll")}
+                {rescanningAll
+                  ? t("settings.scanning")
+                  : t("settings.rescanAll")}
               </button>
             )}
             <button
@@ -242,7 +252,14 @@ export function FolderManager() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
-                        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+                        <svg
+                          viewBox="0 0 24 24"
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.75"
+                          aria-hidden="true"
+                        >
                           <path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v14a1 1 0 0 1-1.447.894L12 17.118l-6.553 3.776A1 1 0 0 1 4 20V6z" />
                         </svg>
                       </div>
@@ -250,13 +267,19 @@ export function FolderManager() {
                         {folder.path.split(/[/\\]/).pop() ?? folder.path}
                       </p>
                     </div>
-                    <p className="mt-2 truncate pl-11 text-xs text-neutral-500">{folder.path}</p>
+                    <p className="mt-2 truncate pl-11 text-xs text-neutral-500">
+                      {folder.path}
+                    </p>
                     <div className="mt-3 flex flex-wrap items-center gap-2 pl-11">
                       <span className="rounded-md bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
                         {t("folder.mediaCount")}: {folder.media_count}
                       </span>
                       <span className="text-xs text-neutral-400">
-                        {t("folder.lastScan")}: {formatLastScan(folder.last_scan, t("common.notAvailable"))}
+                        {t("folder.lastScan")}:{" "}
+                        {formatLastScan(
+                          folder.last_scan,
+                          t("common.notAvailable"),
+                        )}
                       </span>
                       <ScanIndicator status={folder.scan_status} />
                     </div>
@@ -269,7 +292,9 @@ export function FolderManager() {
                       disabled={folder.scan_status === "scanning"}
                       className="rounded-lg px-3 py-1.5 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-200 disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-neutral-800"
                     >
-                      {folder.scan_status === "scanning" ? t("settings.scanning") : t("settings.rescan")}
+                      {folder.scan_status === "scanning"
+                        ? t("settings.scanning")
+                        : t("settings.rescan")}
                     </button>
                     <button
                       type="button"
@@ -287,12 +312,39 @@ export function FolderManager() {
       </div>
 
       <section className="settings-section px-6 py-5">
+        <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+          {t("theme.title")}
+        </h2>
+        <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+          {t("theme.subtitle")}
+        </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {themeOptions.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => changeTheme(opt.value)}
+              className={`theme-pill px-5 py-2 text-sm font-medium ${
+                theme === opt.value
+                  ? "theme-pill-active text-white"
+                  : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-700"
+              }`}
+            >
+              {t(opt.labelKey)}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="settings-section px-6 py-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
               {t("settings.thumbnails")}
             </h2>
-            <p className="mt-1 text-sm text-neutral-500">{t("settings.thumbnailsHint")}</p>
+            <p className="mt-1 text-sm text-neutral-500">
+              {t("settings.thumbnailsHint")}
+            </p>
           </div>
           <button
             type="button"
@@ -300,12 +352,15 @@ export function FolderManager() {
             disabled={regeneratingThumbs || watchedFolders.length === 0}
             className="rounded-lg border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
           >
-            {regeneratingThumbs ? t("settings.thumbRegenerating") : t("settings.regenerateThumbnails")}
+            {regeneratingThumbs
+              ? t("settings.thumbRegenerating")
+              : t("settings.regenerateThumbnails")}
           </button>
         </div>
-        {thumbRegenProgress && (regeneratingThumbs || thumbRegenProgress.status === "complete") && (
-          <ThumbnailRegenProgressBar progress={thumbRegenProgress} />
-        )}
+        {thumbRegenProgress &&
+          (regeneratingThumbs || thumbRegenProgress.status === "complete") && (
+            <ThumbnailRegenProgressBar progress={thumbRegenProgress} />
+          )}
       </section>
 
       <LogSettings />

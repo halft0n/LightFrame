@@ -62,7 +62,9 @@ export function ImageEditor({
   const [loaded, setLoaded] = useState(false);
   const [historyMeta, setHistoryMeta] = useState({ index: 0, total: 1 });
 
-  const historyRef = useRef<EditParams[]>([cloneEditParams(DEFAULT_EDIT_PARAMS)]);
+  const historyRef = useRef<EditParams[]>([
+    cloneEditParams(DEFAULT_EDIT_PARAMS),
+  ]);
   const historyIndexRef = useRef(0);
   const skipHistoryRef = useRef(false);
 
@@ -89,19 +91,22 @@ export function ImageEditor({
     setHistoryMeta({ index: historyIndexRef.current, total: stack.length });
   }, []);
 
-  const pushHistory = useCallback((next: EditParams) => {
-    pendingSnapshotRef.current = next;
-    if (historyTimerRef.current) {
-      clearTimeout(historyTimerRef.current);
-    }
-    historyTimerRef.current = setTimeout(() => {
-      if (pendingSnapshotRef.current) {
-        commitHistory(pendingSnapshotRef.current);
-        pendingSnapshotRef.current = null;
+  const pushHistory = useCallback(
+    (next: EditParams) => {
+      pendingSnapshotRef.current = next;
+      if (historyTimerRef.current) {
+        clearTimeout(historyTimerRef.current);
       }
-      historyTimerRef.current = null;
-    }, 300);
-  }, [commitHistory]);
+      historyTimerRef.current = setTimeout(() => {
+        if (pendingSnapshotRef.current) {
+          commitHistory(pendingSnapshotRef.current);
+          pendingSnapshotRef.current = null;
+        }
+        historyTimerRef.current = null;
+      }, 300);
+    },
+    [commitHistory],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -166,21 +171,31 @@ export function ImageEditor({
   const undo = useCallback(() => {
     if (historyIndexRef.current <= 0) return;
     historyIndexRef.current -= 1;
-    const snapshot = cloneEditParams(historyRef.current[historyIndexRef.current]);
+    const snapshot = cloneEditParams(
+      historyRef.current[historyIndexRef.current],
+    );
     skipHistoryRef.current = true;
     setParams(snapshot);
     skipHistoryRef.current = false;
-    setHistoryMeta({ index: historyIndexRef.current, total: historyRef.current.length });
+    setHistoryMeta({
+      index: historyIndexRef.current,
+      total: historyRef.current.length,
+    });
   }, []);
 
   const redo = useCallback(() => {
     if (historyIndexRef.current >= historyRef.current.length - 1) return;
     historyIndexRef.current += 1;
-    const snapshot = cloneEditParams(historyRef.current[historyIndexRef.current]);
+    const snapshot = cloneEditParams(
+      historyRef.current[historyIndexRef.current],
+    );
     skipHistoryRef.current = true;
     setParams(snapshot);
     skipHistoryRef.current = false;
-    setHistoryMeta({ index: historyIndexRef.current, total: historyRef.current.length });
+    setHistoryMeta({
+      index: historyIndexRef.current,
+      total: historyRef.current.length,
+    });
   }, []);
 
   useEffect(() => {
@@ -217,7 +232,10 @@ export function ImageEditor({
     try {
       const payload = isDefaultEditParams(params)
         ? null
-        : serializeEditParams({ ...params, crop: cropMode ? params.crop : undefined });
+        : serializeEditParams({
+            ...params,
+            crop: cropMode ? params.crop : undefined,
+          });
       if (payload) {
         await saveEdit(mediaId, payload);
       } else {
@@ -263,8 +281,14 @@ export function ImageEditor({
   }, [cropMode, filename, mediaId, params, t]);
 
   const effectiveParams = compare ? DEFAULT_EDIT_PARAMS : params;
-  const filter = useMemo(() => buildCssFilter(effectiveParams), [effectiveParams]);
-  const transform = useMemo(() => buildImageTransform(effectiveParams), [effectiveParams]);
+  const filter = useMemo(
+    () => buildCssFilter(effectiveParams),
+    [effectiveParams],
+  );
+  const transform = useMemo(
+    () => buildImageTransform(effectiveParams),
+    [effectiveParams],
+  );
   const clipPath = useMemo(
     () => (compare ? undefined : buildClipPath(effectiveParams.crop)),
     [compare, effectiveParams.crop],
@@ -285,7 +309,9 @@ export function ImageEditor({
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#0d0d0d] text-white">
       <header className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
-        <h1 className="text-sm font-semibold tracking-wide text-neutral-200">{t("editor.title")}</h1>
+        <h1 className="text-sm font-semibold tracking-wide text-neutral-200">
+          {t("editor.title")}
+        </h1>
         <div className="flex items-center gap-2">
           {saveError && (
             <span className="text-xs text-red-400">{saveError}</span>
@@ -374,7 +400,9 @@ export function ImageEditor({
                 filter,
                 transform,
                 clipPath,
-                transformStyle: hasPerspective(params) ? "preserve-3d" : undefined,
+                transformStyle: hasPerspective(params)
+                  ? "preserve-3d"
+                  : undefined,
               }}
             />
             {loaded && cropMode && !compare && (

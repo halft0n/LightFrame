@@ -14,7 +14,9 @@ describe("localizeError", () => {
 
   it("maps database errors", () => {
     expect(localizeError("database locked", t)).toBe("数据库错误，请重试");
-    expect(localizeError("SQLite database error", t)).toBe("数据库错误，请重试");
+    expect(localizeError("SQLite database error", t)).toBe(
+      "数据库错误，请重试",
+    );
   });
 
   it("maps permission and forbidden errors", () => {
@@ -41,6 +43,8 @@ describe("localizeError", () => {
   it("maps errors in English locale", () => {
     setLocale("en");
     expect(localizeError("media not found", t)).toBe("Resource not found");
-    expect(localizeError("database locked", t)).toBe("Database error, please try again");
+    expect(localizeError("database locked", t)).toBe(
+      "Database error, please try again",
+    );
   });
 });

@@ -17,12 +17,7 @@ export async function invokeCommand<T>(
 }
 
 export type MediaType =
-  | "Photo"
-  | "Video"
-  | "Screenshot"
-  | "LivePhoto"
-  | "Raw"
-  | "Unknown";
+  "Photo" | "Video" | "Screenshot" | "LivePhoto" | "Raw" | "Unknown";
 
 export type ScanStatus = "idle" | "scanning" | "complete" | "error";
 
@@ -58,6 +53,7 @@ export interface ScanProgress {
   folder_id: number;
   scanned: number;
   total: number;
+  errors: number;
   status: ScanStatus;
 }
 
@@ -177,13 +173,7 @@ export interface ModelFileStatus {
 }
 
 export type ScreenshotCategory =
-  | "all"
-  | "generic"
-  | "code"
-  | "chat"
-  | "document"
-  | "game"
-  | "webpage";
+  "all" | "generic" | "code" | "chat" | "document" | "game" | "webpage";
 
 export interface Person {
   id: number;
@@ -250,7 +240,10 @@ export function getFaceThumbnailUrl(faceId: number): string {
   return `face://localhost/${faceId}`;
 }
 
-export function getThumbnailUrl(id: number, size: "small" | "large" | "micro" = "small"): string {
+export function getThumbnailUrl(
+  id: number,
+  size: "small" | "large" | "micro" = "small",
+): string {
   return `thumb://localhost/${id}/${size}`;
 }
 
@@ -271,12 +264,18 @@ export async function listWatchedFolders(): Promise<WatchedFolder[]> {
   return invoke<WatchedFolder[]>("list_watched_folders");
 }
 
-export async function getMediaList(offset: number, limit: number): Promise<MediaItem[]> {
+export async function getMediaList(
+  offset: number,
+  limit: number,
+): Promise<MediaItem[]> {
   return invoke<MediaItem[]>("get_media_list", { offset, limit });
 }
 
 export async function getMediaPage(limit: number, cursor?: [string, number]) {
-  return invokeCommand<MediaItem[]>("get_media_page", { limit, cursor: cursor ?? null });
+  return invokeCommand<MediaItem[]>("get_media_page", {
+    limit,
+    cursor: cursor ?? null,
+  });
 }
 
 export async function getMediaCount(): Promise<number> {
@@ -288,7 +287,11 @@ export async function getMediaByFolder(
   offset: number,
   limit: number,
 ): Promise<MediaItem[]> {
-  return invoke<MediaItem[]>("get_media_by_folder", { folderId, offset, limit });
+  return invoke<MediaItem[]>("get_media_by_folder", {
+    folderId,
+    offset,
+    limit,
+  });
 }
 
 export async function getMediaCountByFolder(folderId: number): Promise<number> {
@@ -314,7 +317,9 @@ export async function getMediaByType(
   });
 }
 
-export async function getMediaCountByType(mediaType: MediaType): Promise<number> {
+export async function getMediaCountByType(
+  mediaType: MediaType,
+): Promise<number> {
   return invoke<number>("get_media_count_by_type", { mediaType });
 }
 
@@ -342,7 +347,9 @@ export interface BatchEmbedResult {
   errors: string[];
 }
 
-export async function computeClipEmbeddingsBatch(limit = 32): Promise<BatchEmbedResult> {
+export async function computeClipEmbeddingsBatch(
+  limit = 32,
+): Promise<BatchEmbedResult> {
   return invoke<BatchEmbedResult>("compute_clip_embeddings_batch", { limit });
 }
 
@@ -350,7 +357,10 @@ export async function getMediaNeighbors(id: number): Promise<MediaNeighbors> {
   return invoke<MediaNeighbors>("get_media_neighbors", { id });
 }
 
-export async function getMediaWindow(mediaId: number, radius: number): Promise<MediaItem[]> {
+export async function getMediaWindow(
+  mediaId: number,
+  radius: number,
+): Promise<MediaItem[]> {
   return invokeCommand<MediaItem[]>("get_media_window", { mediaId, radius });
 }
 
@@ -428,7 +438,10 @@ export async function createAlbum(
   name: string,
   description?: string | null,
 ): Promise<Album> {
-  return invokeCommand<Album>("create_album", { name, description: description ?? null });
+  return invokeCommand<Album>("create_album", {
+    name,
+    description: description ?? null,
+  });
 }
 
 export async function deleteAlbum(id: number): Promise<void> {
@@ -440,10 +453,17 @@ export async function updateAlbum(
   name: string,
   description?: string | null,
 ): Promise<void> {
-  return invokeCommand("update_album", { id, name, description: description ?? null });
+  return invokeCommand("update_album", {
+    id,
+    name,
+    description: description ?? null,
+  });
 }
 
-export async function setAlbumCover(albumId: number, mediaId: number): Promise<void> {
+export async function setAlbumCover(
+  albumId: number,
+  mediaId: number,
+): Promise<void> {
   return invoke("set_album_cover", { albumId, mediaId });
 }
 
@@ -451,11 +471,17 @@ export async function listAlbums(): Promise<Album[]> {
   return invoke<Album[]>("list_albums");
 }
 
-export async function addToAlbum(albumId: number, mediaIds: number[]): Promise<void> {
+export async function addToAlbum(
+  albumId: number,
+  mediaIds: number[],
+): Promise<void> {
   return invokeCommand("add_to_album", { albumId, mediaIds });
 }
 
-export async function removeFromAlbum(albumId: number, mediaId: number): Promise<void> {
+export async function removeFromAlbum(
+  albumId: number,
+  mediaId: number,
+): Promise<void> {
   return invokeCommand("remove_from_album", { albumId, mediaId });
 }
 
@@ -480,7 +506,10 @@ export async function getFavoriteState(mediaId: number): Promise<boolean> {
   }
 }
 
-export async function getFavorites(offset: number, limit: number): Promise<MediaItem[]> {
+export async function getFavorites(
+  offset: number,
+  limit: number,
+): Promise<MediaItem[]> {
   return invoke<MediaItem[]>("get_favorites", { offset, limit });
 }
 
@@ -508,7 +537,10 @@ export async function batchDeleteMedia(mediaIds: number[]): Promise<number> {
   return invokeCommand<number>("batch_delete_media", { mediaIds });
 }
 
-export async function batchAddToAlbum(albumId: number, mediaIds: number[]): Promise<void> {
+export async function batchAddToAlbum(
+  albumId: number,
+  mediaIds: number[],
+): Promise<void> {
   return invokeCommand("batch_add_to_album", { albumId, mediaIds });
 }
 
@@ -523,7 +555,9 @@ export async function batchRestoreMedia(mediaIds: number[]): Promise<number> {
   return invoke<number>("batch_restore_media", { mediaIds });
 }
 
-export async function batchPermanentDelete(mediaIds: number[]): Promise<number> {
+export async function batchPermanentDelete(
+  mediaIds: number[],
+): Promise<number> {
   return invoke<number>("batch_permanent_delete", { mediaIds });
 }
 
@@ -622,7 +656,9 @@ export async function getScreenshots(
   });
 }
 
-export async function getScreenshotCount(category: ScreenshotCategory): Promise<number> {
+export async function getScreenshotCount(
+  category: ScreenshotCategory,
+): Promise<number> {
   const screenshotType = category === "all" ? null : category;
   return invoke<number>("get_screenshot_count", { screenshotType });
 }
@@ -635,7 +671,10 @@ export async function findSimilarPhotos(
   mediaId: number,
   limit?: number,
 ): Promise<SimilarPhoto[]> {
-  return invoke<SimilarPhoto[]>("find_similar_photos", { mediaId, limit: limit ?? 20 });
+  return invoke<SimilarPhoto[]>("find_similar_photos", {
+    mediaId,
+    limit: limit ?? 20,
+  });
 }
 
 export async function detectFaces(mediaId: number): Promise<FaceInfo[]> {
@@ -678,12 +717,19 @@ export async function getPersonMedia(
   return invoke<MediaItem[]>("get_person_media", { personId, offset, limit });
 }
 
-export async function renamePerson(personId: number, name: string): Promise<void> {
+export async function renamePerson(
+  personId: number,
+  name: string,
+): Promise<void> {
   return invoke("rename_person", { personId, name });
 }
 
-export async function clusterFaces(threshold?: number): Promise<PersonClusterInfo[]> {
-  return invoke<PersonClusterInfo[]>("cluster_faces", { threshold: threshold ?? null });
+export async function clusterFaces(
+  threshold?: number,
+): Promise<PersonClusterInfo[]> {
+  return invoke<PersonClusterInfo[]>("cluster_faces", {
+    threshold: threshold ?? null,
+  });
 }
 
 export async function mergePersons(personIds: number[]): Promise<void> {
@@ -743,7 +789,9 @@ export async function regenerateThumbnails(): Promise<ThumbnailRegenResult> {
   return invoke<ThumbnailRegenResult>("regenerate_thumbnails");
 }
 
-export async function regenerateThumbnailSingle(mediaId: number): Promise<boolean> {
+export async function regenerateThumbnailSingle(
+  mediaId: number,
+): Promise<boolean> {
   return invoke<boolean>("regenerate_thumbnail_single", { mediaId });
 }
 

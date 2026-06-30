@@ -23,7 +23,9 @@ describe("MainContent", () => {
     setLocale("en");
     render(<MainContent />);
     expect(screen.getByText("Welcome to LightFrame")).toBeInTheDocument();
-    expect(screen.getByText("Add a folder to start browsing photos")).toBeInTheDocument();
+    expect(
+      screen.getByText("Add a folder to start browsing photos"),
+    ).toBeInTheDocument();
   });
 
   it("renders welcome illustration", () => {

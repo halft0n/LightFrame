@@ -6,7 +6,11 @@ interface ErrorBannerProps {
   className?: string;
 }
 
-export function ErrorBanner({ message, onRetry, className = "" }: ErrorBannerProps) {
+export function ErrorBanner({
+  message,
+  onRetry,
+  className = "",
+}: ErrorBannerProps) {
   const { t } = useTranslation();
 
   return (

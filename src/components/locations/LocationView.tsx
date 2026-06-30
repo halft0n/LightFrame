@@ -160,11 +160,21 @@ export function LocationView() {
   }, []);
 
   const loadLocationMedia = useCallback(
-    async (country: string, city: string | null, offset = 0, append = false) => {
+    async (
+      country: string,
+      city: string | null,
+      offset = 0,
+      append = false,
+    ) => {
       if (offset === 0) setMediaLoading(true);
       else setLoadingMore(true);
       try {
-        const items = await getMediaByLocation(country, city, offset, PAGE_SIZE);
+        const items = await getMediaByLocation(
+          country,
+          city,
+          offset,
+          PAGE_SIZE,
+        );
         setMedia((prev) => (append ? [...prev, ...items] : items));
         setHasMore(items.length >= PAGE_SIZE);
       } catch (err) {
@@ -194,12 +204,20 @@ export function LocationView() {
 
   const loadMore = useCallback(async () => {
     if (!selected || loadingMore || !hasMore) return;
-    await loadLocationMedia(selected.country, selected.city, media.length, true);
+    await loadLocationMedia(
+      selected.country,
+      selected.city,
+      media.length,
+      true,
+    );
   }, [selected, loadingMore, hasMore, media.length, loadLocationMedia]);
 
-  const handlePhotoSelect = useCallback((id: number, _event: React.MouseEvent) => {
-    openViewer(id);
-  }, []);
+  const handlePhotoSelect = useCallback(
+    (id: number, _event: React.MouseEvent) => {
+      openViewer(id);
+    },
+    [],
+  );
 
   useEffect(() => {
     const el = parentRef.current;
@@ -234,7 +252,10 @@ export function LocationView() {
     [groups, visibleCount],
   );
   const hasMoreCards = visibleCount < groups.length;
-  const byCountry = useMemo(() => groupByCountry(visibleGroups), [visibleGroups]);
+  const byCountry = useMemo(
+    () => groupByCountry(visibleGroups),
+    [visibleGroups],
+  );
 
   if (loading) {
     return (
@@ -248,7 +269,9 @@ export function LocationView() {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-2 text-neutral-500">
         <p>{t("locations.noLocations")}</p>
-        <p className="text-sm text-neutral-600">{t("locations.noLocationsHint")}</p>
+        <p className="text-sm text-neutral-600">
+          {t("locations.noLocationsHint")}
+        </p>
       </div>
     );
   }
@@ -264,7 +287,9 @@ export function LocationView() {
           >
             ← {t("locations.allPhotos")}
           </button>
-          <span className="text-sm text-neutral-700 dark:text-neutral-300">{selected.label}</span>
+          <span className="text-sm text-neutral-700 dark:text-neutral-300">
+            {selected.label}
+          </span>
           <span className="text-sm text-neutral-500">
             {t("gallery.count", { count: media.length })}
           </span>
@@ -299,7 +324,9 @@ export function LocationView() {
             </div>
           )}
           {loadingMore && (
-            <div className="py-4 text-center text-sm text-neutral-500">{t("gallery.loading")}</div>
+            <div className="py-4 text-center text-sm text-neutral-500">
+              {t("gallery.loading")}
+            </div>
           )}
         </div>
       </div>
@@ -310,8 +337,12 @@ export function LocationView() {
     <div className="flex flex-1 flex-col overflow-hidden">
       {stats && (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3 text-sm text-neutral-500 dark:text-neutral-400">
-          <span className="font-medium text-neutral-700 dark:text-neutral-200">{t("locations.title")}</span>
-          <span>{t("locations.photosWithGps", { count: stats.total_with_gps })}</span>
+          <span className="font-medium text-neutral-700 dark:text-neutral-200">
+            {t("locations.title")}
+          </span>
+          <span>
+            {t("locations.photosWithGps", { count: stats.total_with_gps })}
+          </span>
           <span>{t("locations.countries", { count: stats.countries })}</span>
           <span>{t("locations.cities", { count: stats.cities })}</span>
           <div className="ml-auto flex items-center gap-1 rounded-lg border border-neutral-200/80 dark:border-neutral-700 p-0.5">
@@ -351,7 +382,9 @@ export function LocationView() {
         <div ref={parentRef} className="flex-1 overflow-y-auto px-1 py-1">
           {[...byCountry.entries()].map(([country, cityGroups]) => (
             <section key={country} className="mb-6">
-              <h2 className="mb-3 text-base font-semibold text-neutral-800 dark:text-neutral-100">{country}</h2>
+              <h2 className="mb-3 text-base font-semibold text-neutral-800 dark:text-neutral-100">
+                {country}
+              </h2>
               <div className="grid gap-[3px] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {cityGroups.map((group) => (
                   <LocationGroupCard

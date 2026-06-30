@@ -48,7 +48,11 @@ interface DownloadProgressState {
   speedBps: number;
 }
 
-function DownloadProgressBar({ progress }: { progress: DownloadProgressState }) {
+function DownloadProgressBar({
+  progress,
+}: {
+  progress: DownloadProgressState;
+}) {
   const { t } = useTranslation();
   const { downloaded, total, speedBps } = progress;
   const percent = total > 0 ? Math.min(100, (downloaded / total) * 100) : null;
@@ -102,7 +106,9 @@ function ModelRow({
             )}
             {!model.installed && <> · ~{model.size_mb} MB</>}
           </p>
-          {downloading && progress && <DownloadProgressBar progress={progress} />}
+          {downloading && progress && (
+            <DownloadProgressBar progress={progress} />
+          )}
         </div>
         <div className="flex items-center gap-2">
           <StatusBadge available={model.installed} />
@@ -128,9 +134,12 @@ export function AiSettings() {
   const [loading, setLoading] = useState(true);
   const [opening, setOpening] = useState(false);
   const [downloadingFile, setDownloadingFile] = useState<string | null>(null);
-  const [downloadProgress, setDownloadProgress] = useState<DownloadProgressState | null>(null);
+  const [downloadProgress, setDownloadProgress] =
+    useState<DownloadProgressState | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
-  const speedSampleRef = useRef<{ downloaded: number; at: number } | null>(null);
+  const speedSampleRef = useRef<{ downloaded: number; at: number } | null>(
+    null,
+  );
 
   const loadStatus = useCallback(async () => {
     setLoading(true);
@@ -234,14 +243,18 @@ export function AiSettings() {
                 key={model.filename}
                 model={model}
                 downloading={downloadingFile === model.filename}
-                progress={downloadingFile === model.filename ? downloadProgress : null}
+                progress={
+                  downloadingFile === model.filename ? downloadProgress : null
+                }
                 onDownload={(name) => void handleDownload(name)}
               />
             ))}
           </ul>
 
           {downloadError && (
-            <p className="text-sm text-red-600 dark:text-red-400">{downloadError}</p>
+            <p className="text-sm text-red-600 dark:text-red-400">
+              {downloadError}
+            </p>
           )}
 
           <div className="rounded-lg bg-neutral-100 px-3 py-2 dark:bg-neutral-800/80">
@@ -276,7 +289,9 @@ export function AiSettings() {
           </div>
         </div>
       ) : (
-        <p className="mt-4 text-sm text-neutral-500">{t("ai.statusUnavailable")}</p>
+        <p className="mt-4 text-sm text-neutral-500">
+          {t("ai.statusUnavailable")}
+        </p>
       )}
     </section>
   );

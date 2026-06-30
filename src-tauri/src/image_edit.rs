@@ -1758,6 +1758,49 @@ mod tests {
         assert!(edited.width() > 0 && edited.height() > 0);
     }
 
+    #[test]
+    fn edit_params_json_roundtrip_preserves_values() {
+        let params = EditParams {
+            brightness: 15.0,
+            contrast: -10.0,
+            rotate: 90,
+            flip_h: true,
+            crop: Some(CropRect {
+                x: 0.1,
+                y: 0.2,
+                width: 0.5,
+                height: 0.5,
+            }),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&params).expect("serialize");
+        let loaded = parse_edit_params(&json).expect("deserialize");
+        assert_eq!(loaded.rotate, 90);
+        assert!(loaded.flip_h);
+        assert!(approx_eq(loaded.brightness, 15.0));
+        assert!(approx_eq(loaded.contrast, -10.0));
+        let crop = loaded.crop.expect("crop preserved");
+        assert!(approx_eq(crop.x, 0.1));
+        assert!(approx_eq(crop.width, 0.5));
+    }
+
+    #[test]
+    fn export_edited_image_roundtrip_with_edits() {
+        let dir = tempfile::tempdir().unwrap();
+        let src = dir.path().join("source.png");
+        let dst = dir.path().join("edited.jpg");
+        save_test_png(&create_test_image(), &src);
+
+        let params = r#"{"brightness":20.0}"#;
+        export_edited_image(&src, &dst, params, 90).expect("export with edits");
+        assert!(dst.is_file());
+
+        let reloaded = image::open(&dst).expect("reopen exported jpeg");
+        let original = create_test_image();
+        let edited = apply_edits(original, &parse_edit_params(params).unwrap());
+        assert_eq!(reloaded.dimensions(), edited.dimensions());
+    }
+
     // ── Export ────────────────────────────────────────────────────────────
 
     #[test]

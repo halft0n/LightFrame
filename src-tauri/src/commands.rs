@@ -237,6 +237,14 @@ pub fn batch_export(
     media_ids: Vec<i64>,
     output_dir: String,
 ) -> Result<usize, String> {
+    batch_export_impl(&state, media_ids, output_dir)
+}
+
+pub(crate) fn batch_export_impl(
+    state: &AppState,
+    media_ids: Vec<i64>,
+    output_dir: String,
+) -> Result<usize, String> {
     check_batch_size(&media_ids)?;
     let output = std::path::Path::new(&output_dir);
     if !output.is_dir() {
@@ -557,6 +565,272 @@ mod export_tests {
     }
 }
 
+#[cfg(test)]
+mod batch_export_tests {
+    use super::*;
+    use crate::state::ScanStatus;
+    use lightframe_core::media::{MediaFile, MediaType};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    fn sample_media(path: &str) -> MediaFile {
+        MediaFile {
+            id: 0,
+            path: path.to_string(),
+            filename: path.rsplit('/').next().unwrap_or(path).to_string(),
+            media_type: MediaType::Photo,
+            size_bytes: 512,
+            width: Some(64),
+            height: Some(64),
+            created_at: None,
+            modified_at: chrono::NaiveDateTime::default(),
+            blake3_hash: None,
+            dhash: None,
+            phash: None,
+            latitude: None,
+            longitude: None,
+        }
+    }
+
+    fn test_app_state(db: Arc<lightframe_db::Database>) -> AppState {
+        AppState {
+            db,
+            config: lightframe_core::config::AppConfig::default(),
+            scan_status: ScanStatus::new(),
+            scan_concurrency: 4,
+            scanning: Arc::new(AtomicBool::new(false)),
+            face_detecting: Arc::new(AtomicBool::new(false)),
+            dedup_scanning: Arc::new(AtomicBool::new(false)),
+            watch_manager: crate::watcher::WatchManager::new(),
+            thumb_cache: crate::thumb_cache::ThumbCache::new(),
+            ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
+        }
+    }
+
+    fn setup_watched_env() -> (tempfile::TempDir, AppState, i64, std::path::PathBuf) {
+        let root = tempfile::tempdir().unwrap();
+        let watched = root.path().join("photos");
+        std::fs::create_dir_all(&watched).unwrap();
+        let watched_str = std::fs::canonicalize(&watched)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        let db_path = root.path().join("library.db");
+        let db = Arc::new(lightframe_db::Database::open(&db_path).unwrap());
+        let folder_id = db.add_watched_folder(&watched_str).unwrap().id;
+        let state = test_app_state(db);
+        (root, state, folder_id, watched)
+    }
+
+    #[test]
+    fn batch_export_empty_batch_returns_zero() {
+        let root = tempfile::tempdir().unwrap();
+        let out = root.path().join("export");
+        std::fs::create_dir_all(&out).unwrap();
+        let db = Arc::new(
+            lightframe_db::Database::open(root.path().join("library.db").as_path()).unwrap(),
+        );
+        let state = test_app_state(db);
+
+        let exported =
+            batch_export_impl(&state, vec![], out.to_string_lossy().to_string()).unwrap();
+        assert_eq!(exported, 0);
+    }
+
+    #[test]
+    fn batch_export_all_invalid_ids_returns_zero() {
+        let root = tempfile::tempdir().unwrap();
+        let out = root.path().join("export");
+        std::fs::create_dir_all(&out).unwrap();
+        let db = Arc::new(lightframe_db::Database::open(&root.path().join("library.db")).unwrap());
+        let state = test_app_state(db);
+
+        let exported =
+            batch_export_impl(&state, vec![999, 1000], out.to_string_lossy().to_string()).unwrap();
+        assert_eq!(exported, 0);
+        assert!(std::fs::read_dir(&out).unwrap().next().is_none());
+    }
+
+    #[test]
+    fn batch_export_mixed_valid_and_invalid_exports_only_valid() {
+        let (_root, state, folder_id, watched) = setup_watched_env();
+        let out = _root.path().join("export");
+        std::fs::create_dir_all(&out).unwrap();
+
+        let valid_path = watched.join("good.jpg");
+        std::fs::write(&valid_path, b"jpeg-bytes").unwrap();
+        let valid_id = state
+            .db
+            .upsert_media(folder_id, &sample_media(valid_path.to_str().unwrap()))
+            .unwrap();
+
+        let exported = batch_export_impl(
+            &state,
+            vec![valid_id, 99999],
+            out.to_string_lossy().to_string(),
+        )
+        .unwrap();
+        assert_eq!(exported, 1);
+        assert!(out.join("good.jpg").is_file());
+    }
+
+    #[test]
+    fn batch_export_rejects_non_directory_output() {
+        let (_root, state, folder_id, watched) = setup_watched_env();
+        let file_path = watched.join("photo.jpg");
+        std::fs::write(&file_path, b"jpeg").unwrap();
+        let media_id = state
+            .db
+            .upsert_media(folder_id, &sample_media(file_path.to_str().unwrap()))
+            .unwrap();
+
+        let err = batch_export_impl(
+            &state,
+            vec![media_id],
+            file_path.to_string_lossy().to_string(),
+        )
+        .unwrap_err();
+        assert!(err.contains("not a directory"));
+    }
+
+    #[test]
+    fn batch_export_skips_path_outside_watched_folders() {
+        let root = tempfile::tempdir().unwrap();
+        let watched = root.path().join("watched");
+        let outside = root.path().join("outside");
+        std::fs::create_dir_all(&watched).unwrap();
+        std::fs::create_dir_all(&outside).unwrap();
+        let watched_str = std::fs::canonicalize(&watched)
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        let db_path = root.path().join("library.db");
+        let db = Arc::new(lightframe_db::Database::open(&db_path).unwrap());
+        let folder_id = db.add_watched_folder(&watched_str).unwrap().id;
+        let state = test_app_state(db);
+
+        let outside_file = outside.join("secret.jpg");
+        std::fs::write(&outside_file, b"jpeg").unwrap();
+        let media_id = state
+            .db
+            .upsert_media(folder_id, &sample_media(outside_file.to_str().unwrap()))
+            .unwrap();
+
+        let out = root.path().join("export");
+        std::fs::create_dir_all(&out).unwrap();
+        let exported =
+            batch_export_impl(&state, vec![media_id], out.to_string_lossy().to_string()).unwrap();
+        assert_eq!(exported, 0);
+    }
+
+    #[test]
+    fn face_detecting_guard_releases_on_drop() {
+        let flag = Arc::new(AtomicBool::new(true));
+        struct FaceDetectingGuard(Arc<AtomicBool>);
+        impl Drop for FaceDetectingGuard {
+            fn drop(&mut self) {
+                self.0.store(false, Ordering::SeqCst);
+            }
+        }
+        {
+            let _guard = FaceDetectingGuard(Arc::clone(&flag));
+            assert!(flag.load(Ordering::SeqCst));
+        }
+        assert!(!flag.load(Ordering::SeqCst));
+    }
+}
+
+#[cfg(test)]
+mod edit_persistence_tests {
+    use super::*;
+    use crate::state::ScanStatus;
+    use lightframe_core::media::{MediaFile, MediaType};
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicBool;
+
+    fn sample_media(path: &str) -> MediaFile {
+        MediaFile {
+            id: 0,
+            path: path.to_string(),
+            filename: path.rsplit('/').next().unwrap_or(path).to_string(),
+            media_type: MediaType::Photo,
+            size_bytes: 512,
+            width: Some(64),
+            height: Some(64),
+            created_at: None,
+            modified_at: chrono::NaiveDateTime::default(),
+            blake3_hash: None,
+            dhash: None,
+            phash: None,
+            latitude: None,
+            longitude: None,
+        }
+    }
+
+    #[test]
+    fn edit_save_load_revert_roundtrip() {
+        let root = tempfile::tempdir().unwrap();
+        let db = lightframe_db::Database::open(root.path().join("library.db").as_path()).unwrap();
+        let folder_id = db.add_watched_folder("/photos").unwrap().id;
+        let media_id = db
+            .upsert_media(folder_id, &sample_media("/photos/edit.jpg"))
+            .unwrap();
+
+        let params = r#"{"brightness":12.0,"contrast":-5.0}"#;
+        crate::image_edit::parse_edit_params(params).expect("valid params");
+        db.save_edit_params(media_id, params).unwrap();
+        assert!(db.has_edits(media_id).unwrap());
+
+        let loaded = db.get_edit_params(media_id).unwrap().expect("saved params");
+        assert_eq!(loaded, params);
+
+        db.clear_edit_params(media_id).unwrap();
+        assert!(!db.has_edits(media_id).unwrap());
+        assert!(db.get_edit_params(media_id).unwrap().is_none());
+    }
+
+    #[test]
+    fn edit_save_rejects_invalid_json_via_parse() {
+        let invalid = r#"{"brightness":"not-a-number"}"#;
+        assert!(crate::image_edit::parse_edit_params(invalid).is_err());
+    }
+
+    #[tokio::test]
+    async fn detect_faces_releases_ai_lock_on_not_found() {
+        let root = tempfile::tempdir().unwrap();
+        let db = Arc::new(
+            lightframe_db::Database::open(root.path().join("library.db").as_path()).unwrap(),
+        );
+        let state = AppState {
+            db,
+            config: lightframe_core::config::AppConfig::default(),
+            scan_status: ScanStatus::new(),
+            scan_concurrency: 4,
+            scanning: Arc::new(AtomicBool::new(false)),
+            face_detecting: Arc::new(AtomicBool::new(false)),
+            dedup_scanning: Arc::new(AtomicBool::new(false)),
+            watch_manager: crate::watcher::WatchManager::new(),
+            thumb_cache: crate::thumb_cache::ThumbCache::new(),
+            ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
+        };
+
+        let err = detect_and_store_faces_for_media(&state, 99999)
+            .await
+            .unwrap_err();
+        assert!(err.contains("not found"));
+
+        let lock = state.ai.try_lock();
+        assert!(
+            lock.is_ok(),
+            "AI mutex should be released after early return"
+        );
+    }
+}
+
 #[tauri::command]
 pub fn get_media_by_id(state: State<'_, AppState>, id: i64) -> Result<Option<MediaFile>, String> {
     state
@@ -643,6 +917,24 @@ pub async fn get_media_window(
 
 #[tauri::command]
 pub async fn run_dedup_scan(state: State<'_, AppState>) -> Result<DedupScanResult, String> {
+    use std::sync::atomic::Ordering;
+
+    if state
+        .dedup_scanning
+        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+        .is_err()
+    {
+        return Err("dedup scan already in progress".to_string());
+    }
+
+    struct DedupScanningGuard(std::sync::Arc<std::sync::atomic::AtomicBool>);
+    impl Drop for DedupScanningGuard {
+        fn drop(&mut self) {
+            self.0.store(false, Ordering::SeqCst);
+        }
+    }
+    let _guard = DedupScanningGuard(std::sync::Arc::clone(&state.dedup_scanning));
+
     let db = state.db.clone();
     tokio::task::spawn_blocking(move || {
         db.clear_duplicate_groups().map_err(|e| e.to_string())?;

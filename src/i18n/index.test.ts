@@ -52,10 +52,19 @@ describe("i18n", () => {
   it("all zh-CN keys exist in en", () => {
     setLocale("zh-CN");
     const zhKeys = [
-      "app.title", "sidebar.library", "sidebar.allPhotos", "sidebar.timeline",
-      "sidebar.locations", "sidebar.people", "sidebar.tools", "sidebar.duplicates",
-      "sidebar.screenshots", "sidebar.settings", "sidebar.albums",
-      "main.welcome", "main.addFolder",
+      "app.title",
+      "sidebar.library",
+      "sidebar.allPhotos",
+      "sidebar.timeline",
+      "sidebar.locations",
+      "sidebar.people",
+      "sidebar.tools",
+      "sidebar.duplicates",
+      "sidebar.screenshots",
+      "sidebar.settings",
+      "sidebar.albums",
+      "main.welcome",
+      "main.addFolder",
     ];
 
     for (const key of zhKeys) {

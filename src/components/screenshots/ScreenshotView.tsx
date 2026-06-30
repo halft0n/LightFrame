@@ -24,7 +24,9 @@ const CATEGORIES: ScreenshotCategory[] = [
 ];
 
 function categoryLabelKey(category: ScreenshotCategory): string {
-  return category === "all" ? "screenshots.all" : `screenshots.category.${category}`;
+  return category === "all"
+    ? "screenshots.all"
+    : `screenshots.category.${category}`;
 }
 
 export function ScreenshotView() {
@@ -81,7 +83,11 @@ export function ScreenshotView() {
     if (loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
-      const items = await getScreenshots(category, screenshots.length, PAGE_SIZE);
+      const items = await getScreenshots(
+        category,
+        screenshots.length,
+        PAGE_SIZE,
+      );
       setScreenshots((prev) => [...prev, ...items]);
     } catch {
       // ignore
@@ -166,7 +172,9 @@ export function ScreenshotView() {
             ))}
           </div>
           {loadingMore && (
-            <div className="py-4 text-center text-sm text-neutral-500">{t("gallery.loading")}</div>
+            <div className="py-4 text-center text-sm text-neutral-500">
+              {t("gallery.loading")}
+            </div>
           )}
         </div>
       )}

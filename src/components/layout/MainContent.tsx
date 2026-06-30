@@ -26,7 +26,13 @@ import { useAppStore } from "@/store/appStore";
 
 export function MainContent() {
   const { t } = useTranslation();
-  const { currentView, watchedFolders, searchQuery, viewingMediaId, slideshowActive } = useAppStore();
+  const {
+    currentView,
+    watchedFolders,
+    searchQuery,
+    viewingMediaId,
+    slideshowActive,
+  } = useAppStore();
 
   if (slideshowActive) {
     return <SlideshowView />;
@@ -99,7 +105,10 @@ export function MainContent() {
   };
 
   return (
-    <div key={viewKey} className="page-enter flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div
+      key={viewKey}
+      className="page-enter flex min-h-0 flex-1 flex-col overflow-hidden"
+    >
       {renderView()}
     </div>
   );

@@ -15,6 +15,7 @@
   "a11y.emptyState": "Empty",
   "a11y.thumbnailError": "Thumbnail failed to load",
   "gallery.rawBadge": "RAW",
+  "gallery.heicBadge": "HEIC",
   "sidebar.library": "Library",
   "sidebar.basicLibrary": "Basic Library",
   "sidebar.albumsSection": "Albums",
@@ -354,6 +355,8 @@
   "map.noPhotosHint": "Photos with GPS coordinates will appear on the map",
   "map.photoCount": "{count} geo-tagged photos",
   "map.openPhoto": "Click to open",
+  "map.centerOnMarkers": "Center on markers",
+  "map.clusterPhotoCount": "{count} photos",
   "slideshow.title": "Slideshow",
   "slideshow.start": "Slideshow",
   "slideshow.startAll": "Play all photos as slideshow",
@@ -365,5 +368,9 @@
   "slideshow.fullscreen": "Fullscreen",
   "slideshow.exitFullscreen": "Exit fullscreen",
   "slideshow.speedSeconds": "{seconds}s",
-  "slideshow.noPhotos": "No photos to show"
+  "slideshow.noPhotos": "No photos to show",
+  "slideshow.shuffle": "Shuffle mode",
+  "slideshow.shuffleOn": "Shuffle",
+  "slideshow.shuffleOff": "Sequential",
+  "slideshow.sequential": "Sequential mode"
 }

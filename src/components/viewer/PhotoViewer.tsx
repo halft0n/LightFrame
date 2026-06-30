@@ -12,9 +12,20 @@ import {
   deleteMedia,
   type MediaItem,
 } from "@/lib/tauri";
-import { buildClipPath, buildCssFilter, buildImageTransform, parseEditParams } from "@/lib/editParams";
+import {
+  buildClipPath,
+  buildCssFilter,
+  buildImageTransform,
+  parseEditParams,
+} from "@/lib/editParams";
 import { isTypingTarget } from "@/lib/keyboard";
-import { closeViewer, loadMedia, openViewer, startSlideshow, useAppStore } from "@/store/appStore";
+import {
+  closeViewer,
+  loadMedia,
+  openViewer,
+  startSlideshow,
+  useAppStore,
+} from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 import { VideoPlayer } from "./VideoPlayer";
 import { ImageEditor } from "@/components/editor/ImageEditor";
@@ -32,7 +43,11 @@ const MAX_ZOOM = 5;
 const FILMSTRIP_SIZE = 20;
 const VIEWER_EXIT_MS = 200;
 
-function formatMediaDate(item: MediaItem, locale: string, notAvailable: string): string {
+function formatMediaDate(
+  item: MediaItem,
+  locale: string,
+  notAvailable: string,
+): string {
   const raw = item.created_at ?? item.modified_at;
   if (!raw) return notAvailable;
   const date = new Date(raw);
@@ -57,7 +72,10 @@ function filmstripFromContext(
   return contextItems.slice(start, end);
 }
 
-async function loadFilmstripAroundMedia(mediaId: number, radius: number): Promise<MediaItem[]> {
+async function loadFilmstripAroundMedia(
+  mediaId: number,
+  radius: number,
+): Promise<MediaItem[]> {
   const items = await getMediaWindow(mediaId, radius);
   return items ?? [];
 }
@@ -76,7 +94,10 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   const { t, locale } = useTranslation();
   const { mediaItems: contextItems } = useAppStore();
   const [media, setMedia] = useState<MediaItem | null>(null);
-  const [neighbors, setNeighbors] = useState<{ prev_id: number | null; next_id: number | null }>({
+  const [neighbors, setNeighbors] = useState<{
+    prev_id: number | null;
+    next_id: number | null;
+  }>({
     prev_id: null,
     next_id: null,
   });
@@ -101,7 +122,9 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const printTargetRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
-  const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyFeedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const requestClose = useCallback(() => {
     if (closing) return;
@@ -214,7 +237,11 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
     const el = filmstripRef.current;
     if (!el) return;
     const active = el.querySelector(`[data-id="${mediaId}"]`);
-    active?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+    active?.scrollIntoView({
+      inline: "center",
+      block: "nearest",
+      behavior: "smooth",
+    });
   }, [mediaId, filmstrip]);
 
   const navigate = useCallback((id: number | null) => {
@@ -284,7 +311,9 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
       if (media?.media_type === "Video") return;
       if (e.key === "r" || e.key === "R") {
         e.preventDefault();
-        setRotation((r) => (e.shiftKey ? (r - 90 + 360) % 360 : (r + 90) % 360));
+        setRotation((r) =>
+          e.shiftKey ? (r - 90 + 360) % 360 : (r + 90) % 360,
+        );
         return;
       }
       if (e.key === "ArrowLeft") {
@@ -296,26 +325,37 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [navigate, neighbors, media?.media_type, mediaId, editorOpen, handleToggleFavorite, requestClose, t]);
+  }, [
+    navigate,
+    neighbors,
+    media?.media_type,
+    mediaId,
+    editorOpen,
+    handleToggleFavorite,
+    requestClose,
+    t,
+  ]);
 
-  const handleWheel = useCallback(
-    (e: React.WheelEvent) => {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? -0.15 : 0.15;
-      setZoom((z) => {
-        const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z + delta));
-        if (next <= 1) setPan({ x: 0, y: 0 });
-        return next;
-      });
-    },
-    [],
-  );
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.15 : 0.15;
+    setZoom((z) => {
+      const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z + delta));
+      if (next <= 1) setPan({ x: 0, y: 0 });
+      return next;
+    });
+  }, []);
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (zoom <= 1) return;
       setDragging(true);
-      dragStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+      dragStart.current = {
+        x: e.clientX,
+        y: e.clientY,
+        panX: pan.x,
+        panY: pan.y,
+      };
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
     },
     [pan, zoom],
@@ -358,7 +398,10 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
           type: blob.type || "image/jpeg",
         });
 
-        if (typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
+        if (
+          typeof navigator.canShare === "function" &&
+          navigator.canShare({ files: [file] })
+        ) {
           await navigator.share({ files: [file], title: media.filename });
           return;
         }
@@ -390,14 +433,20 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
       if (copyFeedbackTimeoutRef.current) {
         clearTimeout(copyFeedbackTimeoutRef.current);
       }
-      copyFeedbackTimeoutRef.current = setTimeout(() => setCopyFeedback(null), 2000);
+      copyFeedbackTimeoutRef.current = setTimeout(
+        () => setCopyFeedback(null),
+        2000,
+      );
     } catch (error) {
       console.error("Copy failed:", error);
       setCopyFeedback(t("viewer.copyFailed"));
       if (copyFeedbackTimeoutRef.current) {
         clearTimeout(copyFeedbackTimeoutRef.current);
       }
-      copyFeedbackTimeoutRef.current = setTimeout(() => setCopyFeedback(null), 2000);
+      copyFeedbackTimeoutRef.current = setTimeout(
+        () => setCopyFeedback(null),
+        2000,
+      );
     }
   }, [media, isVideo, t]);
 
@@ -406,7 +455,9 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
     (typeof navigator.canShare === "function" && media?.media_type !== "Video");
 
   const canCopy =
-    !isVideo && typeof navigator.clipboard?.write === "function" && "ClipboardItem" in window;
+    !isVideo &&
+    typeof navigator.clipboard?.write === "function" &&
+    "ClipboardItem" in window;
 
   const handleZoomChange = useCallback((value: number) => {
     setZoom(value);
@@ -427,7 +478,9 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
 
   const editPreview = editParamsJson ? parseEditParams(editParamsJson) : null;
   const previewFilter = editPreview ? buildCssFilter(editPreview) : undefined;
-  const previewTransform = editPreview ? buildImageTransform(editPreview) : undefined;
+  const previewTransform = editPreview
+    ? buildImageTransform(editPreview)
+    : undefined;
   const previewClip = editPreview ? buildClipPath(editPreview.crop) : undefined;
   const imageTransform = [
     previewTransform,
@@ -487,7 +540,9 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
         )}
 
         <p className="min-w-0 flex-1 truncate text-center text-sm font-medium text-neutral-100">
-          {media ? formatMediaDate(media, locale, t("common.notAvailable")) : t("common.notAvailable")}
+          {media
+            ? formatMediaDate(media, locale, t("common.notAvailable"))
+            : t("common.notAvailable")}
         </p>
 
         <div className="flex shrink-0 items-center gap-1">
@@ -682,7 +737,10 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
 
             {showInfo && media && <InfoPanel media={media} />}
             {showSimilar && (
-              <SimilarPhotosPanel mediaId={mediaId} onClose={() => setShowSimilar(false)} />
+              <SimilarPhotosPanel
+                mediaId={mediaId}
+                onClose={() => setShowSimilar(false)}
+              />
             )}
           </>
         )}
@@ -710,7 +768,9 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
               data-id={item.id}
               onClick={() => openViewer(item.id)}
               className={`h-16 w-16 shrink-0 overflow-hidden rounded-md transition ${
-                item.id === mediaId ? "ring-2 ring-blue-500" : "opacity-70 hover:opacity-100"
+                item.id === mediaId
+                  ? "ring-2 ring-blue-500"
+                  : "opacity-70 hover:opacity-100"
               }`}
               aria-label={item.filename}
             >
@@ -725,7 +785,9 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
       )}
 
       <div className="shrink-0 border-t border-white/10 px-4 py-1.5 text-center text-xs text-neutral-400">
-        <span className="truncate">{media?.filename ?? t("common.notAvailable")}</span>
+        <span className="truncate">
+          {media?.filename ?? t("common.notAvailable")}
+        </span>
       </div>
 
       {editorOpen && media && (
@@ -741,7 +803,11 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
       )}
 
       {!isVideo && media && (
-        <div ref={printTargetRef} className="photo-print-target hidden print:flex" aria-hidden="true">
+        <div
+          ref={printTargetRef}
+          className="photo-print-target hidden print:flex"
+          aria-hidden="true"
+        >
           <img src={getOriginalUrl(media.path)} alt={media.filename} />
         </div>
       )}

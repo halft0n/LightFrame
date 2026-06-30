@@ -31,7 +31,10 @@ export function setLocale(locale: Locale) {
   listeners.forEach((fn) => fn());
 }
 
-export function t(key: string, params?: Record<string, string | number>): string {
+export function t(
+  key: string,
+  params?: Record<string, string | number>,
+): string {
   let text = translations[currentLocale][key] ?? key;
   if (params) {
     for (const [name, value] of Object.entries(params)) {

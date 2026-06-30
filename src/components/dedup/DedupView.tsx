@@ -61,7 +61,9 @@ const DedupMemberCard = memo(function DedupMemberCard({
       </div>
       <div className="space-y-0.5 p-2">
         <p className="truncate text-xs text-neutral-200">{member.filename}</p>
-        <p className="text-xs text-neutral-500">{formatFileSize(member.size_bytes)}</p>
+        <p className="text-xs text-neutral-500">
+          {formatFileSize(member.size_bytes)}
+        </p>
         {group.match_type === "perceptual" && (
           <p className="text-xs text-neutral-500">{similarityLabel}</p>
         )}
@@ -101,9 +103,7 @@ const DedupGroupCard = memo(function DedupGroupCard({
   labels,
 }: DedupGroupCardProps) {
   return (
-    <div
-      className="dedup-group-card overflow-hidden rounded-xl border border-neutral-200/80 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900/50"
-    >
+    <div className="dedup-group-card overflow-hidden rounded-xl border border-neutral-200/80 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900/50">
       <div className="flex items-center justify-between border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3">
         <div className="flex items-center gap-3">
           <span
@@ -115,7 +115,9 @@ const DedupGroupCard = memo(function DedupGroupCard({
           >
             {group.match_type === "exact" ? labels.exact : labels.perceptual}
           </span>
-          <span className="text-sm text-neutral-500 dark:text-neutral-400">{labels.count}</span>
+          <span className="text-sm text-neutral-500 dark:text-neutral-400">
+            {labels.count}
+          </span>
         </div>
         <div className="flex gap-2">
           <button
@@ -145,7 +147,9 @@ const DedupGroupCard = memo(function DedupGroupCard({
               group={group}
               isKept={isKept}
               onSelect={onKeepSelect}
-              similarityLabel={labels.similarity(Math.round(member.similarity * 100))}
+              similarityLabel={labels.similarity(
+                Math.round(member.similarity * 100),
+              )}
               keptLabel={labels.kept}
             />
           );
@@ -209,16 +213,19 @@ export function DedupView() {
     }
   };
 
-  const handleResolve = useCallback(async (groupId: number, keepId: number | undefined) => {
-    if (keepId == null) return;
-    if (!window.confirm(t("dedup.confirmDelete"))) return;
-    try {
-      await resolveDuplicate(groupId, keepId, true);
-      setGroups((prev) => prev.filter((g) => g.id !== groupId));
-    } catch (err) {
-      console.error("Failed to resolve duplicate group:", err);
-    }
-  }, [t]);
+  const handleResolve = useCallback(
+    async (groupId: number, keepId: number | undefined) => {
+      if (keepId == null) return;
+      if (!window.confirm(t("dedup.confirmDelete"))) return;
+      try {
+        await resolveDuplicate(groupId, keepId, true);
+        setGroups((prev) => prev.filter((g) => g.id !== groupId));
+      } catch (err) {
+        console.error("Failed to resolve duplicate group:", err);
+      }
+    },
+    [t],
+  );
 
   const handleDismiss = useCallback(async (groupId: number) => {
     try {
@@ -310,7 +317,8 @@ export function DedupView() {
         ) : (
           <div className="space-y-6">
             {visibleGroups.map((group) => {
-              const keepId = selectedKeep[group.id] ?? group.members[0]?.media_id;
+              const keepId =
+                selectedKeep[group.id] ?? group.members[0]?.media_id;
               return (
                 <DedupGroupCard
                   key={group.id}
@@ -330,7 +338,9 @@ export function DedupView() {
               <div className="flex justify-center pt-2 pb-4">
                 <button
                   type="button"
-                  onClick={() => setVisibleCount((prev) => prev + GROUP_PAGE_SIZE)}
+                  onClick={() =>
+                    setVisibleCount((prev) => prev + GROUP_PAGE_SIZE)
+                  }
                   className="rounded-lg border border-neutral-200/80 dark:border-neutral-700 px-6 py-2 text-sm text-neutral-500 dark:text-neutral-400 transition hover:border-neutral-300 dark:hover:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-200"
                 >
                   {t("gallery.loadMore")} ({groups.length - visibleCount})

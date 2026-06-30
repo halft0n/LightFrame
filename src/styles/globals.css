@@ -510,6 +510,55 @@ input:focus:not(:focus-visible) {
   animation: slideshow-fade-in 400ms ease-out both;
 }
 
+@keyframes slideshow-crossfade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideshow-crossfade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.slideshow-crossfade-in {
+  animation: slideshow-crossfade-in 700ms ease-in-out both;
+}
+
+.slideshow-crossfade-out {
+  animation: slideshow-crossfade-out 700ms ease-in-out both;
+}
+
+.map-marker-cluster {
+  background: transparent;
+  border: none;
+}
+
+.map-cluster-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 9999px;
+  background: rgb(37 99 235 / 0.9);
+  color: white;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
+}
+
+.map-cluster-count {
+  line-height: 1;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

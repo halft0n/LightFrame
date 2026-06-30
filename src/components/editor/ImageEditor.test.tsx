@@ -40,7 +40,9 @@ describe("ImageEditor", () => {
       return Promise.resolve(null);
     });
 
-    (save as ReturnType<typeof vi.fn>).mockResolvedValue("/output/test_edited.jpg");
+    (save as ReturnType<typeof vi.fn>).mockResolvedValue(
+      "/output/test_edited.jpg",
+    );
   });
 
   afterEach(() => {
@@ -55,7 +57,9 @@ describe("ImageEditor", () => {
     });
     expect(screen.getByRole("button", { name: /撤销/ })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /重做/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "对比原图" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "对比原图" }),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
     expect(screen.getByAltText("test.jpg")).toBeInTheDocument();
   });
@@ -136,7 +140,9 @@ describe("ImageEditor", () => {
     const onSaved = vi.fn();
     const onClose = vi.fn();
 
-    render(<ImageEditor {...defaultProps} onSaved={onSaved} onClose={onClose} />);
+    render(
+      <ImageEditor {...defaultProps} onSaved={onSaved} onClose={onClose} />,
+    );
 
     await waitFor(() => {
       expect(screen.getByText("亮度")).toBeInTheDocument();
@@ -203,14 +209,18 @@ describe("ImageEditor", () => {
     await user.click(screen.getByRole("button", { name: "正方形" }));
 
     await waitFor(() => {
-      expect(document.querySelector(".cursor-move.border-2")).toBeInTheDocument();
+      expect(
+        document.querySelector(".cursor-move.border-2"),
+      ).toBeInTheDocument();
     });
   });
 
   it("loads saved edit params from backend on mount", async () => {
     (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
       if (cmd === "get_edit") {
-        return Promise.resolve(JSON.stringify({ exposure: 0.5, brightness: 10 }));
+        return Promise.resolve(
+          JSON.stringify({ exposure: 0.5, brightness: 10 }),
+        );
       }
       if (cmd === "save_edit") return Promise.resolve(undefined);
       if (cmd === "revert_edit") return Promise.resolve(undefined);
@@ -220,7 +230,9 @@ describe("ImageEditor", () => {
     render(<ImageEditor {...defaultProps} />);
 
     await waitFor(() => {
-      const brightnessSlider = screen.getByLabelText("亮度") as HTMLInputElement;
+      const brightnessSlider = screen.getByLabelText(
+        "亮度",
+      ) as HTMLInputElement;
       expect(brightnessSlider.value).toBe("10");
     });
   });

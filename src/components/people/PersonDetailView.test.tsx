@@ -32,8 +32,20 @@ const samplePerson = {
 };
 
 const sampleFaces = [
-  { id: 100, media_id: 500, confidence: 0.98, bbox: [0, 0, 50, 50] as [number, number, number, number], person_id: 42 },
-  { id: 101, media_id: 501, confidence: 0.95, bbox: [10, 10, 60, 60] as [number, number, number, number], person_id: 42 },
+  {
+    id: 100,
+    media_id: 500,
+    confidence: 0.98,
+    bbox: [0, 0, 50, 50] as [number, number, number, number],
+    person_id: 42,
+  },
+  {
+    id: 101,
+    media_id: 501,
+    confidence: 0.95,
+    bbox: [10, 10, 60, 60] as [number, number, number, number],
+    person_id: 42,
+  },
 ];
 
 beforeEach(() => {
@@ -79,10 +91,14 @@ describe("PersonDetailView", () => {
     render(<PersonDetailView />);
 
     await waitFor(() => {
-      expect(screen.getAllByRole("button", { name: "从人物中移除" }).length).toBe(2);
+      expect(
+        screen.getAllByRole("button", { name: "从人物中移除" }).length,
+      ).toBe(2);
     });
 
-    await user.click(screen.getAllByRole("button", { name: "从人物中移除" })[0]);
+    await user.click(
+      screen.getAllByRole("button", { name: "从人物中移除" })[0],
+    );
 
     await waitFor(() => {
       expect(splitFaceFromPerson).toHaveBeenCalledWith(100);

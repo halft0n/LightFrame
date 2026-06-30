@@ -135,6 +135,7 @@ pub async fn run_scan(
         async move {
             if let Err(e) = process_file(&db, folder_id, &path).await {
                 warn!(path = %path.display(), "failed to process file: {e}");
+                scan_status.increment_errors();
             }
             let scanned = scan_status.increment_scanned();
             if scanned % 100 == 0 {

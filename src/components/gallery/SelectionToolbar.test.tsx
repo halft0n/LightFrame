@@ -112,7 +112,9 @@ describe("SelectionToolbar", () => {
   it("shows album picker and adds to album", async () => {
     const user = userEvent.setup();
     setMediaSelection([1]);
-    listAlbums.mockResolvedValue([{ id: 10, name: "Vacation", media_count: 5, created_at: "" }]);
+    listAlbums.mockResolvedValue([
+      { id: 10, name: "Vacation", media_count: 5, created_at: "" },
+    ]);
     batchAddToAlbum.mockResolvedValue(undefined);
 
     render(<SelectionToolbar />);

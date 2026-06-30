@@ -66,7 +66,9 @@ describe("MemoriesView", () => {
     await waitFor(() => {
       expect(screen.getByText("暂无回忆")).toBeInTheDocument();
     });
-    expect(screen.getByText("添加更多照片后，回忆将自动生成")).toBeInTheDocument();
+    expect(
+      screen.getByText("添加更多照片后，回忆将自动生成"),
+    ).toBeInTheDocument();
   });
 
   it("renders memory cards when memories exist", async () => {

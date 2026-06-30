@@ -55,7 +55,9 @@ export function MemoriesView() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="flex items-center justify-between border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3">
-        <h2 className="text-sm font-medium text-neutral-200">{t("memories.title")}</h2>
+        <h2 className="text-sm font-medium text-neutral-200">
+          {t("memories.title")}
+        </h2>
         <button
           type="button"
           disabled={generating}
@@ -74,7 +76,9 @@ export function MemoriesView() {
                 <h3 className="text-base font-semibold text-neutral-100">
                   {t("memories.onThisDay")}
                 </h3>
-                <p className="mt-0.5 text-sm text-neutral-400">{t("memories.onThisDayHint")}</p>
+                <p className="mt-0.5 text-sm text-neutral-400">
+                  {t("memories.onThisDayHint")}
+                </p>
               </div>
               <div className="flex gap-2 overflow-x-auto p-4">
                 {onThisDay.map((item) => (
@@ -101,7 +105,9 @@ export function MemoriesView() {
           <div className="flex flex-1 flex-col items-center justify-center gap-2 py-16 text-neutral-500">
             <div className="text-5xl">🕰</div>
             <p className="text-lg">{t("memories.empty")}</p>
-            <p className="text-sm text-neutral-600">{t("memories.emptyHint")}</p>
+            <p className="text-sm text-neutral-600">
+              {t("memories.emptyHint")}
+            </p>
           </div>
         ) : (
           <div className="grid gap-[3px] sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -123,7 +129,9 @@ export function MemoriesView() {
                 <div className="p-3">
                   <p className="font-medium text-neutral-100">{memory.title}</p>
                   {memory.subtitle && (
-                    <p className="mt-0.5 truncate text-sm text-neutral-500">{memory.subtitle}</p>
+                    <p className="mt-0.5 truncate text-sm text-neutral-500">
+                      {memory.subtitle}
+                    </p>
                   )}
                   <p className="mt-1 text-sm text-neutral-500">
                     {t("memories.photos", { count: memory.media_count })}

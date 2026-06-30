@@ -1,6 +1,9 @@
 export const DRAG_MEDIA_MIME = "application/x-lightframe-media-ids";
 
-export function setDragMediaIds(dataTransfer: DataTransfer, mediaIds: number[]): void {
+export function setDragMediaIds(
+  dataTransfer: DataTransfer,
+  mediaIds: number[],
+): void {
   dataTransfer.setData(DRAG_MEDIA_MIME, JSON.stringify(mediaIds));
   dataTransfer.effectAllowed = "copy";
 }
@@ -17,7 +20,10 @@ export function parseDragMediaIds(dataTransfer: DataTransfer): number[] {
   }
 }
 
-export function dragMediaIdsForItem(itemId: number, selectedIds: number[]): number[] {
+export function dragMediaIdsForItem(
+  itemId: number,
+  selectedIds: number[],
+): number[] {
   if (selectedIds.includes(itemId) && selectedIds.length > 0) {
     return selectedIds;
   }

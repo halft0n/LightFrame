@@ -15,6 +15,7 @@
   "a11y.emptyState": "空状态",
   "a11y.thumbnailError": "缩略图加载失败",
   "gallery.rawBadge": "RAW",
+  "gallery.heicBadge": "HEIC",
   "sidebar.library": "图库",
   "sidebar.basicLibrary": "基础图库",
   "sidebar.albumsSection": "相簿",
@@ -354,6 +355,8 @@
   "map.noPhotosHint": "带有 GPS 坐标的照片将显示在地图上",
   "map.photoCount": "{count} 张带 GPS 的照片",
   "map.openPhoto": "点击打开",
+  "map.centerOnMarkers": "居中显示标记",
+  "map.clusterPhotoCount": "{count} 张照片",
   "slideshow.title": "幻灯片",
   "slideshow.start": "幻灯片",
   "slideshow.startAll": "将所有照片作为幻灯片播放",
@@ -365,5 +368,9 @@
   "slideshow.fullscreen": "全屏",
   "slideshow.exitFullscreen": "退出全屏",
   "slideshow.speedSeconds": "{seconds}秒",
-  "slideshow.noPhotos": "没有可播放的照片"
+  "slideshow.noPhotos": "没有可播放的照片",
+  "slideshow.shuffle": "随机播放模式",
+  "slideshow.shuffleOn": "随机",
+  "slideshow.shuffleOff": "顺序",
+  "slideshow.sequential": "顺序播放模式"
 }

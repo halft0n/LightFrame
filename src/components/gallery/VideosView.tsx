@@ -24,7 +24,9 @@ export function VideosView() {
   const parentRef = useRef<HTMLDivElement>(null);
   const lastSelectedRef = useRef<number | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
-  const [mediaItems, setMediaItems] = useState<Awaited<ReturnType<typeof getMediaByType>>>([]);
+  const [mediaItems, setMediaItems] = useState<
+    Awaited<ReturnType<typeof getMediaByType>>
+  >([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -217,11 +219,15 @@ export function VideosView() {
         {loadingMore && (
           <div className="flex items-center justify-center gap-2 py-6">
             <div className="loading-shimmer-bar shimmer" aria-hidden="true" />
-            <span className="text-sm text-neutral-500">{t("gallery.loading")}</span>
+            <span className="text-sm text-neutral-500">
+              {t("gallery.loading")}
+            </span>
           </div>
         )}
         {loadMoreError && (
-          <p className="py-4 text-center text-sm text-red-500">{t("gallery.loadError")}</p>
+          <p className="py-4 text-center text-sm text-red-500">
+            {t("gallery.loadError")}
+          </p>
         )}
       </div>
     </div>

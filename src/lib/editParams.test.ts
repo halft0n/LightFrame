@@ -45,14 +45,29 @@ describe("parseEditParams", () => {
 
   it("should deep merge levels and preserve nested curves/selectiveColor objects", () => {
     const json = JSON.stringify({
-      curves: { rgb: [[0, 0], [255, 255]], r: [[0, 0], [255, 255]] },
+      curves: {
+        rgb: [
+          [0, 0],
+          [255, 255],
+        ],
+        r: [
+          [0, 0],
+          [255, 255],
+        ],
+      },
       levels: { inputBlack: 20 },
       selectiveColor: { reds: { hue: 10, saturation: 0, luminance: 0 } },
     });
     const result = parseEditParams(json);
 
-    expect(result.curves?.rgb).toEqual([[0, 0], [255, 255]]);
-    expect(result.curves?.r).toEqual([[0, 0], [255, 255]]);
+    expect(result.curves?.rgb).toEqual([
+      [0, 0],
+      [255, 255],
+    ]);
+    expect(result.curves?.r).toEqual([
+      [0, 0],
+      [255, 255],
+    ]);
     expect(result.levels).toEqual({
       inputBlack: 20,
       inputWhite: 255,
@@ -60,11 +75,17 @@ describe("parseEditParams", () => {
       outputBlack: 0,
       outputWhite: 255,
     });
-    expect(result.selectiveColor?.reds).toEqual({ hue: 10, saturation: 0, luminance: 0 });
+    expect(result.selectiveColor?.reds).toEqual({
+      hue: 10,
+      saturation: 0,
+      luminance: 0,
+    });
   });
 
   it("should merge partial levels JSON with defaults", () => {
-    const result = parseEditParams(JSON.stringify({ levels: { gamma: 1.5, outputWhite: 240 } }));
+    const result = parseEditParams(
+      JSON.stringify({ levels: { gamma: 1.5, outputWhite: 240 } }),
+    );
     expect(result.levels).toEqual({
       inputBlack: 0,
       inputWhite: 255,
@@ -113,7 +134,9 @@ describe("isDefaultEditParams", () => {
   });
 
   it("should return false when brightness is non-zero", () => {
-    expect(isDefaultEditParams({ ...DEFAULT_EDIT_PARAMS, brightness: 5 })).toBe(false);
+    expect(isDefaultEditParams({ ...DEFAULT_EDIT_PARAMS, brightness: 5 })).toBe(
+      false,
+    );
   });
 
   it("should return false when crop is set", () => {
@@ -126,14 +149,22 @@ describe("isDefaultEditParams", () => {
   });
 
   it("should return false when flipH is true", () => {
-    expect(isDefaultEditParams({ ...DEFAULT_EDIT_PARAMS, flipH: true })).toBe(false);
+    expect(isDefaultEditParams({ ...DEFAULT_EDIT_PARAMS, flipH: true })).toBe(
+      false,
+    );
   });
 
   it("should return false when curves are set", () => {
     expect(
       isDefaultEditParams({
         ...DEFAULT_EDIT_PARAMS,
-        curves: { rgb: [[0, 0], [128, 200], [255, 255]] },
+        curves: {
+          rgb: [
+            [0, 0],
+            [128, 200],
+            [255, 255],
+          ],
+        },
       }),
     ).toBe(false);
   });
@@ -163,14 +194,22 @@ describe("isDefaultEditParams", () => {
   });
 
   it("should return false when perspectiveV is non-zero", () => {
-    expect(isDefaultEditParams({ ...DEFAULT_EDIT_PARAMS, perspectiveV: 10 })).toBe(false);
+    expect(
+      isDefaultEditParams({ ...DEFAULT_EDIT_PARAMS, perspectiveV: 10 }),
+    ).toBe(false);
   });
 
   it("should return false for non-default curves rgb channel", () => {
     expect(
       isDefaultEditParams({
         ...DEFAULT_EDIT_PARAMS,
-        curves: { rgb: [[0, 0], [128, 200], [255, 255]] },
+        curves: {
+          rgb: [
+            [0, 0],
+            [128, 200],
+            [255, 255],
+          ],
+        },
       }),
     ).toBe(false);
   });
@@ -179,7 +218,13 @@ describe("isDefaultEditParams", () => {
     expect(
       isDefaultEditParams({
         ...DEFAULT_EDIT_PARAMS,
-        curves: { rgb: [[0, 0], [128, 128], [255, 255]] },
+        curves: {
+          rgb: [
+            [0, 0],
+            [128, 128],
+            [255, 255],
+          ],
+        },
       }),
     ).toBe(true);
   });
@@ -188,7 +233,13 @@ describe("isDefaultEditParams", () => {
     expect(
       isDefaultEditParams({
         ...DEFAULT_EDIT_PARAMS,
-        levels: { inputBlack: 0, inputWhite: 240, gamma: 1.0, outputBlack: 0, outputWhite: 255 },
+        levels: {
+          inputBlack: 0,
+          inputWhite: 240,
+          gamma: 1.0,
+          outputBlack: 0,
+          outputWhite: 255,
+        },
       }),
     ).toBe(false);
   });
@@ -247,7 +298,13 @@ describe("buildCssFilter", () => {
     const defaultFilter = buildCssFilter(DEFAULT_EDIT_PARAMS);
     const curvesFilter = buildCssFilter({
       ...DEFAULT_EDIT_PARAMS,
-      curves: { rgb: [[0, 0], [128, 180], [255, 255]] },
+      curves: {
+        rgb: [
+          [0, 0],
+          [128, 180],
+          [255, 255],
+        ],
+      },
     });
     expect(curvesFilter).not.toBe(defaultFilter);
     expect(curvesFilter).toMatch(/contrast\([\d.]+\)/);
@@ -260,15 +317,22 @@ describe("buildImageTransform", () => {
   });
 
   it("should include rotate for non-zero rotation", () => {
-    expect(buildImageTransform({ ...DEFAULT_EDIT_PARAMS, rotate: 90 })).toContain("rotate(90deg)");
+    expect(
+      buildImageTransform({ ...DEFAULT_EDIT_PARAMS, rotate: 90 }),
+    ).toContain("rotate(90deg)");
   });
 
   it("should include scale for flip", () => {
-    expect(buildImageTransform({ ...DEFAULT_EDIT_PARAMS, flipH: true })).toContain("scale(-1, 1)");
+    expect(
+      buildImageTransform({ ...DEFAULT_EDIT_PARAMS, flipH: true }),
+    ).toContain("scale(-1, 1)");
   });
 
   it("should include perspective for non-zero perspectiveV", () => {
-    const transform = buildImageTransform({ ...DEFAULT_EDIT_PARAMS, perspectiveV: 10 });
+    const transform = buildImageTransform({
+      ...DEFAULT_EDIT_PARAMS,
+      perspectiveV: 10,
+    });
     expect(transform).toContain("perspective(800px)");
     expect(transform).toContain("rotateX(1.5deg)");
   });
@@ -290,8 +354,12 @@ describe("buildClipPath", () => {
   });
 
   it("should return undefined for zero-size crop", () => {
-    expect(buildClipPath({ x: 0, y: 0, width: 0, height: 0.5 })).toBeUndefined();
-    expect(buildClipPath({ x: 0, y: 0, width: 0.5, height: 0 })).toBeUndefined();
+    expect(
+      buildClipPath({ x: 0, y: 0, width: 0, height: 0.5 }),
+    ).toBeUndefined();
+    expect(
+      buildClipPath({ x: 0, y: 0, width: 0.5, height: 0 }),
+    ).toBeUndefined();
   });
 
   it("should return valid inset for normal crop", () => {
@@ -300,8 +368,12 @@ describe("buildClipPath", () => {
   });
 
   it("should return undefined for negative width or height", () => {
-    expect(buildClipPath({ x: 0, y: 0, width: -0.1, height: 0.5 })).toBeUndefined();
-    expect(buildClipPath({ x: 0, y: 0, width: 0.5, height: -0.2 })).toBeUndefined();
+    expect(
+      buildClipPath({ x: 0, y: 0, width: -0.1, height: 0.5 }),
+    ).toBeUndefined();
+    expect(
+      buildClipPath({ x: 0, y: 0, width: 0.5, height: -0.2 }),
+    ).toBeUndefined();
   });
 
   it("should handle edge crop at image bounds", () => {

@@ -52,7 +52,11 @@ class ImagePreloadQueue {
   }
 
   private pump() {
-    while (!this.cancelled && this.running < this.maxConcurrent && this.queue.length > 0) {
+    while (
+      !this.cancelled &&
+      this.running < this.maxConcurrent &&
+      this.queue.length > 0
+    ) {
       const task = this.queue.shift()!;
       this.running++;
       const img = new Image();
@@ -103,11 +107,16 @@ export function useImagePreloader({
       const adjacentIds = await getAdjacentMediaIds(mediaId, ADJACENT_COUNT);
       if (cancelled) return;
 
-      const adjacentItems = await Promise.all(adjacentIds.map((id) => getMediaById(id)));
+      const adjacentItems = await Promise.all(
+        adjacentIds.map((id) => getMediaById(id)),
+      );
       if (cancelled) return;
 
       const originalUrls = adjacentItems
-        .filter((item): item is MediaItem => item != null && item.media_type !== "Video")
+        .filter(
+          (item): item is MediaItem =>
+            item != null && item.media_type !== "Video",
+        )
         .map((item) => getOriginalUrl(item.path));
 
       const thumbUrls = filmstrip
@@ -116,7 +125,9 @@ export function useImagePreloader({
 
       const urls = [...originalUrls, ...thumbUrls];
 
-      await Promise.all(urls.map((url) => (cancelled ? Promise.resolve() : queue.enqueue(url))));
+      await Promise.all(
+        urls.map((url) => (cancelled ? Promise.resolve() : queue.enqueue(url))),
+      );
     })();
 
     return () => {

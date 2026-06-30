@@ -84,6 +84,42 @@ mod tests {
     use super::*;
 
     #[test]
+    fn reverse_geocode_null_island() {
+        let loc = reverse_geocode(0.0, 0.0).expect("null island should resolve");
+        assert!((loc.latitude - 0.0).abs() < f64::EPSILON);
+        assert!((loc.longitude - 0.0).abs() < f64::EPSILON);
+        assert!(!loc.display_name.is_empty());
+    }
+
+    #[test]
+    fn reverse_geocode_extreme_coordinates() {
+        let north = reverse_geocode(89.9, 0.0).expect("near north pole");
+        assert!((north.latitude - 89.9).abs() < 0.01);
+
+        let south = reverse_geocode(-89.9, 0.0).expect("near south pole");
+        assert!((south.latitude + 89.9).abs() < 0.01);
+
+        let dateline = reverse_geocode(0.0, 179.9).expect("near dateline");
+        assert!((dateline.longitude - 179.9).abs() < 0.01);
+
+        let west = reverse_geocode(0.0, -179.9).expect("near west dateline");
+        assert!((west.longitude + 179.9).abs() < 0.01);
+    }
+
+    #[test]
+    fn reverse_geocode_ocean_returns_location_with_display_name() {
+        let loc = reverse_geocode(30.0, -40.0).expect("mid-ocean should resolve");
+        assert!(!loc.display_name.is_empty());
+        assert_eq!(loc.latitude, 30.0);
+        assert_eq!(loc.longitude, -40.0);
+    }
+
+    #[test]
+    fn build_display_name_unknown_when_all_empty() {
+        assert_eq!(build_display_name(&None, &None, &None), "Unknown");
+    }
+
+    #[test]
     fn reverse_geocode_beijing() {
         let loc = reverse_geocode(39.9042, 116.4074).expect("should resolve");
         assert!(loc.country.is_some());

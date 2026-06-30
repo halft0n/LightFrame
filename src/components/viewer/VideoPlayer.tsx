@@ -15,7 +15,12 @@ function formatTime(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-export function VideoPlayer({ src, mediaId, filmstripIds, onNavigate }: VideoPlayerProps) {
+export function VideoPlayer({
+  src,
+  mediaId,
+  filmstripIds,
+  onNavigate,
+}: VideoPlayerProps) {
   const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -114,7 +119,9 @@ export function VideoPlayer({ src, mediaId, filmstripIds, onNavigate }: VideoPla
           className="max-h-full max-w-full"
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
-          onTimeUpdate={() => setCurrentTime(videoRef.current?.currentTime ?? 0)}
+          onTimeUpdate={() =>
+            setCurrentTime(videoRef.current?.currentTime ?? 0)
+          }
           onLoadedMetadata={() => setDuration(videoRef.current?.duration ?? 0)}
           onClick={togglePlay}
         />
@@ -133,7 +140,9 @@ export function VideoPlayer({ src, mediaId, filmstripIds, onNavigate }: VideoPla
         >
           <div
             className="absolute inset-y-0 left-0 rounded-full bg-blue-500"
-            style={{ width: duration > 0 ? `${(currentTime / duration) * 100}%` : "0%" }}
+            style={{
+              width: duration > 0 ? `${(currentTime / duration) * 100}%` : "0%",
+            }}
           />
         </div>
 
@@ -204,7 +213,9 @@ export function VideoPlayer({ src, mediaId, filmstripIds, onNavigate }: VideoPla
               type="button"
               onClick={() => handleFilmstripClick(id, index)}
               className={`h-14 w-14 shrink-0 overflow-hidden rounded-md transition ${
-                id === mediaId ? "ring-2 ring-blue-500" : "opacity-70 hover:opacity-100"
+                id === mediaId
+                  ? "ring-2 ring-blue-500"
+                  : "opacity-70 hover:opacity-100"
               }`}
             >
               <img

@@ -4,7 +4,9 @@ import { getSnapshot, setTheme, subscribe, type Theme } from "@/store/appStore";
 const STORAGE_KEY = "lightframe-theme";
 
 function getSystemTheme(): "light" | "dark" {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
 }
 
 function applyThemeClass(theme: Theme) {

@@ -42,7 +42,9 @@ pub fn is_raw_path(path: &Path) -> bool {
 
 /// Upper-case RAW extension label for error messages (e.g. `"CR2"`).
 pub fn raw_format_label(path: &Path) -> Option<String> {
-    file_extension_lower(path).map(|ext| ext.to_ascii_uppercase())
+    file_extension_lower(path)
+        .filter(|ext| RAW_EXTENSIONS.contains(&ext.as_str()))
+        .map(|ext| ext.to_ascii_uppercase())
 }
 
 /// Detect container family from file header for clearer RAW decode errors.
@@ -612,6 +614,65 @@ mod tests {
             file_extension_lower(Path::new("/photos/photo.raw.cr2")),
             Some("cr2".to_string())
         );
+    }
+
+    #[test]
+    fn raw_format_label_returns_none_for_non_raw() {
+        assert_eq!(raw_format_label(Path::new("/photos/sample.jpg")), None);
+        assert_eq!(raw_format_label(Path::new("/photos/sample.png")), None);
+    }
+
+    #[test]
+    fn raw_format_label_covers_every_raw_extension() {
+        for ext in RAW_EXTENSIONS {
+            let name = format!("/photos/sample.{ext}");
+            let path = Path::new(&name);
+            assert!(is_raw_path(path), ".{ext} should be recognized as RAW");
+            assert_eq!(
+                raw_format_label(path),
+                Some(ext.to_ascii_uppercase()),
+                ".{ext} label mismatch"
+            );
+        }
+    }
+
+    #[test]
+    fn raw_container_hint_detects_fujifilm_raf() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("sample.raf");
+        std::fs::write(&path, b"FUJIFILMCCD-RAW").unwrap();
+        assert_eq!(raw_container_hint(&path), "Fujifilm RAF");
+    }
+
+    #[test]
+    fn raw_container_hint_unknown_for_missing_file() {
+        assert_eq!(
+            raw_container_hint(Path::new("/nonexistent/file.cr2")),
+            "unknown container"
+        );
+    }
+
+    #[test]
+    fn extract_raw_preview_exif_only_fallback_when_scan_fails() {
+        let jpeg = sample_jpeg_bytes();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("exif-only.dng");
+        // No valid embedded JPEG scan target — only a decoy too small to pass validation.
+        std::fs::write(&path, b"DNG\x00\xFF\xD8\xFF\xD9").unwrap();
+
+        match extract_raw_preview_bytes(&path) {
+            Err(e) => {
+                let msg = e.to_string();
+                assert!(msg.contains("EXIF thumbnail"), "got: {msg}");
+            }
+            Ok(bytes) if bytes.starts_with(&[0xFF, 0xD8]) => {}
+            Ok(_) => panic!("unexpected preview bytes"),
+        }
+
+        // When a valid JPEG exists after invalid decoys, scan should still succeed.
+        let (_dir2, path2) = write_raw_fixture("valid-after-decoy.nef", b"header\x00", &jpeg, b"");
+        let decoded = extract_raw_preview(&path2).expect("embedded jpeg preview");
+        assert_eq!(decoded.width, 16);
     }
 
     #[test]

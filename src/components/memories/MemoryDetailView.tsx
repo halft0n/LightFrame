@@ -67,7 +67,11 @@ export function MemoryDetailView() {
     if (selectedMemoryId == null || loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
-      const items = await getMemoryMedia(selectedMemoryId, media.length, PAGE_SIZE);
+      const items = await getMemoryMedia(
+        selectedMemoryId,
+        media.length,
+        PAGE_SIZE,
+      );
       setMedia((prev) => [...prev, ...items]);
     } catch {
       // ignore
@@ -112,9 +116,13 @@ export function MemoryDetailView() {
           ← {t("albums.back")}
         </button>
         <div className="min-w-0">
-          <p className="truncate text-sm font-medium text-neutral-200">{memory?.title}</p>
+          <p className="truncate text-sm font-medium text-neutral-200">
+            {memory?.title}
+          </p>
           {memory?.subtitle && (
-            <p className="truncate text-xs text-neutral-500">{memory.subtitle}</p>
+            <p className="truncate text-xs text-neutral-500">
+              {memory.subtitle}
+            </p>
           )}
         </div>
         <span className="ml-auto text-sm text-neutral-500">
@@ -141,7 +149,9 @@ export function MemoryDetailView() {
           ))}
         </div>
         {loadingMore && (
-          <div className="py-4 text-center text-sm text-neutral-500">{t("gallery.loading")}</div>
+          <div className="py-4 text-center text-sm text-neutral-500">
+            {t("gallery.loading")}
+          </div>
         )}
       </div>
     </div>

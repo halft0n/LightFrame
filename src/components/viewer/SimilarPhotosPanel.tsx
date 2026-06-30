@@ -14,7 +14,10 @@ interface SimilarPhotosPanelProps {
   onClose: () => void;
 }
 
-export function SimilarPhotosPanel({ mediaId, onClose }: SimilarPhotosPanelProps) {
+export function SimilarPhotosPanel({
+  mediaId,
+  onClose,
+}: SimilarPhotosPanelProps) {
   const { t } = useTranslation();
   const [photos, setPhotos] = useState<SimilarPhoto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,7 +59,9 @@ export function SimilarPhotosPanel({ mediaId, onClose }: SimilarPhotosPanelProps
       aria-label={t("similar.title")}
     >
       <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-3">
-        <h2 className="text-sm font-semibold text-neutral-100">{t("similar.title")}</h2>
+        <h2 className="text-sm font-semibold text-neutral-100">
+          {t("similar.title")}
+        </h2>
         <button
           type="button"
           onClick={onClose}
@@ -69,7 +74,9 @@ export function SimilarPhotosPanel({ mediaId, onClose }: SimilarPhotosPanelProps
 
       <div className="flex-1 overflow-y-auto p-3">
         {loading && (
-          <p className="py-8 text-center text-sm text-neutral-400">{t("similar.computing")}</p>
+          <p className="py-8 text-center text-sm text-neutral-400">
+            {t("similar.computing")}
+          </p>
         )}
 
         {!loading && error && (
@@ -86,7 +93,9 @@ export function SimilarPhotosPanel({ mediaId, onClose }: SimilarPhotosPanelProps
         )}
 
         {!loading && !error && photos.length === 0 && (
-          <p className="py-8 text-center text-sm text-neutral-400">{t("similar.empty")}</p>
+          <p className="py-8 text-center text-sm text-neutral-400">
+            {t("similar.empty")}
+          </p>
         )}
 
         {!loading && !error && photos.length > 0 && (

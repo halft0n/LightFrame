@@ -12,7 +12,8 @@ import { escapeHtml } from "@/lib/escapeHtml";
 import { useTranslation } from "@/i18n/useTranslation";
 import { useAppStore } from "@/store/appStore";
 
-delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
+delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })
+  ._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconUrl,
   iconRetinaUrl,
@@ -35,7 +36,9 @@ function useResolvedTheme(): "light" | "dark" {
   const { theme } = useAppStore();
   const [resolved, setResolved] = useState<"light" | "dark">(() => {
     if (theme === "system") {
-      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      return window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light";
     }
     return theme;
   });
@@ -125,7 +128,8 @@ export function LocationMapView({ groups }: LocationMapViewProps) {
           groups.map(async (group) => {
             try {
               const media = await getMediaById(group.sample_media_id);
-              if (media?.latitude == null || media?.longitude == null) return null;
+              if (media?.latitude == null || media?.longitude == null)
+                return null;
               return {
                 group,
                 lat: media.latitude,
@@ -143,7 +147,9 @@ export function LocationMapView({ groups }: LocationMapViewProps) {
         );
 
         if (!cancelled) {
-          setMarkers(results.filter((item): item is LocationMarker => item !== null));
+          setMarkers(
+            results.filter((item): item is LocationMarker => item !== null),
+          );
         }
       } catch (err) {
         console.error("Failed to load map markers:", err);

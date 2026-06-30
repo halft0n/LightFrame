@@ -33,7 +33,10 @@ describe("VideoPlayer", () => {
       />,
     );
 
-    expect(document.querySelector("video")).toHaveAttribute("src", "file:///videos/test.mp4");
+    expect(document.querySelector("video")).toHaveAttribute(
+      "src",
+      "file:///videos/test.mp4",
+    );
     expect(screen.getByLabelText("播放")).toBeInTheDocument();
     expect(screen.getByText("0:00 / 0:00")).toBeInTheDocument();
   });
@@ -89,8 +92,15 @@ describe("VideoPlayer", () => {
     );
 
     const video = document.querySelector("video")!;
-    Object.defineProperty(video, "duration", { configurable: true, value: 120 });
-    Object.defineProperty(video, "currentTime", { configurable: true, value: 30, writable: true });
+    Object.defineProperty(video, "duration", {
+      configurable: true,
+      value: 120,
+    });
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      value: 30,
+      writable: true,
+    });
     fireEvent.loadedMetadata(video);
     fireEvent.timeUpdate(video);
 
@@ -112,8 +122,15 @@ describe("VideoPlayer", () => {
     );
 
     const video = document.querySelector("video")!;
-    Object.defineProperty(video, "duration", { configurable: true, value: 100 });
-    Object.defineProperty(video, "currentTime", { configurable: true, value: 0, writable: true });
+    Object.defineProperty(video, "duration", {
+      configurable: true,
+      value: 100,
+    });
+    Object.defineProperty(video, "currentTime", {
+      configurable: true,
+      value: 0,
+      writable: true,
+    });
     fireEvent.loadedMetadata(video);
 
     const slider = screen.getAllByRole("slider")[0];
@@ -191,7 +208,11 @@ describe("VideoPlayer", () => {
     );
 
     const video = document.querySelector("video")!;
-    Object.defineProperty(video, "muted", { configurable: true, value: false, writable: true });
+    Object.defineProperty(video, "muted", {
+      configurable: true,
+      value: false,
+      writable: true,
+    });
 
     await user.click(screen.getByText("静音"));
     expect(video.muted).toBe(true);

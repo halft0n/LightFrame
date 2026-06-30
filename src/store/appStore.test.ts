@@ -120,7 +120,10 @@ describe("appStore", () => {
   });
 
   it("setMedia updates mediaItems and totalCount", () => {
-    const items = [sampleMedia, { ...sampleMedia, id: 2, filename: "beach.jpg" }];
+    const items = [
+      sampleMedia,
+      { ...sampleMedia, id: 2, filename: "beach.jpg" },
+    ];
     setMedia(items, 42);
 
     const state = getSnapshot();
@@ -130,10 +133,7 @@ describe("appStore", () => {
 
   it("setWatchedFolders replaces folder list", () => {
     addFolder(sampleFolder);
-    const folders = [
-      sampleFolder,
-      { ...sampleFolder, id: 2, path: "/videos" },
-    ];
+    const folders = [sampleFolder, { ...sampleFolder, id: 2, path: "/videos" }];
     setWatchedFolders(folders);
     expect(getSnapshot().watchedFolders).toEqual(folders);
   });
@@ -164,7 +164,13 @@ describe("appStore", () => {
   });
 
   it("setScanning updates state", () => {
-    const progress = { folder_id: 1, scanned: 5, total: 10, status: "scanning" as const };
+    const progress = {
+      folder_id: 1,
+      scanned: 5,
+      total: 10,
+      errors: 0,
+      status: "scanning" as const,
+    };
     setScanning(true, progress);
 
     const state = getSnapshot();
@@ -206,12 +212,7 @@ describe("appStore", () => {
 
   it("selectMediaRange uses contextItems when provided", () => {
     setMedia([sampleMedia, { ...sampleMedia, id: 2 }], 2);
-    const contextItems = [
-      { id: 10 },
-      { id: 20 },
-      { id: 30 },
-      { id: 40 },
-    ];
+    const contextItems = [{ id: 10 }, { id: 20 }, { id: 30 }, { id: 40 }];
 
     selectMediaRange(10, 30, contextItems);
     expect(getSnapshot().selectedMediaIds).toEqual([10, 20, 30]);
@@ -497,7 +498,9 @@ describe("appStore", () => {
     it("loadMedia handles errors without throwing", async () => {
       getMediaPage.mockRejectedValue(new Error("network"));
       getMediaCount.mockRejectedValue(new Error("network"));
-      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const consoleSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
 
       await loadMedia();
 
@@ -507,7 +510,10 @@ describe("appStore", () => {
 
     it("appendMedia adds items to existing media", () => {
       setMedia([sampleMedia], 10);
-      appendMedia([{ ...sampleMedia, id: 2 }, { ...sampleMedia, id: 3 }]);
+      appendMedia([
+        { ...sampleMedia, id: 2 },
+        { ...sampleMedia, id: 3 },
+      ]);
 
       expect(getSnapshot().mediaItems).toHaveLength(3);
       expect(getSnapshot().mediaItems.map((m) => m.id)).toEqual([1, 2, 3]);
@@ -520,7 +526,10 @@ describe("appStore", () => {
     });
 
     it("loadMoreMedia appends next page when more items exist", async () => {
-      const itemWithCursor = { ...sampleMedia, created_at: "2024-01-01T00:00:00" };
+      const itemWithCursor = {
+        ...sampleMedia,
+        created_at: "2024-01-01T00:00:00",
+      };
       setMedia([itemWithCursor], 5);
       getMediaPage.mockResolvedValue([
         { ...sampleMedia, id: 2 },
@@ -540,15 +549,23 @@ describe("appStore", () => {
     });
 
     it("loadMoreMedia propagates errors after logging", async () => {
-      const itemWithCursor = { ...sampleMedia, created_at: "2024-01-01T00:00:00" };
+      const itemWithCursor = {
+        ...sampleMedia,
+        created_at: "2024-01-01T00:00:00",
+      };
       setMedia([itemWithCursor], 10);
       getMediaPage.mockRejectedValue(new Error("network"));
-      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const consoleSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
 
       await expect(loadMoreMedia()).rejects.toThrow("network");
 
       expect(getSnapshot().mediaItems).toHaveLength(1);
-      expect(consoleSpy).toHaveBeenCalledWith("Failed to load more media:", expect.any(Error));
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "Failed to load more media:",
+        expect.any(Error),
+      );
       consoleSpy.mockRestore();
     });
 

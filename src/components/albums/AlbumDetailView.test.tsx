@@ -43,7 +43,8 @@ class ResizeObserverMock {
     );
   }
 }
-globalThis.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
+globalThis.ResizeObserver =
+  ResizeObserverMock as unknown as typeof ResizeObserver;
 
 const sampleMedia: MediaItem = {
   id: 10,

@@ -51,7 +51,8 @@ beforeEach(() => {
   setLocale("zh-CN");
   vi.clearAllMocks();
   downloadModel.mockResolvedValue("/models/test.onnx");
-  delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+  delete (window as Window & { __TAURI_INTERNALS__?: unknown })
+    .__TAURI_INTERNALS__;
 });
 
 describe("AiSettings", () => {
@@ -66,7 +67,9 @@ describe("AiSettings", () => {
     render(<AiSettings />);
 
     await waitFor(() => {
-      expect(screen.getAllByText("CLIP Visual").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("CLIP Visual").length).toBeGreaterThanOrEqual(
+        1,
+      );
       expect(screen.getByText(/已就绪/)).toBeInTheDocument();
       expect(screen.getByText(/未安装/)).toBeInTheDocument();
       expect(screen.getByRole("button", { name: "下载" })).toBeInTheDocument();
@@ -109,7 +112,8 @@ describe("AiSettings", () => {
 
   it("download button calls downloadModel with filename", async () => {
     const user = userEvent.setup();
-    (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+    (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ =
+      {};
 
     getModelStatus.mockResolvedValue({
       models_dir: "/models",
@@ -152,7 +156,9 @@ describe("AiSettings", () => {
     );
 
     let progressHandler:
-      | ((event: { payload: { filename: string; downloaded: number; total: number } }) => void)
+      | ((event: {
+          payload: { filename: string; downloaded: number; total: number };
+        }) => void)
       | undefined;
     (listen as ReturnType<typeof vi.fn>).mockImplementation(
       (_event: string, handler: typeof progressHandler) => {
@@ -161,7 +167,8 @@ describe("AiSettings", () => {
       },
     );
 
-    (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ = {};
+    (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ =
+      {};
 
     getModelStatus.mockResolvedValue({
       models_dir: "/models",
@@ -192,7 +199,10 @@ describe("AiSettings", () => {
 
     await waitFor(() => {
       expect(downloadModel).toHaveBeenCalled();
-      expect(listen).toHaveBeenCalledWith("model-download-progress", expect.any(Function));
+      expect(listen).toHaveBeenCalledWith(
+        "model-download-progress",
+        expect.any(Function),
+      );
       expect(progressHandler).toBeDefined();
     });
 

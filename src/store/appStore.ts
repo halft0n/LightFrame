@@ -126,7 +126,8 @@ export function setView(view: AppView) {
   setState({
     currentView: view,
     selectedAlbumId: view === "album-detail" ? state.selectedAlbumId : null,
-    selectedSmartAlbumId: view === "smart-album-detail" ? state.selectedSmartAlbumId : null,
+    selectedSmartAlbumId:
+      view === "smart-album-detail" ? state.selectedSmartAlbumId : null,
     selectedMemoryId: view === "memory-detail" ? state.selectedMemoryId : null,
     selectedPersonId: view === "person-detail" ? state.selectedPersonId : null,
     selectedFolderId: view === "folder" ? state.selectedFolderId : null,
@@ -164,7 +165,10 @@ export function closeAlbumDetail() {
 }
 
 export function openSmartAlbumDetail(smartAlbumId: number) {
-  setState({ currentView: "smart-album-detail", selectedSmartAlbumId: smartAlbumId });
+  setState({
+    currentView: "smart-album-detail",
+    selectedSmartAlbumId: smartAlbumId,
+  });
 }
 
 export function closeSmartAlbumDetail() {
@@ -276,7 +280,10 @@ export async function loadMoreMedia() {
   }
 }
 
-export function setScanning(isScanning: boolean, progress: ScanProgress | null = null) {
+export function setScanning(
+  isScanning: boolean,
+  progress: ScanProgress | null = null,
+) {
   setState({ isScanning, scanProgress: progress });
 }
 
@@ -294,7 +301,11 @@ export function setSingleMediaSelection(id: number) {
   setState({ selectedMediaIds: [id] });
 }
 
-export function selectMediaRange(fromId: number, toId: number, contextItems?: { id: number }[]) {
+export function selectMediaRange(
+  fromId: number,
+  toId: number,
+  contextItems?: { id: number }[],
+) {
   const items = contextItems ?? state.mediaItems;
   const fromIdx = items.findIndex((m) => m.id === fromId);
   const toIdx = items.findIndex((m) => m.id === toId);
@@ -327,7 +338,8 @@ export function closeViewer() {
 
 export function startSlideshow(mediaIds: number[], startAtId?: number) {
   if (mediaIds.length === 0) return;
-  const startIndex = startAtId != null ? Math.max(0, mediaIds.indexOf(startAtId)) : 0;
+  const startIndex =
+    startAtId != null ? Math.max(0, mediaIds.indexOf(startAtId)) : 0;
   setState({
     slideshowActive: true,
     slideshowMediaIds: mediaIds,
@@ -354,14 +366,16 @@ export function setSlideshowIndex(index: number) {
 export function nextSlideshow() {
   const { slideshowMediaIds, slideshowIndex } = state;
   if (slideshowMediaIds.length === 0) return;
-  const next = slideshowIndex >= slideshowMediaIds.length - 1 ? 0 : slideshowIndex + 1;
+  const next =
+    slideshowIndex >= slideshowMediaIds.length - 1 ? 0 : slideshowIndex + 1;
   setState({ slideshowIndex: next });
 }
 
 export function prevSlideshow() {
   const { slideshowMediaIds, slideshowIndex } = state;
   if (slideshowMediaIds.length === 0) return;
-  const prev = slideshowIndex <= 0 ? slideshowMediaIds.length - 1 : slideshowIndex - 1;
+  const prev =
+    slideshowIndex <= 0 ? slideshowMediaIds.length - 1 : slideshowIndex - 1;
   setState({ slideshowIndex: prev });
 }
 

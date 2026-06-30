@@ -22,7 +22,12 @@ vi.mock("@tauri-apps/api/event", () => ({
 class ResizeObserverMock {
   observe = vi.fn((target: Element) => {
     this.callback?.(
-      [{ contentRect: { width: 800, height: 600 }, target } as ResizeObserverEntry],
+      [
+        {
+          contentRect: { width: 800, height: 600 },
+          target,
+        } as ResizeObserverEntry,
+      ],
       this as unknown as ResizeObserver,
     );
   });
@@ -30,7 +35,8 @@ class ResizeObserverMock {
   disconnect = vi.fn();
   constructor(private callback?: ResizeObserverCallback) {}
 }
-globalThis.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
+globalThis.ResizeObserver =
+  ResizeObserverMock as unknown as typeof ResizeObserver;
 
 import { TimelineView } from "./TimelineView";
 
@@ -78,7 +84,9 @@ describe("TimelineView", () => {
     vi.clearAllMocks();
     localStorage.clear();
     setLocale("zh-CN");
-    (getTimelineGroups as ReturnType<typeof vi.fn>).mockResolvedValue(mockGroups);
+    (getTimelineGroups as ReturnType<typeof vi.fn>).mockResolvedValue(
+      mockGroups,
+    );
   });
 
   it("shows loading state initially", () => {
@@ -86,7 +94,9 @@ describe("TimelineView", () => {
       () => new Promise(() => {}),
     );
     render(<TimelineView />);
-    expect(screen.getByText(/加载中|正在加载照片|Loading/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/加载中|正在加载照片|Loading/i),
+    ).toBeInTheDocument();
   });
 
   it("renders timeline summary after groups load", async () => {

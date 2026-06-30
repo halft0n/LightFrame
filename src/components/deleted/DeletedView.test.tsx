@@ -23,7 +23,8 @@ class ResizeObserverMock {
   unobserve = vi.fn();
   disconnect = vi.fn();
 }
-globalThis.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
+globalThis.ResizeObserver =
+  ResizeObserverMock as unknown as typeof ResizeObserver;
 
 const sampleMedia = {
   id: 99,
@@ -40,7 +41,10 @@ beforeEach(() => {
   getDeletedMedia.mockReset();
   restoreMedia.mockReset();
   permanentlyDelete.mockReset();
-  vi.stubGlobal("confirm", vi.fn(() => true));
+  vi.stubGlobal(
+    "confirm",
+    vi.fn(() => true),
+  );
 });
 
 describe("DeletedView", () => {
@@ -51,7 +55,7 @@ describe("DeletedView", () => {
     expect(screen.getByText("加载中…")).toBeInTheDocument();
   });
 
-  it('shows empty state when no deleted items', async () => {
+  it("shows empty state when no deleted items", async () => {
     getDeletedMedia.mockResolvedValue([]);
 
     render(<DeletedView />);
@@ -79,14 +83,18 @@ describe("DeletedView", () => {
       expect(screen.getByText("共 1 项")).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: "恢复" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "永久删除" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "永久删除" }),
+    ).toBeInTheDocument();
   });
 
   it("restore button works", async () => {
     const user = userEvent.setup();
     getDeletedMedia.mockResolvedValue([sampleMedia]);
     restoreMedia.mockResolvedValue(undefined);
-    getDeletedMedia.mockResolvedValueOnce([sampleMedia]).mockResolvedValueOnce([]);
+    getDeletedMedia
+      .mockResolvedValueOnce([sampleMedia])
+      .mockResolvedValueOnce([]);
 
     render(<DeletedView />);
     await waitFor(() => {
@@ -107,7 +115,9 @@ describe("DeletedView", () => {
 
     render(<DeletedView />);
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "永久删除" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "永久删除" }),
+      ).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole("button", { name: "永久删除" }));

@@ -76,7 +76,11 @@ export function AlbumDetailView() {
     if (selectedAlbumId == null || loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
-      const items = await getAlbumMedia(selectedAlbumId, media.length, PAGE_SIZE);
+      const items = await getAlbumMedia(
+        selectedAlbumId,
+        media.length,
+        PAGE_SIZE,
+      );
       setMedia((prev) => [...prev, ...items]);
       setHasMore(items.length >= PAGE_SIZE);
     } finally {
@@ -279,7 +283,9 @@ export function AlbumDetailView() {
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/60 p-4">
           <div className="flex max-h-[80vh] w-full max-w-3xl flex-col overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900 shadow-xl">
             <div className="flex items-center justify-between border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3">
-              <h3 className="text-sm font-medium text-neutral-200">{t("albums.addPhotos")}</h3>
+              <h3 className="text-sm font-medium text-neutral-200">
+                {t("albums.addPhotos")}
+              </h3>
               <button
                 type="button"
                 onClick={() => setShowPicker(false)}
@@ -290,9 +296,13 @@ export function AlbumDetailView() {
             </div>
             <div className="flex-1 overflow-y-auto px-1 py-1">
               {pickerLoading ? (
-                <p className="py-8 text-center text-neutral-500">{t("gallery.loading")}</p>
+                <p className="py-8 text-center text-neutral-500">
+                  {t("gallery.loading")}
+                </p>
               ) : pickerMedia.length === 0 ? (
-                <p className="py-8 text-center text-neutral-500">{t("gallery.noPhotos")}</p>
+                <p className="py-8 text-center text-neutral-500">
+                  {t("gallery.noPhotos")}
+                </p>
               ) : (
                 <div className="grid grid-cols-4 gap-2 sm:grid-cols-5 md:grid-cols-6">
                   {pickerMedia.map((item) => {

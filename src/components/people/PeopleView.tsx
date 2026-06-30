@@ -131,7 +131,8 @@ export function PeopleView() {
   const [loading, setLoading] = useState(true);
   const [clustering, setClustering] = useState(false);
   const [detecting, setDetecting] = useState(false);
-  const [detectionProgress, setDetectionProgress] = useState<FaceDetectionProgress | null>(null);
+  const [detectionProgress, setDetectionProgress] =
+    useState<FaceDetectionProgress | null>(null);
   const [detectionResult, setDetectionResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [merging, setMerging] = useState(false);
@@ -142,7 +143,10 @@ export function PeopleView() {
     setLoading(true);
     setError(null);
     try {
-      const [people, status] = await Promise.all([listPersons(), getAiStatus()]);
+      const [people, status] = await Promise.all([
+        listPersons(),
+        getAiStatus(),
+      ]);
       setPersons(people);
       setAiStatus(status);
       setVisibleCount(CARD_PAGE_SIZE);
@@ -173,16 +177,19 @@ export function PeopleView() {
     });
   }, []);
 
-  const handleRename = useCallback(async (personId: number, name: string) => {
-    try {
-      await renamePerson(personId, name);
-      setPersons((prev) =>
-        prev.map((p) => (p.id === personId ? { ...p, name } : p)),
-      );
-    } catch (e) {
-      setError(localizeError(e, t));
-    }
-  }, [t]);
+  const handleRename = useCallback(
+    async (personId: number, name: string) => {
+      try {
+        await renamePerson(personId, name);
+        setPersons((prev) =>
+          prev.map((p) => (p.id === personId ? { ...p, name } : p)),
+        );
+      } catch (e) {
+        setError(localizeError(e, t));
+      }
+    },
+    [t],
+  );
 
   const handleDetectFaces = useCallback(async () => {
     setDetecting(true);
@@ -191,9 +198,7 @@ export function PeopleView() {
     setError(null);
     try {
       const result = await detectFacesBatch();
-      setDetectionResult(
-        t("people.facesFound", { count: result.faces_found }),
-      );
+      setDetectionResult(t("people.facesFound", { count: result.faces_found }));
       await clusterFaces();
       setSelectedIds(new Set());
       await load();
@@ -274,7 +279,9 @@ export function PeopleView() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3">
-        <h2 className="text-sm font-medium text-neutral-200">{t("people.title")}</h2>
+        <h2 className="text-sm font-medium text-neutral-200">
+          {t("people.title")}
+        </h2>
         <div className="flex flex-wrap items-center gap-2">
           {selectedIds.size >= 2 && (
             <button
@@ -283,7 +290,9 @@ export function PeopleView() {
               disabled={merging}
               className="rounded-lg border border-neutral-600 px-3 py-1 text-xs text-neutral-300 transition hover:bg-neutral-800 disabled:opacity-50"
             >
-              {merging ? t("people.merging") : t("people.mergeSelected", { count: selectedIds.size })}
+              {merging
+                ? t("people.merging")
+                : t("people.mergeSelected", { count: selectedIds.size })}
             </button>
           )}
           <button
@@ -317,7 +326,8 @@ export function PeopleView() {
               className={`text-xs ${aiReady ? "text-green-400" : "text-neutral-500"}`}
               title={aiStatus.status_message}
             >
-              {t("ai.status")}: {aiReady ? t("ai.available") : t("ai.unavailable")}
+              {t("ai.status")}:{" "}
+              {aiReady ? t("ai.available") : t("ai.unavailable")}
             </span>
           )}
         </div>
@@ -361,7 +371,9 @@ export function PeopleView() {
                 key={person.id}
                 person={person}
                 nameLabel={person.name ?? t("people.unnamed")}
-                faceCountLabel={t("people.faceCount", { count: person.face_count })}
+                faceCountLabel={t("people.faceCount", {
+                  count: person.face_count,
+                })}
                 selected={selectedIds.has(person.id)}
                 onOpen={handleOpenPerson}
                 onToggleSelect={handleToggleSelect}

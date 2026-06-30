@@ -40,26 +40,37 @@ function getMainImage() {
   return document.querySelector("img.select-none");
 }
 
-function setupInvoke(options: { isFavorite?: boolean; neighbors?: { prev_id: number | null; next_id: number | null } } = {}) {
-  (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string, args?: Record<string, unknown>) => {
-    if (cmd === "get_media_by_id") {
-      const id = (args?.id as number | undefined) ?? 1;
-      if (id === mockVideo.id) return Promise.resolve(mockVideo);
-      return Promise.resolve({ ...mockPhoto, id });
-    }
-    if (cmd === "get_media_neighbors") {
-      return Promise.resolve(options.neighbors ?? { prev_id: 10, next_id: 20 });
-    }
-    if (cmd === "get_media_window") {
-      const mediaId = (args?.mediaId as number | undefined) ?? 1;
-      return Promise.resolve([{ ...mockPhoto, id: mediaId }]);
-    }
-    if (cmd === "has_edits") return Promise.resolve(false);
-    if (cmd === "get_edit") return Promise.resolve(null);
-    if (cmd === "is_favorite") return Promise.resolve(options.isFavorite ?? false);
-    if (cmd === "toggle_favorite") return Promise.resolve(!(options.isFavorite ?? false));
-    return Promise.resolve(null);
-  });
+function setupInvoke(
+  options: {
+    isFavorite?: boolean;
+    neighbors?: { prev_id: number | null; next_id: number | null };
+  } = {},
+) {
+  (invoke as ReturnType<typeof vi.fn>).mockImplementation(
+    (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "get_media_by_id") {
+        const id = (args?.id as number | undefined) ?? 1;
+        if (id === mockVideo.id) return Promise.resolve(mockVideo);
+        return Promise.resolve({ ...mockPhoto, id });
+      }
+      if (cmd === "get_media_neighbors") {
+        return Promise.resolve(
+          options.neighbors ?? { prev_id: 10, next_id: 20 },
+        );
+      }
+      if (cmd === "get_media_window") {
+        const mediaId = (args?.mediaId as number | undefined) ?? 1;
+        return Promise.resolve([{ ...mockPhoto, id: mediaId }]);
+      }
+      if (cmd === "has_edits") return Promise.resolve(false);
+      if (cmd === "get_edit") return Promise.resolve(null);
+      if (cmd === "is_favorite")
+        return Promise.resolve(options.isFavorite ?? false);
+      if (cmd === "toggle_favorite")
+        return Promise.resolve(!(options.isFavorite ?? false));
+      return Promise.resolve(null);
+    },
+  );
 }
 
 describe("PhotoViewer", () => {
@@ -103,15 +114,18 @@ describe("PhotoViewer", () => {
 
   it("shows favorite button with favorited state", async () => {
     setupInvoke({ isFavorite: true });
-    (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string, _args?: Record<string, unknown>) => {
-      if (cmd === "get_media_by_id") return Promise.resolve(mockPhoto);
-      if (cmd === "get_media_neighbors") return Promise.resolve({ prev_id: null, next_id: null });
-      if (cmd === "get_media_window") return Promise.resolve([mockPhoto]);
-      if (cmd === "has_edits") return Promise.resolve(false);
-      if (cmd === "is_favorite") return Promise.resolve(true);
-      if (cmd === "toggle_favorite") return Promise.resolve(false);
-      return Promise.resolve(null);
-    });
+    (invoke as ReturnType<typeof vi.fn>).mockImplementation(
+      (cmd: string, _args?: Record<string, unknown>) => {
+        if (cmd === "get_media_by_id") return Promise.resolve(mockPhoto);
+        if (cmd === "get_media_neighbors")
+          return Promise.resolve({ prev_id: null, next_id: null });
+        if (cmd === "get_media_window") return Promise.resolve([mockPhoto]);
+        if (cmd === "has_edits") return Promise.resolve(false);
+        if (cmd === "is_favorite") return Promise.resolve(true);
+        if (cmd === "toggle_favorite") return Promise.resolve(false);
+        return Promise.resolve(null);
+      },
+    );
 
     render(<PhotoViewer mediaId={1} />);
 
@@ -179,7 +193,9 @@ describe("PhotoViewer", () => {
 
     await user.click(screen.getByRole("button", { name: "信息" }));
     expect(screen.getByText("文件名")).toBeInTheDocument();
-    expect(screen.getByRole("complementary").querySelector("dd")).toHaveTextContent("test.jpg");
+    expect(
+      screen.getByRole("complementary").querySelector("dd"),
+    ).toHaveTextContent("test.jpg");
     expect(screen.getByText("1920 × 1080")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "信息" }));
@@ -198,13 +214,16 @@ describe("PhotoViewer", () => {
     expect(screen.getByRole("heading", { name: "编辑" })).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "取消" }));
-    expect(screen.queryByRole("heading", { name: "编辑" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "编辑" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders video player for video media", async () => {
     (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
       if (cmd === "get_media_by_id") return Promise.resolve(mockVideo);
-      if (cmd === "get_media_neighbors") return Promise.resolve({ prev_id: null, next_id: null });
+      if (cmd === "get_media_neighbors")
+        return Promise.resolve({ prev_id: null, next_id: null });
       if (cmd === "get_media_window") return Promise.resolve([mockVideo]);
       if (cmd === "has_edits") return Promise.resolve(false);
       if (cmd === "is_favorite") return Promise.resolve(false);
@@ -271,9 +290,12 @@ describe("PhotoViewer", () => {
         constructor(public items: Record<string, Blob>) {}
       },
     );
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
-      blob: () => Promise.resolve(new Blob(["img"], { type: "image/jpeg" })),
-    }));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        blob: () => Promise.resolve(new Blob(["img"], { type: "image/jpeg" })),
+      }),
+    );
 
     Object.defineProperty(window.navigator, "clipboard", {
       configurable: true,
@@ -357,18 +379,26 @@ describe("PhotoViewer", () => {
   });
 
   it("soft-deletes media with Delete key", async () => {
-    vi.stubGlobal("confirm", vi.fn(() => true));
+    vi.stubGlobal(
+      "confirm",
+      vi.fn(() => true),
+    );
     const closeViewerSpy = vi.spyOn(appStore, "closeViewer");
-    const loadMediaSpy = vi.spyOn(appStore, "loadMedia").mockResolvedValue(undefined);
-    (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string, _args?: Record<string, unknown>) => {
-      if (cmd === "get_media_by_id") return Promise.resolve(mockPhoto);
-      if (cmd === "get_media_neighbors") return Promise.resolve({ prev_id: null, next_id: null });
-      if (cmd === "get_media_window") return Promise.resolve([mockPhoto]);
-      if (cmd === "has_edits") return Promise.resolve(false);
-      if (cmd === "is_favorite") return Promise.resolve(false);
-      if (cmd === "delete_media") return Promise.resolve(undefined);
-      return Promise.resolve(null);
-    });
+    const loadMediaSpy = vi
+      .spyOn(appStore, "loadMedia")
+      .mockResolvedValue(undefined);
+    (invoke as ReturnType<typeof vi.fn>).mockImplementation(
+      (cmd: string, _args?: Record<string, unknown>) => {
+        if (cmd === "get_media_by_id") return Promise.resolve(mockPhoto);
+        if (cmd === "get_media_neighbors")
+          return Promise.resolve({ prev_id: null, next_id: null });
+        if (cmd === "get_media_window") return Promise.resolve([mockPhoto]);
+        if (cmd === "has_edits") return Promise.resolve(false);
+        if (cmd === "is_favorite") return Promise.resolve(false);
+        if (cmd === "delete_media") return Promise.resolve(undefined);
+        return Promise.resolve(null);
+      },
+    );
 
     render(<PhotoViewer mediaId={1} />);
 
@@ -389,7 +419,8 @@ describe("PhotoViewer", () => {
   });
 
   it("preloads adjacent images after main image loads", async () => {
-    const createdImages: Array<{ src: string; onload: (() => void) | null }> = [];
+    const createdImages: Array<{ src: string; onload: (() => void) | null }> =
+      [];
     const OriginalImage = globalThis.Image;
 
     class MockImageClass {
@@ -414,7 +445,9 @@ describe("PhotoViewer", () => {
       fireEvent.load(getMainImage()!);
 
       await waitFor(() => {
-        expect(createdImages.some((img) => img.src.startsWith("original://"))).toBe(true);
+        expect(
+          createdImages.some((img) => img.src.startsWith("original://")),
+        ).toBe(true);
       });
     } finally {
       vi.stubGlobal("Image", OriginalImage);

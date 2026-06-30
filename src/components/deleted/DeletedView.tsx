@@ -72,7 +72,9 @@ export function DeletedView() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3">
-        <h2 className="text-sm font-medium text-neutral-200">{t("deleted.title")}</h2>
+        <h2 className="text-sm font-medium text-neutral-200">
+          {t("deleted.title")}
+        </h2>
         <p className="mt-1 text-sm text-amber-500/90">{t("deleted.notice")}</p>
         {media.length > 0 && (
           <p className="mt-0.5 text-sm text-neutral-500">
@@ -101,7 +103,8 @@ export function DeletedView() {
                   selected={false}
                   selectedMediaIds={[]}
                   onSelect={(_id, e) => {
-                    if (!e.ctrlKey && !e.metaKey && !e.shiftKey) openViewer(item.id);
+                    if (!e.ctrlKey && !e.metaKey && !e.shiftKey)
+                      openViewer(item.id);
                   }}
                   onOpen={openViewer}
                 />

@@ -97,7 +97,9 @@ export function AlbumListView() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
       <div className="flex items-center justify-between border-b border-neutral-200/80 dark:border-neutral-800 px-4 py-3">
-        <h2 className="text-sm font-medium text-neutral-700 dark:text-neutral-200">{t("albums.title")}</h2>
+        <h2 className="text-sm font-medium text-neutral-700 dark:text-neutral-200">
+          {t("albums.title")}
+        </h2>
         <button
           type="button"
           onClick={() => setShowCreate(true)}
@@ -110,7 +112,10 @@ export function AlbumListView() {
       {showCreate && (
         <div className="border-b border-neutral-200/80 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/80 px-4 py-3">
           <div className="flex max-w-md flex-col gap-2">
-            <label htmlFor="album-create-name" className="text-sm text-neutral-500 dark:text-neutral-400">
+            <label
+              htmlFor="album-create-name"
+              className="text-sm text-neutral-500 dark:text-neutral-400"
+            >
               {t("albums.nameLabel")}
             </label>
             <input
@@ -165,7 +170,8 @@ export function AlbumListView() {
                 }}
                 onKeyDown={(e) => {
                   if (editingAlbumId === album.id) return;
-                  if (e.key === "Enter" || e.key === " ") openAlbumDetail(album.id);
+                  if (e.key === "Enter" || e.key === " ")
+                    openAlbumDetail(album.id);
                 }}
                 className="group relative flex cursor-pointer flex-col overflow-hidden rounded-lg border border-neutral-200/80 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900/50 text-left transition hover:border-neutral-300 dark:hover:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800/80"
               >
@@ -196,7 +202,8 @@ export function AlbumListView() {
                           onChange={(e) => setEditingName(e.target.value)}
                           onKeyDown={(e) => {
                             e.stopPropagation();
-                            if (e.key === "Enter") void saveRenameForAlbum(album);
+                            if (e.key === "Enter")
+                              void saveRenameForAlbum(album);
                             if (e.key === "Escape") cancelRename();
                           }}
                           className="w-full rounded-md border border-neutral-700 bg-neutral-800 px-2 py-1 text-sm text-neutral-100 outline-none focus:border-blue-500"
@@ -222,7 +229,9 @@ export function AlbumListView() {
                       </div>
                     ) : (
                       <>
-                        <p className="truncate font-medium text-neutral-800 dark:text-neutral-100">{album.name}</p>
+                        <p className="truncate font-medium text-neutral-800 dark:text-neutral-100">
+                          {album.name}
+                        </p>
                         <p className="text-sm text-neutral-500">
                           {t("gallery.count", { count: album.media_count })}
                         </p>

@@ -22,7 +22,8 @@ vi.mock("@/lib/tauri", async (importOriginal) => {
     renamePerson: (...args: unknown[]) => renamePerson(...args),
     detectFacesBatch: (...args: unknown[]) => detectFacesBatch(...args),
     mergePersons: (...args: unknown[]) => mergePersons(...args),
-    onFaceDetectionProgress: (...args: unknown[]) => onFaceDetectionProgress(...args),
+    onFaceDetectionProgress: (...args: unknown[]) =>
+      onFaceDetectionProgress(...args),
   };
 });
 
@@ -101,7 +102,9 @@ describe("PeopleView", () => {
 
     render(<PeopleView />);
     await waitFor(() => {
-      expect(screen.getAllByRole("button", { name: "聚类人脸" }).length).toBeGreaterThan(0);
+      expect(
+        screen.getAllByRole("button", { name: "聚类人脸" }).length,
+      ).toBeGreaterThan(0);
     });
 
     await user.click(screen.getAllByRole("button", { name: "聚类人脸" })[0]);
@@ -172,7 +175,9 @@ describe("PeopleView", () => {
 
     render(<PeopleView />);
     await waitFor(() => {
-      expect(screen.getAllByRole("button", { name: "检测人脸" }).length).toBeGreaterThan(0);
+      expect(
+        screen.getAllByRole("button", { name: "检测人脸" }).length,
+      ).toBeGreaterThan(0);
     });
   });
 
@@ -188,7 +193,9 @@ describe("PeopleView", () => {
 
     render(<PeopleView />);
     await waitFor(() => {
-      expect(screen.getAllByRole("button", { name: "检测人脸" }).length).toBeGreaterThan(0);
+      expect(
+        screen.getAllByRole("button", { name: "检测人脸" }).length,
+      ).toBeGreaterThan(0);
     });
 
     await user.click(screen.getAllByRole("button", { name: "检测人脸" })[0]);
@@ -236,7 +243,9 @@ describe("PeopleView", () => {
     await user.click(selectButtons[0]);
     await user.click(selectButtons[1]);
 
-    const mergeButton = await screen.findByRole("button", { name: "合并 2 人" });
+    const mergeButton = await screen.findByRole("button", {
+      name: "合并 2 人",
+    });
     await user.click(mergeButton);
 
     await waitFor(() => {

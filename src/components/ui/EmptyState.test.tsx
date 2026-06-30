@@ -11,7 +11,9 @@ describe("EmptyState", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "No photos yet" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "No photos yet" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("Add a folder to get started")).toBeInTheDocument();
   });
 
@@ -31,6 +33,8 @@ describe("EmptyState", () => {
       />,
     );
 
-    expect(screen.getByRole("button", { name: "Add folder" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Add folder" }),
+    ).toBeInTheDocument();
   });
 });

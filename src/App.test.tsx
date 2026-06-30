@@ -21,9 +21,12 @@ vi.mock("@/lib/tauri", async (importOriginal) => {
   return {
     ...actual,
     listWatchedFolders: () => listWatchedFolders(),
-    onScanProgress: (cb: Parameters<typeof actual.onScanProgress>[0]) => onScanProgress(cb),
-    onFolderChanged: (cb: Parameters<typeof actual.onFolderChanged>[0]) => onFolderChanged(cb),
-    scanFolder: (...args: Parameters<typeof actual.scanFolder>) => scanFolder(...args),
+    onScanProgress: (cb: Parameters<typeof actual.onScanProgress>[0]) =>
+      onScanProgress(cb),
+    onFolderChanged: (cb: Parameters<typeof actual.onFolderChanged>[0]) =>
+      onFolderChanged(cb),
+    scanFolder: (...args: Parameters<typeof actual.scanFolder>) =>
+      scanFolder(...args),
     getFavorites: (...args: unknown[]) => getFavorites(...args),
     getFavoritesCount: (...args: unknown[]) => getFavoritesCount(...args),
     getMediaByType: (...args: unknown[]) => getMediaByType(...args),
@@ -50,7 +53,8 @@ class ResizeObserverMock {
   unobserve = vi.fn();
   disconnect = vi.fn();
 }
-globalThis.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
+globalThis.ResizeObserver =
+  ResizeObserverMock as unknown as typeof ResizeObserver;
 
 function setupMatchMedia(matches = false) {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -119,13 +123,21 @@ describe("App", () => {
     });
 
     await user.click(screen.getByLabelText("打开菜单"));
-    expect(screen.getByLabelText("打开菜单")).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByLabelText("打开菜单")).toHaveAttribute(
+      "aria-expanded",
+      "true",
+    );
 
-    const backdrop = screen.getByLabelText("关闭侧边栏", { selector: ".sidebar-overlay-backdrop" });
+    const backdrop = screen.getByLabelText("关闭侧边栏", {
+      selector: ".sidebar-overlay-backdrop",
+    });
     await user.click(backdrop);
 
     await waitFor(() => {
-      expect(screen.getByLabelText("打开菜单")).toHaveAttribute("aria-expanded", "false");
+      expect(screen.getByLabelText("打开菜单")).toHaveAttribute(
+        "aria-expanded",
+        "false",
+      );
     });
   });
 

@@ -3313,10 +3313,11 @@ impl Database {
         conn.query_row(
             "SELECT edit_params FROM media_files WHERE id = ?1",
             params![media_id],
-            |row| row.get(0),
+            |row| row.get::<_, Option<String>>(0),
         )
         .optional()
         .map_err(|e| lightframe_core::Error::Database(e.to_string()))
+        .map(|opt| opt.flatten())
     }
 
     pub fn clear_edit_params(&self, media_id: i64) -> lightframe_core::Result<()> {
@@ -3339,17 +3340,19 @@ impl Database {
 
     pub fn has_edits(&self, media_id: i64) -> lightframe_core::Result<bool> {
         let conn = self.read_conn()?;
-        let value: Option<String> = conn
+        let value: Option<Option<String>> = conn
             .query_row(
                 "SELECT edit_params FROM media_files WHERE id = ?1",
                 params![media_id],
-                |row| row.get(0),
+                |row| row.get::<_, Option<String>>(0),
             )
             .optional()
-            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
-            .flatten();
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
 
-        Ok(value.as_ref().is_some_and(|s| !s.trim().is_empty()))
+        Ok(value
+            .flatten()
+            .as_ref()
+            .is_some_and(|s| !s.trim().is_empty()))
     }
 }
 

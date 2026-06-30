@@ -64,7 +64,9 @@ export function SimilarPhotosView({ mediaId, onBack }: SimilarPhotosViewProps) {
             ‹
           </button>
         )}
-        <h1 className="text-sm font-semibold text-neutral-100">{t("similar.title")}</h1>
+        <h1 className="text-sm font-semibold text-neutral-100">
+          {t("similar.title")}
+        </h1>
       </div>
 
       <div className="flex-1 overflow-y-auto p-4">
@@ -86,7 +88,9 @@ export function SimilarPhotosView({ mediaId, onBack }: SimilarPhotosViewProps) {
         )}
 
         {!loading && !error && photos.length === 0 && (
-          <p className="py-12 text-center text-sm text-neutral-400">{t("similar.empty")}</p>
+          <p className="py-12 text-center text-sm text-neutral-400">
+            {t("similar.empty")}
+          </p>
         )}
 
         {!loading && !error && photos.length > 0 && (

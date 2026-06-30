@@ -8,15 +8,7 @@ export interface CropRect {
 }
 
 export type AspectRatioPreset =
-  | "free"
-  | "original"
-  | "1:1"
-  | "16:9"
-  | "4:3"
-  | "3:2"
-  | "4:5"
-  | "5:7"
-  | "3:5";
+  "free" | "original" | "1:1" | "16:9" | "4:3" | "3:2" | "4:5" | "5:7" | "3:5";
 
 export interface SelectiveColorChannel {
   hue: number;
@@ -128,8 +120,11 @@ export function parseEditParams(json: string | null | undefined): EditParams {
       ...DEFAULT_EDIT_PARAMS,
       ...parsed,
       curves: parsed.curves ?? DEFAULT_EDIT_PARAMS.curves,
-      levels: parsed.levels ? { ...DEFAULT_LEVELS, ...parsed.levels } : DEFAULT_EDIT_PARAMS.levels,
-      selectiveColor: parsed.selectiveColor ?? DEFAULT_EDIT_PARAMS.selectiveColor,
+      levels: parsed.levels
+        ? { ...DEFAULT_LEVELS, ...parsed.levels }
+        : DEFAULT_EDIT_PARAMS.levels,
+      selectiveColor:
+        parsed.selectiveColor ?? DEFAULT_EDIT_PARAMS.selectiveColor,
     };
   } catch {
     return { ...DEFAULT_EDIT_PARAMS };
@@ -154,7 +149,14 @@ function isDefaultLevels(levels: EditParams["levels"]): boolean {
 
 function isDefaultSelectiveColor(sc: EditParams["selectiveColor"]): boolean {
   if (!sc) return true;
-  const channels = [sc.reds, sc.yellows, sc.greens, sc.cyans, sc.blues, sc.magentas];
+  const channels = [
+    sc.reds,
+    sc.yellows,
+    sc.greens,
+    sc.cyans,
+    sc.blues,
+    sc.magentas,
+  ];
   return channels.every(
     (c) => !c || (c.hue === 0 && c.saturation === 0 && c.luminance === 0),
   );
@@ -203,7 +205,9 @@ export function isDefaultEditParams(params: EditParams): boolean {
   );
 }
 
-function isIdentityCurvesChannel(points: Array<[number, number]> | undefined): boolean {
+function isIdentityCurvesChannel(
+  points: Array<[number, number]> | undefined,
+): boolean {
   return isIdentityCurve(points);
 }
 
@@ -213,7 +217,8 @@ export function buildCssFilter(params: EditParams): string {
 
   // Approximate levels/curves with brightness/contrast for preview
   if (params.levels && !isDefaultLevels(params.levels)) {
-    const { inputBlack, inputWhite, gamma, outputBlack, outputWhite } = params.levels;
+    const { inputBlack, inputWhite, gamma, outputBlack, outputWhite } =
+      params.levels;
     const inRange = Math.max(1, inputWhite - inputBlack);
     const outRange = outputWhite - outputBlack;
     contrast *= (255 / inRange) * (outRange / 255);
@@ -237,7 +242,8 @@ export function buildCssFilter(params: EditParams): string {
     `saturate(${Math.max(0, saturate).toFixed(3)})`,
   ];
   if (sepia > 0) parts.push(`sepia(${sepia.toFixed(3)})`);
-  if (Math.abs(warmthHue) > 0.01) parts.push(`hue-rotate(${warmthHue.toFixed(1)}deg)`);
+  if (Math.abs(warmthHue) > 0.01)
+    parts.push(`hue-rotate(${warmthHue.toFixed(1)}deg)`);
   if (params.brilliance !== 0) {
     parts.push(`brightness(${(1 + params.brilliance / 300).toFixed(3)})`);
   }
@@ -250,19 +256,25 @@ export function buildImageTransform(params: EditParams): string {
   if (hasPerspective) {
     const rotX = params.perspectiveV * 0.15;
     const rotY = params.perspectiveH * 0.15;
-    transforms.push(`perspective(800px) rotateX(${rotX}deg) rotateY(${rotY}deg)`);
+    transforms.push(
+      `perspective(800px) rotateX(${rotX}deg) rotateY(${rotY}deg)`,
+    );
   }
   const totalRotate = params.rotate + params.straighten;
   if (totalRotate !== 0) transforms.push(`rotate(${totalRotate}deg)`);
   const scaleX = params.flipH ? -1 : 1;
   const scaleY = params.flipV ? -1 : 1;
-  if (scaleX !== 1 || scaleY !== 1) transforms.push(`scale(${scaleX}, ${scaleY})`);
+  if (scaleX !== 1 || scaleY !== 1)
+    transforms.push(`scale(${scaleX}, ${scaleY})`);
   return transforms.join(" ");
 }
 
 export { DEFAULT_CURVE_POINTS };
 
-export function aspectRatioValue(preset: AspectRatioPreset, originalRatio: number): number | null {
+export function aspectRatioValue(
+  preset: AspectRatioPreset,
+  originalRatio: number,
+): number | null {
   switch (preset) {
     case "free":
       return null;

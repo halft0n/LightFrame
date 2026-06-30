@@ -94,7 +94,9 @@ export function CropSection({
         <div className="flex gap-2">
           <button
             type="button"
-            onClick={() => onChange({ rotate: (params.rotate - 90 + 360) % 360 })}
+            onClick={() =>
+              onChange({ rotate: (params.rotate - 90 + 360) % 360 })
+            }
             className="flex-1 rounded-lg bg-white/10 py-2 text-xs text-neutral-200 transition hover:bg-white/15"
             title={t("editor.rotateLeft")}
           >
@@ -116,7 +118,9 @@ export function CropSection({
           type="button"
           onClick={() => onChange({ flipH: !params.flipH })}
           className={`flex-1 rounded-lg py-2 text-xs transition ${
-            params.flipH ? "bg-blue-600 text-white" : "bg-white/10 text-neutral-200 hover:bg-white/15"
+            params.flipH
+              ? "bg-blue-600 text-white"
+              : "bg-white/10 text-neutral-200 hover:bg-white/15"
           }`}
         >
           ↔ {t("editor.flipH")}
@@ -125,7 +129,9 @@ export function CropSection({
           type="button"
           onClick={() => onChange({ flipV: !params.flipV })}
           className={`flex-1 rounded-lg py-2 text-xs transition ${
-            params.flipV ? "bg-blue-600 text-white" : "bg-white/10 text-neutral-200 hover:bg-white/15"
+            params.flipV
+              ? "bg-blue-600 text-white"
+              : "bg-white/10 text-neutral-200 hover:bg-white/15"
           }`}
         >
           ↕ {t("editor.flipV")}
@@ -133,7 +139,9 @@ export function CropSection({
       </div>
 
       <div className="border-t border-white/10 pt-3">
-        <p className="mb-2 text-xs font-medium text-neutral-500">{t("editor.perspective")}</p>
+        <p className="mb-2 text-xs font-medium text-neutral-500">
+          {t("editor.perspective")}
+        </p>
         <AdjustmentSlider
           label={t("editor.perspectiveV")}
           value={params.perspectiveV}
@@ -160,7 +168,12 @@ interface CropOverlayProps {
   onChange: (crop: CropRect) => void;
 }
 
-export function CropOverlay({ crop, aspectRatio, originalRatio, onChange }: CropOverlayProps) {
+export function CropOverlay({
+  crop,
+  aspectRatio,
+  originalRatio,
+  onChange,
+}: CropOverlayProps) {
   const dragRef = useRef<{
     handle: Handle;
     startX: number;
@@ -226,14 +239,46 @@ export function CropOverlay({ crop, aspectRatio, originalRatio, onChange }: Crop
   };
 
   const handles: { id: Handle; className: string }[] = [
-    { id: "nw", className: "left-0 top-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize" },
-    { id: "ne", className: "right-0 top-0 translate-x-1/2 -translate-y-1/2 cursor-nesw-resize" },
-    { id: "sw", className: "bottom-0 left-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize" },
-    { id: "se", className: "bottom-0 right-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize" },
-    { id: "n", className: "left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize" },
-    { id: "s", className: "bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 cursor-ns-resize" },
-    { id: "w", className: "left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize" },
-    { id: "e", className: "right-0 top-1/2 translate-x-1/2 -translate-y-1/2 cursor-ew-resize" },
+    {
+      id: "nw",
+      className:
+        "left-0 top-0 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize",
+    },
+    {
+      id: "ne",
+      className:
+        "right-0 top-0 translate-x-1/2 -translate-y-1/2 cursor-nesw-resize",
+    },
+    {
+      id: "sw",
+      className:
+        "bottom-0 left-0 -translate-x-1/2 translate-y-1/2 cursor-nesw-resize",
+    },
+    {
+      id: "se",
+      className:
+        "bottom-0 right-0 translate-x-1/2 translate-y-1/2 cursor-nwse-resize",
+    },
+    {
+      id: "n",
+      className:
+        "left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 cursor-ns-resize",
+    },
+    {
+      id: "s",
+      className:
+        "bottom-0 left-1/2 -translate-x-1/2 translate-y-1/2 cursor-ns-resize",
+    },
+    {
+      id: "w",
+      className:
+        "left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 cursor-ew-resize",
+    },
+    {
+      id: "e",
+      className:
+        "right-0 top-1/2 translate-x-1/2 -translate-y-1/2 cursor-ew-resize",
+    },
   ];
 
   return (
@@ -269,4 +314,3 @@ export function CropOverlay({ crop, aspectRatio, originalRatio, onChange }: Crop
     </div>
   );
 }
-

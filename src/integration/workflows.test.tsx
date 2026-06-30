@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen, waitFor, act, fireEvent } from "@testing-library/react";
+import {
+  render,
+  screen,
+  waitFor,
+  act,
+  fireEvent,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import App from "@/App";
 import { setLocale } from "@/i18n/index";
@@ -31,21 +37,29 @@ vi.mock("@/lib/tauri", async (importOriginal) => {
   return {
     ...actual,
     listWatchedFolders: () => listWatchedFolders(),
-    onScanProgress: (cb: Parameters<typeof actual.onScanProgress>[0]) => onScanProgress(cb),
-    onFolderChanged: (cb: Parameters<typeof actual.onFolderChanged>[0]) => onFolderChanged(cb),
-    scanFolder: (...args: Parameters<typeof actual.scanFolder>) => scanFolder(...args),
-    getMediaPage: (...args: Parameters<typeof actual.getMediaPage>) => getMediaPage(...args),
-    getMediaCount: (...args: Parameters<typeof actual.getMediaCount>) => getMediaCount(...args),
-    searchMedia: (...args: Parameters<typeof actual.searchMedia>) => searchMedia(...args),
+    onScanProgress: (cb: Parameters<typeof actual.onScanProgress>[0]) =>
+      onScanProgress(cb),
+    onFolderChanged: (cb: Parameters<typeof actual.onFolderChanged>[0]) =>
+      onFolderChanged(cb),
+    scanFolder: (...args: Parameters<typeof actual.scanFolder>) =>
+      scanFolder(...args),
+    getMediaPage: (...args: Parameters<typeof actual.getMediaPage>) =>
+      getMediaPage(...args),
+    getMediaCount: (...args: Parameters<typeof actual.getMediaCount>) =>
+      getMediaCount(...args),
+    searchMedia: (...args: Parameters<typeof actual.searchMedia>) =>
+      searchMedia(...args),
     searchMediaCount: (...args: Parameters<typeof actual.searchMediaCount>) =>
       searchMediaCount(...args),
     batchDeleteMedia: (...args: Parameters<typeof actual.batchDeleteMedia>) =>
       batchDeleteMedia(...args),
     batchAddToAlbum: (...args: Parameters<typeof actual.batchAddToAlbum>) =>
       batchAddToAlbum(...args),
-    batchToggleFavorite: (...args: Parameters<typeof actual.batchToggleFavorite>) =>
-      batchToggleFavorite(...args),
-    listAlbums: (...args: Parameters<typeof actual.listAlbums>) => listAlbums(...args),
+    batchToggleFavorite: (
+      ...args: Parameters<typeof actual.batchToggleFavorite>
+    ) => batchToggleFavorite(...args),
+    listAlbums: (...args: Parameters<typeof actual.listAlbums>) =>
+      listAlbums(...args),
   };
 });
 
@@ -62,7 +76,8 @@ class ResizeObserverMock {
   unobserve = vi.fn();
   disconnect = vi.fn();
 }
-globalThis.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
+globalThis.ResizeObserver =
+  ResizeObserverMock as unknown as typeof ResizeObserver;
 
 function setupMatchMedia(matches = false) {
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
@@ -125,31 +140,37 @@ function setupDefaultMocks() {
 }
 
 function setupViewerInvoke() {
-  (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string, args?: Record<string, unknown>) => {
-    if (cmd === "get_media_by_id") {
-      const id = (args?.id as number | undefined) ?? 1;
-      const item = sampleMedia.find((m) => m.id === id) ?? sampleMedia[0];
-      return Promise.resolve({ ...item, id });
-    }
-    if (cmd === "get_media_neighbors") {
-      const id = (args?.id as number | undefined) ?? 1;
-      const index = sampleMedia.findIndex((m) => m.id === id);
-      return Promise.resolve({
-        prev_id: index > 0 ? sampleMedia[index - 1].id : null,
-        next_id: index >= 0 && index < sampleMedia.length - 1 ? sampleMedia[index + 1].id : null,
-      });
-    }
-    if (cmd === "get_media_window") {
-      const mediaId = (args?.mediaId as number | undefined) ?? 1;
-      const item = sampleMedia.find((m) => m.id === mediaId) ?? sampleMedia[0];
-      return Promise.resolve([{ ...item, id: mediaId }]);
-    }
-    if (cmd === "has_edits") return Promise.resolve(false);
-    if (cmd === "get_edit") return Promise.resolve(null);
-    if (cmd === "is_favorite") return Promise.resolve(false);
-    if (cmd === "toggle_favorite") return Promise.resolve(true);
-    return Promise.resolve(null);
-  });
+  (invoke as ReturnType<typeof vi.fn>).mockImplementation(
+    (cmd: string, args?: Record<string, unknown>) => {
+      if (cmd === "get_media_by_id") {
+        const id = (args?.id as number | undefined) ?? 1;
+        const item = sampleMedia.find((m) => m.id === id) ?? sampleMedia[0];
+        return Promise.resolve({ ...item, id });
+      }
+      if (cmd === "get_media_neighbors") {
+        const id = (args?.id as number | undefined) ?? 1;
+        const index = sampleMedia.findIndex((m) => m.id === id);
+        return Promise.resolve({
+          prev_id: index > 0 ? sampleMedia[index - 1].id : null,
+          next_id:
+            index >= 0 && index < sampleMedia.length - 1
+              ? sampleMedia[index + 1].id
+              : null,
+        });
+      }
+      if (cmd === "get_media_window") {
+        const mediaId = (args?.mediaId as number | undefined) ?? 1;
+        const item =
+          sampleMedia.find((m) => m.id === mediaId) ?? sampleMedia[0];
+        return Promise.resolve([{ ...item, id: mediaId }]);
+      }
+      if (cmd === "has_edits") return Promise.resolve(false);
+      if (cmd === "get_edit") return Promise.resolve(null);
+      if (cmd === "is_favorite") return Promise.resolve(false);
+      if (cmd === "toggle_favorite") return Promise.resolve(true);
+      return Promise.resolve(null);
+    },
+  );
 }
 
 beforeEach(() => {
@@ -373,7 +394,9 @@ describe("Error recovery workflow", () => {
 
       await waitFor(() => {
         expect(searchMedia).toHaveBeenCalledTimes(2);
-        expect(screen.queryByText("搜索失败，请重试。")).not.toBeInTheDocument();
+        expect(
+          screen.queryByText("搜索失败，请重试。"),
+        ).not.toBeInTheDocument();
       });
     } finally {
       vi.useRealTimers();

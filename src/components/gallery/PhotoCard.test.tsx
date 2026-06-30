@@ -38,42 +38,122 @@ const rawItem: MediaItem = {
   modified_at: "2024-01-01T00:00:00",
 };
 
+const heicItem: MediaItem = {
+  id: 4,
+  path: "/photos/iphone.heic",
+  filename: "iphone.heic",
+  media_type: "Photo",
+  size_bytes: 4096,
+  modified_at: "2024-01-01T00:00:00",
+};
+
 describe("PhotoCard", () => {
   it("does not show filename overlay", () => {
-    render(<PhotoCard item={photoItem} selected={false} selectedMediaIds={[]} onSelect={vi.fn()} />);
+    render(
+      <PhotoCard
+        item={photoItem}
+        selected={false}
+        selectedMediaIds={[]}
+        onSelect={vi.fn()}
+      />,
+    );
     expect(screen.queryByText("sunset.jpg")).not.toBeInTheDocument();
   });
 
   it("shows selection indicator when selected", () => {
     const { container } = render(
-      <PhotoCard item={photoItem} selected={true} selectedMediaIds={[1]} onSelect={vi.fn()} />,
+      <PhotoCard
+        item={photoItem}
+        selected={true}
+        selectedMediaIds={[1]}
+        onSelect={vi.fn()}
+      />,
     );
     expect(container.querySelector(".bg-blue-500")).toBeInTheDocument();
   });
 
   it("shows video duration badge for video items", () => {
-    render(<PhotoCard item={videoItem} selected={false} selectedMediaIds={[]} onSelect={vi.fn()} />);
+    render(
+      <PhotoCard
+        item={videoItem}
+        selected={false}
+        selectedMediaIds={[]}
+        onSelect={vi.fn()}
+      />,
+    );
     expect(screen.getByText("2:05")).toBeInTheDocument();
   });
 
   it("does not show duration for photo items", () => {
-    render(<PhotoCard item={photoItem} selected={false} selectedMediaIds={[]} onSelect={vi.fn()} />);
+    render(
+      <PhotoCard
+        item={photoItem}
+        selected={false}
+        selectedMediaIds={[]}
+        onSelect={vi.fn()}
+      />,
+    );
     expect(screen.queryByText(/\d+:\d{2}/)).not.toBeInTheDocument();
   });
 
   it("shows RAW badge for raw items", () => {
-    render(<PhotoCard item={rawItem} selected={false} selectedMediaIds={[]} onSelect={vi.fn()} />);
+    render(
+      <PhotoCard
+        item={rawItem}
+        selected={false}
+        selectedMediaIds={[]}
+        onSelect={vi.fn()}
+      />,
+    );
     expect(screen.getByText("RAW")).toBeInTheDocument();
   });
 
   it("does not show RAW badge for photo items", () => {
-    render(<PhotoCard item={photoItem} selected={false} selectedMediaIds={[]} onSelect={vi.fn()} />);
+    render(
+      <PhotoCard
+        item={photoItem}
+        selected={false}
+        selectedMediaIds={[]}
+        onSelect={vi.fn()}
+      />,
+    );
     expect(screen.queryByText("RAW")).not.toBeInTheDocument();
+  });
+
+  it("shows HEIC badge for heic items", () => {
+    render(
+      <PhotoCard
+        item={heicItem}
+        selected={false}
+        selectedMediaIds={[]}
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(screen.getByText("HEIC")).toBeInTheDocument();
+  });
+
+  it("does not show HEIC badge for non-heic photo items", () => {
+    render(
+      <PhotoCard
+        item={photoItem}
+        selected={false}
+        selectedMediaIds={[]}
+        onSelect={vi.fn()}
+      />,
+    );
+    expect(screen.queryByText("HEIC")).not.toBeInTheDocument();
   });
 
   it("calls onSelect when clicked", () => {
     const onSelect = vi.fn();
-    render(<PhotoCard item={photoItem} selected={false} selectedMediaIds={[]} onSelect={onSelect} />);
+    render(
+      <PhotoCard
+        item={photoItem}
+        selected={false}
+        selectedMediaIds={[]}
+        onSelect={onSelect}
+      />,
+    );
 
     fireEvent.click(screen.getByRole("gridcell"));
     expect(onSelect).toHaveBeenCalledWith(1, expect.any(Object));

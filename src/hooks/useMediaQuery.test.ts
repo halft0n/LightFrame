@@ -83,7 +83,9 @@ describe("useMediaQuery", () => {
     const { matchMedia, mql } = createMatchMediaMock(true);
     window.matchMedia = matchMedia;
 
-    const { result, unmount } = renderHook(() => useMediaQuery("(max-width: 767px)"));
+    const { result, unmount } = renderHook(() =>
+      useMediaQuery("(max-width: 767px)"),
+    );
     expect(result.current).toBe(true);
 
     unmount();
@@ -101,9 +103,12 @@ describe("useMediaQuery", () => {
       query.includes("767px") ? mobile.mql : desktop.mql,
     );
 
-    const { result, rerender } = renderHook(({ query }) => useMediaQuery(query), {
-      initialProps: { query: "(min-width: 768px)" },
-    });
+    const { result, rerender } = renderHook(
+      ({ query }) => useMediaQuery(query),
+      {
+        initialProps: { query: "(min-width: 768px)" },
+      },
+    );
     expect(result.current).toBe(false);
 
     rerender({ query: "(max-width: 767px)" });

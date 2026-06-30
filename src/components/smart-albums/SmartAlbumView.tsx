@@ -6,7 +6,11 @@ import {
   type MediaItem,
   type SmartAlbum,
 } from "@/lib/tauri";
-import { closeSmartAlbumDetail, openViewer, useAppStore } from "@/store/appStore";
+import {
+  closeSmartAlbumDetail,
+  openViewer,
+  useAppStore,
+} from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 
 const MIN_COLUMN_WIDTH = 160;
@@ -70,7 +74,11 @@ export function SmartAlbumView() {
     if (selectedSmartAlbumId == null || loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
-      const items = await getSmartAlbumMedia(selectedSmartAlbumId, media.length, PAGE_SIZE);
+      const items = await getSmartAlbumMedia(
+        selectedSmartAlbumId,
+        media.length,
+        PAGE_SIZE,
+      );
       setMedia((prev) => [...prev, ...items]);
     } catch (err) {
       console.error("Failed to load more smart album media:", err);
@@ -153,7 +161,9 @@ export function SmartAlbumView() {
             ))}
           </div>
           {loadingMore && (
-            <div className="py-4 text-center text-sm text-neutral-500">{t("gallery.loading")}</div>
+            <div className="py-4 text-center text-sm text-neutral-500">
+              {t("gallery.loading")}
+            </div>
           )}
         </div>
       )}

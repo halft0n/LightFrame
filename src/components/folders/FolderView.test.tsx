@@ -13,7 +13,8 @@ vi.mock("@/lib/tauri", async (importOriginal) => {
   return {
     ...actual,
     getMediaByFolder: (...args: unknown[]) => getMediaByFolder(...args),
-    getMediaCountByFolder: (...args: unknown[]) => getMediaCountByFolder(...args),
+    getMediaCountByFolder: (...args: unknown[]) =>
+      getMediaCountByFolder(...args),
   };
 });
 
@@ -36,7 +37,8 @@ class ResizeObserverMock {
     );
   }
 }
-globalThis.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
+globalThis.ResizeObserver =
+  ResizeObserverMock as unknown as typeof ResizeObserver;
 
 const sampleMedia: MediaItem = {
   id: 1,
@@ -91,7 +93,9 @@ describe("FolderView", () => {
     render(<FolderView />);
 
     await waitFor(() => {
-      expect(screen.getByRole("grid", { name: "照片网格" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("grid", { name: "照片网格" }),
+      ).toBeInTheDocument();
     });
     expect(getMediaByFolder).toHaveBeenCalledWith(1, 0, 60);
   });

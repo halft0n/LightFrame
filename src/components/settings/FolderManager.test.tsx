@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { invoke } from "@tauri-apps/api/core";
 import { FolderManager } from "./FolderManager";
@@ -47,13 +47,18 @@ beforeEach(() => {
   vi.clearAllMocks();
   (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
     if (cmd === "get_log_config") {
-      return Promise.resolve({ level: "debug", retention_days: 14, max_size_mb: 200 });
+      return Promise.resolve({
+        level: "debug",
+        retention_days: 14,
+        max_size_mb: 200,
+      });
     }
     if (cmd === "get_log_directory") return Promise.resolve("/logs");
     if (cmd === "get_log_files") return Promise.resolve([]);
     return Promise.resolve(null);
   });
-  delete (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__;
+  delete (window as Window & { __TAURI_INTERNALS__?: unknown })
+    .__TAURI_INTERNALS__;
 });
 
 describe("FolderManager", () => {
@@ -73,7 +78,9 @@ describe("FolderManager", () => {
 
   it("add folder button is present", () => {
     render(<FolderManager />);
-    expect(screen.getByRole("button", { name: "添加文件夹" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "添加文件夹" }),
+    ).toBeInTheDocument();
   });
 
   it("remove folder interaction calls backend", async () => {
@@ -127,5 +134,38 @@ describe("FolderManager", () => {
     await user.click(screen.getByRole("button", { name: "重新扫描" }));
 
     expect(screen.getAllByText("扫描中…").length).toBeGreaterThan(0);
+  });
+
+  it("renders folders section before theme section", () => {
+    render(<FolderManager />);
+
+    const headings = screen
+      .getAllByRole("heading", { level: 2 })
+      .map((h) => h.textContent);
+    const foldersIndex = headings.findIndex(
+      (text) => text?.includes("文件夹") || text === "文件夹",
+    );
+    const themeIndex = headings.findIndex(
+      (text) => text?.includes("主题") || text === "主题",
+    );
+    expect(foldersIndex).toBeGreaterThanOrEqual(0);
+    expect(themeIndex).toBeGreaterThan(foldersIndex);
+  });
+
+  it("uses scrollable container for settings content", () => {
+    render(<FolderManager />);
+    const container = screen.getByTestId("folder-manager");
+    expect(container.className).toContain("overflow-y-auto");
+  });
+
+  it("renders LogSettings within FolderManager", async () => {
+    render(<FolderManager />);
+
+    await waitFor(() => {
+      expect(screen.getByText("日志设置")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("配置应用日志级别、保留策略和存储限制"),
+    ).toBeInTheDocument();
   });
 });

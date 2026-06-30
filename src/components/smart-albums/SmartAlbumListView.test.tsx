@@ -79,16 +79,22 @@ describe("SmartAlbumListView", () => {
     render(<SmartAlbumListView />);
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "创建智能相簿" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "创建智能相簿" }),
+      ).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole("button", { name: "创建智能相簿" }));
     await user.type(screen.getByRole("textbox"), "Portraits");
-    const createButtons = screen.getAllByRole("button", { name: "创建智能相簿" });
+    const createButtons = screen.getAllByRole("button", {
+      name: "创建智能相簿",
+    });
     await user.click(createButtons[createButtons.length - 1]);
 
     await waitFor(() => {
-      expect(createSmartAlbum).toHaveBeenCalledWith("Portraits", "✨", { media_type: "Photo" });
+      expect(createSmartAlbum).toHaveBeenCalledWith("Portraits", "✨", {
+        media_type: "Photo",
+      });
     });
   });
 
@@ -119,7 +125,10 @@ describe("SmartAlbumListView", () => {
 
   it("deletes smart album after confirmation", async () => {
     const user = userEvent.setup();
-    vi.stubGlobal("confirm", vi.fn(() => true));
+    vi.stubGlobal(
+      "confirm",
+      vi.fn(() => true),
+    );
     deleteSmartAlbum.mockResolvedValue(undefined);
     listSmartAlbums.mockResolvedValue([
       {

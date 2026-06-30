@@ -6,7 +6,11 @@ interface EditorSectionProps {
   children: ReactNode;
 }
 
-export function EditorSection({ title, defaultOpen = true, children }: EditorSectionProps) {
+export function EditorSection({
+  title,
+  defaultOpen = true,
+  children,
+}: EditorSectionProps) {
   const [open, setOpen] = useState(defaultOpen);
 
   return (

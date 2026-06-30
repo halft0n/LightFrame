@@ -29,7 +29,9 @@ export function AdjustmentSlider({
     <div className="group py-2">
       <div className="mb-1.5 flex items-center justify-between text-xs">
         <span className="text-neutral-400">{label}</span>
-        <span className="tabular-nums text-neutral-300">{formatSliderValue(value)}</span>
+        <span className="tabular-nums text-neutral-300">
+          {formatSliderValue(value)}
+        </span>
       </div>
       <div className="relative">
         {centerPercent != null && (

@@ -96,23 +96,47 @@ export function LevelsSection({ params, onChange }: LevelsSectionProps) {
         />
       </div>
 
-      <p className="text-xs font-medium text-neutral-500">{t("editor.levels.inputBlack")}</p>
-      {renderHandleRow(t("editor.levels.inputBlack"), inputBlack, 0, 254, 1, (v) =>
-        updateLevels({ inputBlack: Math.min(v, inputWhite - 1) }),
+      <p className="text-xs font-medium text-neutral-500">
+        {t("editor.levels.inputBlack")}
+      </p>
+      {renderHandleRow(
+        t("editor.levels.inputBlack"),
+        inputBlack,
+        0,
+        254,
+        1,
+        (v) => updateLevels({ inputBlack: Math.min(v, inputWhite - 1) }),
       )}
       {renderHandleRow(t("editor.levels.gamma"), gamma, 0.1, 9.9, 0.1, (v) =>
         updateLevels({ gamma: v }),
       )}
-      {renderHandleRow(t("editor.levels.inputWhite"), inputWhite, 1, 255, 1, (v) =>
-        updateLevels({ inputWhite: Math.max(v, inputBlack + 1) }),
+      {renderHandleRow(
+        t("editor.levels.inputWhite"),
+        inputWhite,
+        1,
+        255,
+        1,
+        (v) => updateLevels({ inputWhite: Math.max(v, inputBlack + 1) }),
       )}
 
-      <p className="pt-2 text-xs font-medium text-neutral-500">{t("editor.levels.outputBlack")}</p>
-      {renderHandleRow(t("editor.levels.outputBlack"), outputBlack, 0, 254, 1, (v) =>
-        updateLevels({ outputBlack: Math.min(v, outputWhite - 1) }),
+      <p className="pt-2 text-xs font-medium text-neutral-500">
+        {t("editor.levels.outputBlack")}
+      </p>
+      {renderHandleRow(
+        t("editor.levels.outputBlack"),
+        outputBlack,
+        0,
+        254,
+        1,
+        (v) => updateLevels({ outputBlack: Math.min(v, outputWhite - 1) }),
       )}
-      {renderHandleRow(t("editor.levels.outputWhite"), outputWhite, 1, 255, 1, (v) =>
-        updateLevels({ outputWhite: Math.max(v, outputBlack + 1) }),
+      {renderHandleRow(
+        t("editor.levels.outputWhite"),
+        outputWhite,
+        1,
+        255,
+        1,
+        (v) => updateLevels({ outputWhite: Math.max(v, outputBlack + 1) }),
       )}
     </EditorSection>
   );

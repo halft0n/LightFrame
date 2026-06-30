@@ -3,11 +3,7 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SlideshowView } from "./SlideshowView";
 import { setLocale } from "@/i18n/index";
-import {
-  closeSlideshow,
-  getSnapshot,
-  startSlideshow,
-} from "@/store/appStore";
+import { closeSlideshow, getSnapshot, startSlideshow } from "@/store/appStore";
 import type { MediaItem } from "@/lib/tauri";
 
 const getMediaById = vi.fn();
@@ -174,5 +170,4 @@ describe("SlideshowView", () => {
     expect(screen.queryByLabelText("上一张")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("下一张")).not.toBeInTheDocument();
   });
-
 });

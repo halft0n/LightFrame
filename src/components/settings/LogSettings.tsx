@@ -31,7 +31,9 @@ export function LogSettings() {
   useEffect(() => {
     invoke<LogConfig>("get_log_config").then(setConfig).catch(console.error);
     invoke<string>("get_log_directory").then(setLogDir).catch(console.error);
-    invoke<LogFileInfo[]>("get_log_files").then(setLogFiles).catch(console.error);
+    invoke<LogFileInfo[]>("get_log_files")
+      .then(setLogFiles)
+      .catch(console.error);
 
     return () => {
       if (savedTimeoutRef.current) {
@@ -63,14 +65,17 @@ export function LogSettings() {
     }
   };
 
-  const totalSizeMB = logFiles.reduce((sum, f) => sum + f.size_bytes, 0) / (1024 * 1024);
+  const totalSizeMB =
+    logFiles.reduce((sum, f) => sum + f.size_bytes, 0) / (1024 * 1024);
 
   return (
     <section className="settings-section px-6 py-5">
       <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
         {t("settings.logTitle")}
       </h2>
-      <p className="mt-1 text-sm text-neutral-500">{t("settings.logDescription")}</p>
+      <p className="mt-1 text-sm text-neutral-500">
+        {t("settings.logDescription")}
+      </p>
 
       <div className="mt-4 space-y-4">
         <div className="flex items-center gap-4">
@@ -79,7 +84,9 @@ export function LogSettings() {
           </label>
           <select
             value={config.level}
-            onChange={(e) => setConfig((c) => ({ ...c, level: e.target.value }))}
+            onChange={(e) =>
+              setConfig((c) => ({ ...c, level: e.target.value }))
+            }
             className="rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-600 dark:bg-neutral-800"
           >
             {LOG_LEVELS.map((lvl) => (
@@ -102,12 +109,17 @@ export function LogSettings() {
             onChange={(e) =>
               setConfig((c) => ({
                 ...c,
-                retention_days: Math.max(1, Math.min(90, Number(e.target.value) || 7)),
+                retention_days: Math.max(
+                  1,
+                  Math.min(90, Number(e.target.value) || 7),
+                ),
               }))
             }
             className="w-20 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-600 dark:bg-neutral-800"
           />
-          <span className="text-sm text-neutral-500">{t("settings.logDays")}</span>
+          <span className="text-sm text-neutral-500">
+            {t("settings.logDays")}
+          </span>
         </div>
 
         <div className="flex items-center gap-4">
@@ -122,7 +134,10 @@ export function LogSettings() {
             onChange={(e) =>
               setConfig((c) => ({
                 ...c,
-                max_size_mb: Math.max(10, Math.min(1024, Number(e.target.value) || 100)),
+                max_size_mb: Math.max(
+                  10,
+                  Math.min(1024, Number(e.target.value) || 100),
+                ),
               }))
             }
             className="w-20 rounded-lg border border-neutral-300 bg-white px-3 py-1.5 text-sm dark:border-neutral-600 dark:bg-neutral-800"

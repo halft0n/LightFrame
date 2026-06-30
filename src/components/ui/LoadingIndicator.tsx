@@ -6,7 +6,11 @@ interface LoadingIndicatorProps {
   size?: "sm" | "md";
 }
 
-export function LoadingIndicator({ label, className = "", size = "md" }: LoadingIndicatorProps) {
+export function LoadingIndicator({
+  label,
+  className = "",
+  size = "md",
+}: LoadingIndicatorProps) {
   const { t } = useTranslation();
   const text = label ?? t("gallery.loading");
 
@@ -21,7 +25,9 @@ export function LoadingIndicator({ label, className = "", size = "md" }: Loading
         className={`loading-shimmer-bar shimmer ${size === "sm" ? "h-2 w-16" : ""}`}
         aria-hidden="true"
       />
-      <span className={`text-neutral-500 dark:text-neutral-400 ${size === "sm" ? "text-xs" : "text-sm"}`}>
+      <span
+        className={`text-neutral-500 dark:text-neutral-400 ${size === "sm" ? "text-xs" : "text-sm"}`}
+      >
         {text}
       </span>
     </div>

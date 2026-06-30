@@ -1,10 +1,7 @@
 import { renderHook, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
-import {
-  getAdjacentMediaIds,
-  useImagePreloader,
-} from "./useImagePreloader";
+import { getAdjacentMediaIds, useImagePreloader } from "./useImagePreloader";
 import type { MediaItem } from "@/lib/tauri";
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -32,18 +29,23 @@ describe("getAdjacentMediaIds", () => {
   });
 
   it("walks prev and next chains up to count", async () => {
-    (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string, args?: Record<string, unknown>) => {
-      if (cmd !== "get_media_neighbors") return Promise.resolve(null);
-      const id = args?.id as number;
-      const map: Record<number, { prev_id: number | null; next_id: number | null }> = {
-        5: { prev_id: 4, next_id: 6 },
-        4: { prev_id: 3, next_id: null },
-        3: { prev_id: null, next_id: null },
-        6: { prev_id: null, next_id: 7 },
-        7: { prev_id: null, next_id: null },
-      };
-      return Promise.resolve(map[id] ?? { prev_id: null, next_id: null });
-    });
+    (invoke as ReturnType<typeof vi.fn>).mockImplementation(
+      (cmd: string, args?: Record<string, unknown>) => {
+        if (cmd !== "get_media_neighbors") return Promise.resolve(null);
+        const id = args?.id as number;
+        const map: Record<
+          number,
+          { prev_id: number | null; next_id: number | null }
+        > = {
+          5: { prev_id: 4, next_id: 6 },
+          4: { prev_id: 3, next_id: null },
+          3: { prev_id: null, next_id: null },
+          6: { prev_id: null, next_id: 7 },
+          7: { prev_id: null, next_id: null },
+        };
+        return Promise.resolve(map[id] ?? { prev_id: null, next_id: null });
+      },
+    );
 
     const ids = await getAdjacentMediaIds(5, 2);
     expect(ids).toEqual([4, 3, 6, 7]);
@@ -71,22 +73,26 @@ describe("useImagePreloader", () => {
 
     vi.stubGlobal("Image", MockImageClass);
 
-    (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string, args?: Record<string, unknown>) => {
-      if (cmd === "get_media_neighbors") {
-        const id = args?.id as number;
-        if (id === 1) return Promise.resolve({ prev_id: 10, next_id: 20 });
-        if (id === 10) return Promise.resolve({ prev_id: 11, next_id: null });
-        if (id === 20) return Promise.resolve({ prev_id: null, next_id: 21 });
-        if (id === 11) return Promise.resolve({ prev_id: null, next_id: null });
-        if (id === 21) return Promise.resolve({ prev_id: null, next_id: null });
-        return Promise.resolve({ prev_id: null, next_id: null });
-      }
-      if (cmd === "get_media_by_id") {
-        const id = args?.id as number;
-        return Promise.resolve(mockPhoto(id));
-      }
-      return Promise.resolve(null);
-    });
+    (invoke as ReturnType<typeof vi.fn>).mockImplementation(
+      (cmd: string, args?: Record<string, unknown>) => {
+        if (cmd === "get_media_neighbors") {
+          const id = args?.id as number;
+          if (id === 1) return Promise.resolve({ prev_id: 10, next_id: 20 });
+          if (id === 10) return Promise.resolve({ prev_id: 11, next_id: null });
+          if (id === 20) return Promise.resolve({ prev_id: null, next_id: 21 });
+          if (id === 11)
+            return Promise.resolve({ prev_id: null, next_id: null });
+          if (id === 21)
+            return Promise.resolve({ prev_id: null, next_id: null });
+          return Promise.resolve({ prev_id: null, next_id: null });
+        }
+        if (cmd === "get_media_by_id") {
+          const id = args?.id as number;
+          return Promise.resolve(mockPhoto(id));
+        }
+        return Promise.resolve(null);
+      },
+    );
   });
 
   afterEach(() => {
@@ -113,7 +119,10 @@ describe("useImagePreloader", () => {
       }),
     );
 
-    expect(invoke).not.toHaveBeenCalledWith("get_media_by_id", expect.anything());
+    expect(invoke).not.toHaveBeenCalledWith(
+      "get_media_by_id",
+      expect.anything(),
+    );
     expect(createdImages).toHaveLength(0);
   });
 
@@ -133,8 +142,12 @@ describe("useImagePreloader", () => {
 
     flushAllImageLoads();
     await waitFor(() => {
-      expect(createdImages.some((img) => img.src.startsWith("original://"))).toBe(true);
-      expect(createdImages.some((img) => img.src === "thumb://localhost/3/small")).toBe(true);
+      expect(
+        createdImages.some((img) => img.src.startsWith("original://")),
+      ).toBe(true);
+      expect(
+        createdImages.some((img) => img.src === "thumb://localhost/3/small"),
+      ).toBe(true);
     });
   });
 

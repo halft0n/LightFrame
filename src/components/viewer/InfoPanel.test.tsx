@@ -25,7 +25,9 @@ describe("InfoPanel", () => {
   it("renders media information correctly", () => {
     render(<InfoPanel media={baseMedia} />);
 
-    expect(screen.getByRole("complementary", { name: "信息" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("complementary", { name: "信息" }),
+    ).toBeInTheDocument();
     expect(screen.getByText("test.jpg")).toBeInTheDocument();
     expect(screen.getByText("/photos/test.jpg")).toBeInTheDocument();
     expect(screen.getByText("1920 × 1080")).toBeInTheDocument();

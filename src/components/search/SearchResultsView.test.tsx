@@ -3,7 +3,11 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SearchResultsView } from "./SearchResultsView";
 import { setLocale } from "@/i18n/index";
-import { addSearchHistory, setSearchQuery, setSearchMode } from "@/store/appStore";
+import {
+  addSearchHistory,
+  setSearchQuery,
+  setSearchMode,
+} from "@/store/appStore";
 
 const searchMedia = vi.fn();
 const searchMediaCount = vi.fn();
@@ -38,7 +42,8 @@ class ResizeObserverMock {
     );
   }
 }
-globalThis.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
+globalThis.ResizeObserver =
+  ResizeObserverMock as unknown as typeof ResizeObserver;
 
 beforeEach(() => {
   localStorage.clear();
@@ -103,7 +108,9 @@ describe("SearchResultsView", () => {
 
     render(<SearchResultsView />);
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "语义搜索" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "语义搜索" }),
+      ).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole("button", { name: "语义搜索" }));

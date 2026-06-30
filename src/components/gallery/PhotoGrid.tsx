@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PhotoCard } from "./PhotoCard";
 import { SelectionToolbar } from "./SelectionToolbar";
-import { batchDeleteMedia, batchToggleFavorite, type MediaItem } from "@/lib/tauri";
+import {
+  batchDeleteMedia,
+  batchToggleFavorite,
+  type MediaItem,
+} from "@/lib/tauri";
 import { isTypingTarget } from "@/lib/keyboard";
 import {
   clearMediaSelection,
@@ -70,7 +74,11 @@ function ThumbnailSizeControl({
             viewBox="0 0 24 24"
             fill="currentColor"
             className={
-              level === "small" ? "h-3 w-3" : level === "medium" ? "h-3.5 w-3.5" : "h-4 w-4"
+              level === "small"
+                ? "h-3 w-3"
+                : level === "medium"
+                  ? "h-3.5 w-3.5"
+                  : "h-4 w-4"
             }
             aria-hidden="true"
           >
@@ -189,10 +197,14 @@ export function PhotoGrid({
     if (!el) return;
 
     el.addEventListener("scroll", handleScroll, SCROLL_LISTENER_OPTIONS);
-    return () => el.removeEventListener("scroll", handleScroll, SCROLL_LISTENER_OPTIONS);
+    return () =>
+      el.removeEventListener("scroll", handleScroll, SCROLL_LISTENER_OPTIONS);
   }, [handleScroll]);
 
-  const selectedSet = useMemo(() => new Set(selectedMediaIds), [selectedMediaIds]);
+  const selectedSet = useMemo(
+    () => new Set(selectedMediaIds),
+    [selectedMediaIds],
+  );
 
   const handleSelect = useCallback(
     (id: number, event: React.MouseEvent) => {
@@ -230,7 +242,9 @@ export function PhotoGrid({
       if (e.key === "Delete" || e.key === "Backspace") {
         e.preventDefault();
         if (selectedMediaIds.length > 0) {
-          const msg = t("gallery.confirmBatchDelete", { count: selectedMediaIds.length });
+          const msg = t("gallery.confirmBatchDelete", {
+            count: selectedMediaIds.length,
+          });
           if (window.confirm(msg)) {
             void (async () => {
               try {
@@ -284,7 +298,10 @@ export function PhotoGrid({
           >
             ▶ {t("slideshow.start")}
           </button>
-          <ThumbnailSizeControl size={thumbnailSize} onChange={setThumbnailSize} />
+          <ThumbnailSizeControl
+            size={thumbnailSize}
+            onChange={setThumbnailSize}
+          />
         </div>
       )}
       <div ref={parentRef} className="flex-1 overflow-y-auto px-1 py-1">

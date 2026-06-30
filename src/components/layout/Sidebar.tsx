@@ -2,7 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "@/i18n/useTranslation";
 import { addToAlbum, listAlbums, type Album } from "@/lib/tauri";
 import { parseDragMediaIds } from "@/lib/dragMedia";
-import { navigate, openAlbumDetail, useAppStore, type AppView } from "@/store/appStore";
+import {
+  navigate,
+  openAlbumDetail,
+  useAppStore,
+  type AppView,
+} from "@/store/appStore";
 import { NavIcon, type NavIconName } from "./NavIcons";
 
 const LIBRARY_ITEMS: SidebarItem[] = [
@@ -59,7 +64,8 @@ function FolderIcon({ className }: { className?: string }) {
 function isNavActive(currentView: AppView, itemView: AppView): boolean {
   if (currentView === itemView) return true;
   if (itemView === "albums" && currentView === "album-detail") return true;
-  if (itemView === "smart-albums" && currentView === "smart-album-detail") return true;
+  if (itemView === "smart-albums" && currentView === "smart-album-detail")
+    return true;
   if (itemView === "people" && currentView === "person-detail") return true;
   return false;
 }
@@ -144,7 +150,10 @@ function NavItem({
         className={navItemClass(active)}
         aria-current={active ? "page" : undefined}
       >
-        <NavIcon name={item.icon} className={active ? "opacity-100" : "opacity-60"} />
+        <NavIcon
+          name={item.icon}
+          className={active ? "opacity-100" : "opacity-60"}
+        />
         <span>{t(item.key)}</span>
       </button>
     </li>
@@ -183,17 +192,27 @@ function AlbumDropItem({
         title={album.name}
         aria-current={active ? "page" : undefined}
       >
-        <NavIcon name="albums" className={active ? "opacity-100" : "opacity-60"} />
+        <NavIcon
+          name="albums"
+          className={active ? "opacity-100" : "opacity-60"}
+        />
         <span className="truncate">{album.name}</span>
-        <span className="ml-auto text-[11px] tabular-nums text-neutral-400">{album.media_count}</span>
+        <span className="ml-auto text-[11px] tabular-nums text-neutral-400">
+          {album.media_count}
+        </span>
       </button>
     </li>
   );
 }
 
-export function Sidebar({ isMobile = false, mobileOpen = false, onMobileClose }: SidebarProps) {
+export function Sidebar({
+  isMobile = false,
+  mobileOpen = false,
+  onMobileClose,
+}: SidebarProps) {
   const { t } = useTranslation();
-  const { currentView, watchedFolders, selectedFolderId, selectedAlbumId } = useAppStore();
+  const { currentView, watchedFolders, selectedFolderId, selectedAlbumId } =
+    useAppStore();
   const [libraryExpanded, setLibraryExpanded] = useState(true);
   const [foldersExpanded, setFoldersExpanded] = useState(true);
   const [albumsExpanded, setAlbumsExpanded] = useState(true);
@@ -225,30 +244,40 @@ export function Sidebar({ isMobile = false, mobileOpen = false, onMobileClose }:
     }, 200);
   };
 
-  const handleAlbumDragOver = useCallback((albumId: number, e: React.DragEvent) => {
-    if (![...e.dataTransfer.types].includes("application/x-lightframe-media-ids")) {
-      return;
-    }
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
-    setDragOverAlbumId(albumId);
-  }, []);
+  const handleAlbumDragOver = useCallback(
+    (albumId: number, e: React.DragEvent) => {
+      if (
+        ![...e.dataTransfer.types].includes(
+          "application/x-lightframe-media-ids",
+        )
+      ) {
+        return;
+      }
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+      setDragOverAlbumId(albumId);
+    },
+    [],
+  );
 
   const handleAlbumDragLeave = useCallback(() => {
     setDragOverAlbumId(null);
   }, []);
 
-  const handleAlbumDrop = useCallback(async (albumId: number, e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOverAlbumId(null);
-    const mediaIds = parseDragMediaIds(e.dataTransfer);
-    if (mediaIds.length === 0) return;
-    try {
-      await addToAlbum(albumId, mediaIds);
-    } catch (err) {
-      console.error("Failed to add photos to album:", err);
-    }
-  }, []);
+  const handleAlbumDrop = useCallback(
+    async (albumId: number, e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOverAlbumId(null);
+      const mediaIds = parseDragMediaIds(e.dataTransfer);
+      if (mediaIds.length === 0) return;
+      try {
+        await addToAlbum(albumId, mediaIds);
+      } catch (err) {
+        console.error("Failed to add photos to album:", err);
+      }
+    },
+    [],
+  );
 
   if (isMobile && !mobileOpen) {
     return null;
@@ -273,7 +302,14 @@ export function Sidebar({ isMobile = false, mobileOpen = false, onMobileClose }:
             className="rounded-md p-1.5 text-neutral-500 transition hover:bg-neutral-200/60 hover:text-neutral-800 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
             aria-label={t("sidebar.closeSidebar")}
           >
-            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+            >
               <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
             </svg>
           </button>
@@ -288,12 +324,21 @@ export function Sidebar({ isMobile = false, mobileOpen = false, onMobileClose }:
         </div>
       )}
 
-      <nav role="navigation" aria-label={t("sidebar.navigation")} className="flex-1 space-y-1 overflow-y-auto px-1.5 pb-2 pt-1">
+      <nav
+        role="navigation"
+        aria-label={t("sidebar.navigation")}
+        className="flex-1 space-y-1 overflow-y-auto px-1.5 pb-2 pt-1"
+      >
         <CollapsibleSection
           id="sidebar-library"
           label={t("sidebar.basicLibrary")}
           icon={
-            <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-blue-500" fill="currentColor" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4 shrink-0 text-blue-500"
+              fill="currentColor"
+              aria-hidden="true"
+            >
               <rect x="3" y="3" width="7" height="7" rx="1.5" opacity="0.8" />
               <rect x="14" y="3" width="7" height="7" rx="1.5" opacity="0.6" />
               <rect x="3" y="14" width="7" height="7" rx="1.5" opacity="0.6" />
@@ -305,7 +350,12 @@ export function Sidebar({ isMobile = false, mobileOpen = false, onMobileClose }:
         >
           <ul className="space-y-px pt-px">
             {LIBRARY_ITEMS.map((item) => (
-              <NavItem key={item.view} item={item} currentView={currentView} onNav={handleNav} />
+              <NavItem
+                key={item.view}
+                item={item}
+                currentView={currentView}
+                onNav={handleNav}
+              />
             ))}
           </ul>
         </CollapsibleSection>
@@ -320,7 +370,8 @@ export function Sidebar({ isMobile = false, mobileOpen = false, onMobileClose }:
           >
             <ul className="space-y-px pt-px">
               {watchedFolders.map((folder) => {
-                const active = currentView === "folder" && selectedFolderId === folder.id;
+                const active =
+                  currentView === "folder" && selectedFolderId === folder.id;
                 return (
                   <li key={folder.id}>
                     <button
@@ -336,8 +387,12 @@ export function Sidebar({ isMobile = false, mobileOpen = false, onMobileClose }:
                       title={folder.path}
                       aria-current={active ? "page" : undefined}
                     >
-                      <FolderIcon className={active ? "opacity-100" : "opacity-60"} />
-                      <span className="truncate">{folderDisplayName(folder.path)}</span>
+                      <FolderIcon
+                        className={active ? "opacity-100" : "opacity-60"}
+                      />
+                      <span className="truncate">
+                        {folderDisplayName(folder.path)}
+                      </span>
                     </button>
                   </li>
                 );
@@ -350,7 +405,14 @@ export function Sidebar({ isMobile = false, mobileOpen = false, onMobileClose }:
           id="sidebar-albums"
           label={t("sidebar.albumsSection")}
           icon={
-            <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0 text-neutral-500" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+            <svg
+              viewBox="0 0 24 24"
+              className="h-4 w-4 shrink-0 text-neutral-500"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.75"
+              aria-hidden="true"
+            >
               <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
             </svg>
           }
@@ -359,7 +421,12 @@ export function Sidebar({ isMobile = false, mobileOpen = false, onMobileClose }:
         >
           <ul className="space-y-px pt-px">
             {ALBUM_ITEMS.map((item) => (
-              <NavItem key={item.view} item={item} currentView={currentView} onNav={handleNav} />
+              <NavItem
+                key={item.view}
+                item={item}
+                currentView={currentView}
+                onNav={handleNav}
+              />
             ))}
             {albums.length > 0 && (
               <>
@@ -391,9 +458,16 @@ export function Sidebar({ isMobile = false, mobileOpen = false, onMobileClose }:
           type="button"
           onClick={() => handleNav("deleted")}
           className={navItemClass(isNavActive(currentView, "deleted"))}
-          aria-current={isNavActive(currentView, "deleted") ? "page" : undefined}
+          aria-current={
+            isNavActive(currentView, "deleted") ? "page" : undefined
+          }
         >
-          <NavIcon name="deleted" className={isNavActive(currentView, "deleted") ? "opacity-100" : "opacity-60"} />
+          <NavIcon
+            name="deleted"
+            className={
+              isNavActive(currentView, "deleted") ? "opacity-100" : "opacity-60"
+            }
+          />
           <span>{t("sidebar.deleted")}</span>
         </button>
         <button
@@ -402,7 +476,12 @@ export function Sidebar({ isMobile = false, mobileOpen = false, onMobileClose }:
           className={navItemClass(currentView === "settings")}
           aria-current={currentView === "settings" ? "page" : undefined}
         >
-          <NavIcon name="settings" className={currentView === "settings" ? "opacity-100" : "opacity-60"} />
+          <NavIcon
+            name="settings"
+            className={
+              currentView === "settings" ? "opacity-100" : "opacity-60"
+            }
+          />
           <span>{t("sidebar.settings")}</span>
         </button>
       </div>

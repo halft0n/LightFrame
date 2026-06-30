@@ -69,7 +69,8 @@ class ResizeObserverMock {
   }
 }
 let lastResizeObserver: ResizeObserverMock | null = null;
-globalThis.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
+globalThis.ResizeObserver =
+  ResizeObserverMock as unknown as typeof ResizeObserver;
 
 function renderGridWithLayout(items: MediaItem[], totalCount?: number) {
   if (totalCount !== undefined) {
@@ -80,9 +81,18 @@ function renderGridWithLayout(items: MediaItem[], totalCount?: number) {
   const view = render(<PhotoGrid />);
   const scrollContainer = view.container.querySelector(".overflow-y-auto");
   if (scrollContainer) {
-    Object.defineProperty(scrollContainer, "clientWidth", { value: 800, configurable: true });
-    Object.defineProperty(scrollContainer, "clientHeight", { value: 600, configurable: true });
-    Object.defineProperty(scrollContainer, "scrollHeight", { value: 2000, configurable: true });
+    Object.defineProperty(scrollContainer, "clientWidth", {
+      value: 800,
+      configurable: true,
+    });
+    Object.defineProperty(scrollContainer, "clientHeight", {
+      value: 600,
+      configurable: true,
+    });
+    Object.defineProperty(scrollContainer, "scrollHeight", {
+      value: 2000,
+      configurable: true,
+    });
   }
   lastResizeObserver?.trigger(800);
   return view;
@@ -137,7 +147,10 @@ describe("PhotoGrid", () => {
   });
 
   it("shows selection toolbar when items are selected", async () => {
-    setMedia([sampleMedia, { ...sampleMedia, id: 2, filename: "beach.jpg" }], 2);
+    setMedia(
+      [sampleMedia, { ...sampleMedia, id: 2, filename: "beach.jpg" }],
+      2,
+    );
     toggleMediaSelection(1);
 
     render(<PhotoGrid />);
@@ -146,7 +159,9 @@ describe("PhotoGrid", () => {
       expect(screen.getByText(/已选择 1 项/)).toBeInTheDocument();
     });
     expect(screen.getByRole("button", { name: "删除" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "加入相簿" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "加入相簿" }),
+    ).toBeInTheDocument();
   });
 
   it("handles loadMore failure without crashing", async () => {
@@ -157,9 +172,19 @@ describe("PhotoGrid", () => {
     const scrollContainer = container.querySelector(".overflow-y-auto");
     expect(scrollContainer).toBeTruthy();
 
-    Object.defineProperty(scrollContainer!, "scrollHeight", { value: 2000, configurable: true });
-    Object.defineProperty(scrollContainer!, "clientHeight", { value: 600, configurable: true });
-    Object.defineProperty(scrollContainer!, "scrollTop", { value: 1300, writable: true, configurable: true });
+    Object.defineProperty(scrollContainer!, "scrollHeight", {
+      value: 2000,
+      configurable: true,
+    });
+    Object.defineProperty(scrollContainer!, "clientHeight", {
+      value: 600,
+      configurable: true,
+    });
+    Object.defineProperty(scrollContainer!, "scrollTop", {
+      value: 1300,
+      writable: true,
+      configurable: true,
+    });
 
     fireEvent.scroll(scrollContainer!);
 
@@ -170,7 +195,10 @@ describe("PhotoGrid", () => {
   });
 
   it("clears selection on Escape key", async () => {
-    setMedia([sampleMedia, { ...sampleMedia, id: 2, filename: "beach.jpg" }], 2);
+    setMedia(
+      [sampleMedia, { ...sampleMedia, id: 2, filename: "beach.jpg" }],
+      2,
+    );
     toggleMediaSelection(1);
 
     render(<PhotoGrid />);
@@ -186,7 +214,10 @@ describe("PhotoGrid", () => {
   });
 
   it("selects all with Ctrl+A", async () => {
-    setMedia([sampleMedia, { ...sampleMedia, id: 2, filename: "beach.jpg" }], 2);
+    setMedia(
+      [sampleMedia, { ...sampleMedia, id: 2, filename: "beach.jpg" }],
+      2,
+    );
 
     render(<PhotoGrid />);
 
@@ -197,7 +228,10 @@ describe("PhotoGrid", () => {
   });
 
   it("selects all with Meta+A on macOS-style modifier", async () => {
-    setMedia([sampleMedia, { ...sampleMedia, id: 2, filename: "beach.jpg" }], 2);
+    setMedia(
+      [sampleMedia, { ...sampleMedia, id: 2, filename: "beach.jpg" }],
+      2,
+    );
 
     render(<PhotoGrid />);
 
@@ -224,8 +258,14 @@ describe("PhotoGrid", () => {
   });
 
   it("batch deletes selected items on Delete key when confirmed", async () => {
-    vi.stubGlobal("confirm", vi.fn(() => true));
-    setMedia([sampleMedia, { ...sampleMedia, id: 2, filename: "beach.jpg" }], 2);
+    vi.stubGlobal(
+      "confirm",
+      vi.fn(() => true),
+    );
+    setMedia(
+      [sampleMedia, { ...sampleMedia, id: 2, filename: "beach.jpg" }],
+      2,
+    );
     toggleMediaSelection(1);
     toggleMediaSelection(2);
 
@@ -241,7 +281,10 @@ describe("PhotoGrid", () => {
   });
 
   it("skips batch delete when confirmation is cancelled", async () => {
-    vi.stubGlobal("confirm", vi.fn(() => false));
+    vi.stubGlobal(
+      "confirm",
+      vi.fn(() => false),
+    );
     setMedia([sampleMedia], 1);
     toggleMediaSelection(1);
 
@@ -256,7 +299,10 @@ describe("PhotoGrid", () => {
   });
 
   it("batch favorites selected items on F key", async () => {
-    setMedia([sampleMedia, { ...sampleMedia, id: 2, filename: "beach.jpg" }], 2);
+    setMedia(
+      [sampleMedia, { ...sampleMedia, id: 2, filename: "beach.jpg" }],
+      2,
+    );
     toggleMediaSelection(1);
 
     render(<PhotoGrid />);

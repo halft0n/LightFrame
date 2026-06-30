@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { PhotoGrid } from "@/components/gallery/PhotoGrid";
-import { getMediaByFolder, getMediaCountByFolder, type MediaItem } from "@/lib/tauri";
+import {
+  getMediaByFolder,
+  getMediaCountByFolder,
+  type MediaItem,
+} from "@/lib/tauri";
 import { useAppStore } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -39,10 +43,15 @@ export function FolderView() {
   }, [loadInitial]);
 
   const loadMore = useCallback(async () => {
-    if (selectedFolderId == null || loadingMore || media.length >= totalCount) return;
+    if (selectedFolderId == null || loadingMore || media.length >= totalCount)
+      return;
     setLoadingMore(true);
     try {
-      const items = await getMediaByFolder(selectedFolderId, media.length, PAGE_SIZE);
+      const items = await getMediaByFolder(
+        selectedFolderId,
+        media.length,
+        PAGE_SIZE,
+      );
       setMedia((prev) => [...prev, ...items]);
     } catch (err) {
       console.error("Failed to load more folder media:", err);
@@ -70,7 +79,10 @@ export function FolderView() {
           {t("folder.title")}
         </h2>
         {selectedFolderPath && (
-          <p className="mt-0.5 truncate text-sm text-neutral-500" title={selectedFolderPath}>
+          <p
+            className="mt-0.5 truncate text-sm text-neutral-500"
+            title={selectedFolderPath}
+          >
             {selectedFolderPath}
           </p>
         )}

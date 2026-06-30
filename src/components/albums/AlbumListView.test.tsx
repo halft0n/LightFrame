@@ -42,13 +42,17 @@ describe("AlbumListView", () => {
       media_count: 0,
       created_at: "2024-01-01",
     });
-    listAlbums.mockResolvedValueOnce([]).mockResolvedValueOnce([
-      { id: 1, name: "Summer", media_count: 0, created_at: "2024-01-01" },
-    ]);
+    listAlbums
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        { id: 1, name: "Summer", media_count: 0, created_at: "2024-01-01" },
+      ]);
 
     render(<AlbumListView />);
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: "新建相簿" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "新建相簿" }),
+      ).toBeInTheDocument();
     });
 
     await user.click(screen.getByRole("button", { name: "新建相簿" }));

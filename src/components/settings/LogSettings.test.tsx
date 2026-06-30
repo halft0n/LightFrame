@@ -16,19 +16,34 @@ const defaultConfig = {
 };
 
 const sampleLogFiles = [
-  { path: "/logs/app.log", size_bytes: 1_048_576, modified: "2024-06-01T00:00:00" },
-  { path: "/logs/app.old.log", size_bytes: 524_288, modified: "2024-05-01T00:00:00" },
+  {
+    path: "/logs/app.log",
+    size_bytes: 1_048_576,
+    modified: "2024-06-01T00:00:00",
+  },
+  {
+    path: "/logs/app.old.log",
+    size_bytes: 524_288,
+    modified: "2024-05-01T00:00:00",
+  },
 ];
 
-function setupInvoke(overrides: {
-  config?: typeof defaultConfig;
-  logDir?: string;
-  logFiles?: typeof sampleLogFiles;
-} = {}) {
+function setupInvoke(
+  overrides: {
+    config?: typeof defaultConfig;
+    logDir?: string;
+    logFiles?: typeof sampleLogFiles;
+  } = {},
+) {
   (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
-    if (cmd === "get_log_config") return Promise.resolve(overrides.config ?? defaultConfig);
-    if (cmd === "get_log_directory") return Promise.resolve(overrides.logDir ?? "/home/user/.local/share/lightframe/logs");
-    if (cmd === "get_log_files") return Promise.resolve(overrides.logFiles ?? sampleLogFiles);
+    if (cmd === "get_log_config")
+      return Promise.resolve(overrides.config ?? defaultConfig);
+    if (cmd === "get_log_directory")
+      return Promise.resolve(
+        overrides.logDir ?? "/home/user/.local/share/lightframe/logs",
+      );
+    if (cmd === "get_log_files")
+      return Promise.resolve(overrides.logFiles ?? sampleLogFiles);
     if (cmd === "set_log_config") return Promise.resolve(undefined);
     if (cmd === "cleanup_logs") return Promise.resolve(undefined);
     return Promise.resolve(null);
@@ -49,7 +64,9 @@ describe("LogSettings", () => {
     await waitFor(() => {
       expect(screen.getByText("日志设置")).toBeInTheDocument();
     });
-    expect(screen.getByText("配置应用日志级别、保留策略和存储限制")).toBeInTheDocument();
+    expect(
+      screen.getByText("配置应用日志级别、保留策略和存储限制"),
+    ).toBeInTheDocument();
   });
 
   it("loads and displays config from backend", async () => {
@@ -59,14 +76,18 @@ describe("LogSettings", () => {
       expect(screen.getByDisplayValue("14")).toBeInTheDocument();
     });
     expect(screen.getByDisplayValue("200")).toBeInTheDocument();
-    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe("debug");
+    expect((screen.getByRole("combobox") as HTMLSelectElement).value).toBe(
+      "debug",
+    );
   });
 
   it("shows log directory and file stats", async () => {
     render(<LogSettings />);
 
     await waitFor(() => {
-      expect(screen.getByText("/home/user/.local/share/lightframe/logs")).toBeInTheDocument();
+      expect(
+        screen.getByText("/home/user/.local/share/lightframe/logs"),
+      ).toBeInTheDocument();
     });
     expect(screen.getByText(/日志文件数.*2/)).toBeInTheDocument();
     expect(screen.getByText(/总大小.*1\.5 MB/)).toBeInTheDocument();
@@ -87,7 +108,9 @@ describe("LogSettings", () => {
       expect(invoke).toHaveBeenCalledWith("set_log_config", {
         config: expect.objectContaining({ level: "warn" }),
       });
-      expect(screen.getByRole("button", { name: "已保存 ✓" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "已保存 ✓" }),
+      ).toBeInTheDocument();
     });
   });
 
@@ -135,7 +158,8 @@ describe("LogSettings", () => {
   it("handles load config failure gracefully", async () => {
     const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
-      if (cmd === "get_log_config") return Promise.reject(new Error("load failed"));
+      if (cmd === "get_log_config")
+        return Promise.reject(new Error("load failed"));
       if (cmd === "get_log_directory") return Promise.resolve("/logs");
       if (cmd === "get_log_files") return Promise.resolve([]);
       return Promise.resolve(null);
@@ -158,7 +182,8 @@ describe("LogSettings", () => {
       if (cmd === "get_log_config") return Promise.resolve(defaultConfig);
       if (cmd === "get_log_directory") return Promise.resolve("/logs");
       if (cmd === "get_log_files") return Promise.resolve(sampleLogFiles);
-      if (cmd === "set_log_config") return Promise.reject(new Error("save failed"));
+      if (cmd === "set_log_config")
+        return Promise.reject(new Error("save failed"));
       return Promise.resolve(null);
     });
 
@@ -171,7 +196,10 @@ describe("LogSettings", () => {
     await user.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => {
-      expect(consoleSpy).toHaveBeenCalledWith("Failed to save log config:", expect.any(Error));
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "Failed to save log config:",
+        expect.any(Error),
+      );
     });
     expect(screen.getByRole("button", { name: "保存" })).toBeInTheDocument();
     consoleSpy.mockRestore();
@@ -184,7 +212,8 @@ describe("LogSettings", () => {
       if (cmd === "get_log_config") return Promise.resolve(defaultConfig);
       if (cmd === "get_log_directory") return Promise.resolve("/logs");
       if (cmd === "get_log_files") return Promise.resolve(sampleLogFiles);
-      if (cmd === "cleanup_logs") return Promise.reject(new Error("cleanup failed"));
+      if (cmd === "cleanup_logs")
+        return Promise.reject(new Error("cleanup failed"));
       return Promise.resolve(null);
     });
 
@@ -197,7 +226,10 @@ describe("LogSettings", () => {
     await user.click(screen.getByRole("button", { name: "立即清理" }));
 
     await waitFor(() => {
-      expect(consoleSpy).toHaveBeenCalledWith("Failed to cleanup logs:", expect.any(Error));
+      expect(consoleSpy).toHaveBeenCalledWith(
+        "Failed to cleanup logs:",
+        expect.any(Error),
+      );
     });
     expect(screen.getByText(/日志文件数.*2/)).toBeInTheDocument();
     consoleSpy.mockRestore();

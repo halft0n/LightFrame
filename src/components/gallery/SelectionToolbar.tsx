@@ -32,11 +32,14 @@ export function SelectionToolbar({
 
   const count = selectedMediaIds.length;
   const isTauri = Boolean(window.__TAURI_INTERNALS__);
-  const inAlbumContext = currentView === "album-detail" && selectedAlbumId != null;
+  const inAlbumContext =
+    currentView === "album-detail" && selectedAlbumId != null;
 
   useEffect(() => {
     if (count === 0) return;
-    void listAlbums().then(setAlbums).catch(() => setAlbums([]));
+    void listAlbums()
+      .then(setAlbums)
+      .catch(() => setAlbums([]));
   }, [count]);
 
   const refreshMedia = useCallback(async () => {
@@ -91,7 +94,9 @@ export function SelectionToolbar({
     setBusy(true);
     try {
       await Promise.all(
-        selectedMediaIds.map((mediaId) => removeFromAlbum(selectedAlbumId, mediaId)),
+        selectedMediaIds.map((mediaId) =>
+          removeFromAlbum(selectedAlbumId, mediaId),
+        ),
       );
       clearMediaSelection();
       await onAlbumChanged?.();
@@ -184,7 +189,9 @@ export function SelectionToolbar({
               {showAlbumPicker && (
                 <div className="absolute bottom-full left-0 mb-2 max-h-48 min-w-48 overflow-y-auto rounded-lg border border-neutral-700 bg-neutral-900 py-1 shadow-lg">
                   {albums.length === 0 ? (
-                    <p className="px-3 py-2 text-xs text-neutral-500">{t("albums.empty")}</p>
+                    <p className="px-3 py-2 text-xs text-neutral-500">
+                      {t("albums.empty")}
+                    </p>
                   ) : (
                     albums.map((album) => (
                       <button
@@ -260,10 +267,16 @@ export function SelectionToolbar({
             className="w-full max-w-sm rounded-xl border border-neutral-700 bg-neutral-900 p-5 shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <p id="delete-confirm-title" className="text-sm font-medium text-neutral-100">
+            <p
+              id="delete-confirm-title"
+              className="text-sm font-medium text-neutral-100"
+            >
               {t("batch.confirmDelete", { count })}
             </p>
-            <p id="delete-confirm-hint" className="mt-2 text-xs text-neutral-400">
+            <p
+              id="delete-confirm-hint"
+              className="mt-2 text-xs text-neutral-400"
+            >
               {t("batch.confirmDeleteHint")}
             </p>
             <div className="mt-4 flex justify-end gap-2">

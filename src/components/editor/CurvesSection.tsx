@@ -20,7 +20,10 @@ interface CurvesSectionProps {
   onChange: (patch: Partial<EditParams>) => void;
 }
 
-function getChannelPoints(curves: EditParams["curves"], channel: ChannelKey): CurvePoint[] {
+function getChannelPoints(
+  curves: EditParams["curves"],
+  channel: ChannelKey,
+): CurvePoint[] {
   if (!curves) return [...DEFAULT_CURVE_POINTS];
   const pts = channel === "rgb" ? curves.rgb : curves[channel];
   return pts?.length ? [...pts] : [...DEFAULT_CURVE_POINTS];
@@ -117,7 +120,10 @@ export function CurvesSection({ params, onChange }: CurvesSectionProps) {
     draw();
   }, [draw]);
 
-  const canvasToPoint = (clientX: number, clientY: number): CurvePoint | null => {
+  const canvasToPoint = (
+    clientX: number,
+    clientY: number,
+  ): CurvePoint | null => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
@@ -149,7 +155,9 @@ export function CurvesSection({ params, onChange }: CurvesSectionProps) {
       dragRef.current = { index: idx };
     } else {
       const next = sortCurvePoints([...sorted, pt]);
-      dragRef.current = { index: next.findIndex((p) => p[0] === pt[0] && p[1] === pt[1]) };
+      dragRef.current = {
+        index: next.findIndex((p) => p[0] === pt[0] && p[1] === pt[1]),
+      };
       updateChannelPoints(next);
     }
     draw();

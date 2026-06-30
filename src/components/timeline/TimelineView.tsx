@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PhotoCard } from "@/components/gallery/PhotoCard";
-import { getTimelineGroups, type MediaItem, type TimelineGroup } from "@/lib/tauri";
+import {
+  getTimelineGroups,
+  type MediaItem,
+  type TimelineGroup,
+} from "@/lib/tauri";
 import { openViewer } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
@@ -49,7 +53,9 @@ function formatDateHeader(
 
   const date = new Date(dateStr + "T00:00:00");
   if (locale === "zh-CN") {
-    const weekday = new Intl.DateTimeFormat("zh-CN", { weekday: "long" }).format(date);
+    const weekday = new Intl.DateTimeFormat("zh-CN", {
+      weekday: "long",
+    }).format(date);
     return t("timeline.dateHeader", {
       year: date.getFullYear(),
       month: date.getMonth() + 1,
@@ -66,7 +72,10 @@ function formatDateHeader(
   }).format(date);
 }
 
-function mergeTimelineGroups(prev: TimelineGroup[], data: TimelineGroup[]): TimelineGroup[] {
+function mergeTimelineGroups(
+  prev: TimelineGroup[],
+  data: TimelineGroup[],
+): TimelineGroup[] {
   if (prev.length === 0) return data;
   if (data.length === 0) return prev;
 
@@ -86,7 +95,10 @@ function mergeTimelineGroups(prev: TimelineGroup[], data: TimelineGroup[]): Time
   return [...prev, ...data];
 }
 
-function buildVirtualRows(groups: TimelineGroup[], columnCount: number): VirtualRow[] {
+function buildVirtualRows(
+  groups: TimelineGroup[],
+  columnCount: number,
+): VirtualRow[] {
   const rows: VirtualRow[] = [];
 
   for (const group of groups) {
@@ -132,7 +144,8 @@ export function TimelineView() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(true);
-  const [cursor, setCursor] = useState<ReturnType<typeof timelineCursorFromGroups>>(null);
+  const [cursor, setCursor] =
+    useState<ReturnType<typeof timelineCursorFromGroups>>(null);
   const [containerWidth, setContainerWidth] = useState(0);
 
   const loadInitial = useCallback(async () => {
@@ -345,9 +358,12 @@ export function TimelineView() {
                       onOpen={openViewer}
                     />
                   ))}
-                  {Array.from({ length: columnCount - row.items.length }, (_, i) => (
-                    <div key={`empty-${i}`} />
-                  ))}
+                  {Array.from(
+                    { length: columnCount - row.items.length },
+                    (_, i) => (
+                      <div key={`empty-${i}`} />
+                    ),
+                  )}
                 </div>
               </div>
             );
@@ -355,7 +371,11 @@ export function TimelineView() {
         </div>
 
         {loadingMore && (
-          <LoadingIndicator className="py-4" size="sm" label={t("a11y.loadingPhotos")} />
+          <LoadingIndicator
+            className="py-4"
+            size="sm"
+            label={t("a11y.loadingPhotos")}
+          />
         )}
       </div>
     </div>

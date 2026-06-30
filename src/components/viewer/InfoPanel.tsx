@@ -12,7 +12,11 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / 1073741824).toFixed(1)} GB`;
 }
 
-function formatMediaDate(item: MediaItem, locale: string, notAvailable: string): string {
+function formatMediaDate(
+  item: MediaItem,
+  locale: string,
+  notAvailable: string,
+): string {
   const raw = item.created_at ?? item.modified_at;
   if (!raw) return notAvailable;
   const date = new Date(raw);
@@ -56,7 +60,9 @@ export function InfoPanel({ media }: InfoPanelProps) {
       aria-label={t("viewer.info")}
       className="info-panel-slide-in absolute inset-y-0 right-0 z-10 w-80 overflow-y-auto border-l border-white/10 bg-black/70 p-4 text-sm shadow-2xl backdrop-blur-sm"
     >
-      <h2 className="mb-4 text-base font-semibold text-white">{t("viewer.info")}</h2>
+      <h2 className="mb-4 text-base font-semibold text-white">
+        {t("viewer.info")}
+      </h2>
       <dl className="space-y-3">
         <InfoRow label={t("viewer.filename")} value={media.filename} />
         <InfoRow label={t("viewer.path")} value={media.path} />
@@ -66,10 +72,18 @@ export function InfoPanel({ media }: InfoPanelProps) {
             value={`${media.width} × ${media.height}`}
           />
         )}
-        <InfoRow label={t("viewer.size")} value={formatFileSize(media.size_bytes)} />
+        <InfoRow
+          label={t("viewer.size")}
+          value={formatFileSize(media.size_bytes)}
+        />
         <InfoRow label={t("viewer.type")} value={media.media_type} />
-        {cameraInfo && <InfoRow label={t("viewer.camera")} value={cameraInfo} />}
-        <InfoRow label={t("viewer.date")} value={formatMediaDate(media, locale, t("common.notAvailable"))} />
+        {cameraInfo && (
+          <InfoRow label={t("viewer.camera")} value={cameraInfo} />
+        )}
+        <InfoRow
+          label={t("viewer.date")}
+          value={formatMediaDate(media, locale, t("common.notAvailable"))}
+        />
         {hasGps && (
           <InfoRow
             label={t("viewer.gps")}
@@ -77,13 +91,22 @@ export function InfoPanel({ media }: InfoPanelProps) {
           />
         )}
         {media.blake3_hash && (
-          <InfoRow label={t("viewer.blake3")} value={formatHash(media.blake3_hash)} />
+          <InfoRow
+            label={t("viewer.blake3")}
+            value={formatHash(media.blake3_hash)}
+          />
         )}
         {media.dhash != null && (
-          <InfoRow label={t("viewer.dhash")} value={formatPerceptualHash(media.dhash)} />
+          <InfoRow
+            label={t("viewer.dhash")}
+            value={formatPerceptualHash(media.dhash)}
+          />
         )}
         {media.phash != null && (
-          <InfoRow label={t("viewer.phash")} value={formatPerceptualHash(media.phash)} />
+          <InfoRow
+            label={t("viewer.phash")}
+            value={formatPerceptualHash(media.phash)}
+          />
         )}
       </dl>
     </aside>

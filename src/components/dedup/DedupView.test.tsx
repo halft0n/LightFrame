@@ -47,6 +47,8 @@ describe("DedupView", () => {
     await waitFor(() => {
       expect(screen.getByText("重复照片")).toBeInTheDocument();
     });
-    expect(screen.getByRole("button", { name: "扫描重复" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "扫描重复" }),
+    ).toBeInTheDocument();
   });
 });

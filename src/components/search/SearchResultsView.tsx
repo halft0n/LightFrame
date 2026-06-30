@@ -9,7 +9,12 @@ import {
   type SearchResult,
   type AiStatus,
 } from "@/lib/tauri";
-import { openViewer, setSearchMode, useAppStore, type SearchMode } from "@/store/appStore";
+import {
+  openViewer,
+  setSearchMode,
+  useAppStore,
+  type SearchMode,
+} from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
@@ -71,7 +76,9 @@ export function SearchResultsView() {
   const parentRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef(0);
   const [media, setMedia] = useState<MediaItem[]>([]);
-  const [relevanceById, setRelevanceById] = useState<Map<number, number>>(new Map());
+  const [relevanceById, setRelevanceById] = useState<Map<number, number>>(
+    new Map(),
+  );
   const [usedSemantic, setUsedSemantic] = useState<boolean | null>(null);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -87,50 +94,55 @@ export function SearchResultsView() {
   );
   const hasMore = searchMode === "text" && media.length < totalCount;
 
-  const loadInitial = useCallback(async (query: string, mode: SearchMode) => {
-    const trimmed = query.trim();
-    const requestId = ++requestIdRef.current;
+  const loadInitial = useCallback(
+    async (query: string, mode: SearchMode) => {
+      const trimmed = query.trim();
+      const requestId = ++requestIdRef.current;
 
-    if (!trimmed) {
-      setMedia([]);
-      setTotalCount(0);
-      setRelevanceById(new Map());
-      setUsedSemantic(null);
-      setError(null);
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-    try {
-      if (mode === "semantic") {
-        const response = await semanticSearch(trimmed, PAGE_SIZE);
-        if (requestId !== requestIdRef.current) return;
-        setMedia(response.results.map(searchResultToMediaItem));
-        setRelevanceById(new Map(response.results.map((r) => [r.media_id, r.relevance])));
-        setUsedSemantic(response.used_semantic);
-        setTotalCount(response.results.length);
-      } else {
-        const [items, count] = await Promise.all([
-          searchMedia(trimmed, PAGE_SIZE, 0),
-          searchMediaCount(trimmed),
-        ]);
-        if (requestId !== requestIdRef.current) return;
-        setMedia(items);
+      if (!trimmed) {
+        setMedia([]);
+        setTotalCount(0);
         setRelevanceById(new Map());
         setUsedSemantic(null);
-        setTotalCount(count);
+        setError(null);
+        return;
       }
-    } catch (err) {
-      if (requestId !== requestIdRef.current) return;
-      console.error("Failed to search media:", err);
-      setError(t("search.error"));
-    } finally {
-      if (requestId === requestIdRef.current) {
-        setLoading(false);
+
+      setLoading(true);
+      setError(null);
+      try {
+        if (mode === "semantic") {
+          const response = await semanticSearch(trimmed, PAGE_SIZE);
+          if (requestId !== requestIdRef.current) return;
+          setMedia(response.results.map(searchResultToMediaItem));
+          setRelevanceById(
+            new Map(response.results.map((r) => [r.media_id, r.relevance])),
+          );
+          setUsedSemantic(response.used_semantic);
+          setTotalCount(response.results.length);
+        } else {
+          const [items, count] = await Promise.all([
+            searchMedia(trimmed, PAGE_SIZE, 0),
+            searchMediaCount(trimmed),
+          ]);
+          if (requestId !== requestIdRef.current) return;
+          setMedia(items);
+          setRelevanceById(new Map());
+          setUsedSemantic(null);
+          setTotalCount(count);
+        }
+      } catch (err) {
+        if (requestId !== requestIdRef.current) return;
+        console.error("Failed to search media:", err);
+        setError(t("search.error"));
+      } finally {
+        if (requestId === requestIdRef.current) {
+          setLoading(false);
+        }
       }
-    }
-  }, [t]);
+    },
+    [t],
+  );
 
   useEffect(() => {
     if (searchMode !== "semantic") {
@@ -254,7 +266,9 @@ export function SearchResultsView() {
       {searchMode === "semantic" && usedSemantic === false && (
         <div className="border-b border-amber-200/80 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
           <p>{t("search.semanticFallback")}</p>
-          <p className="mt-1 text-xs opacity-90">{t("search.semanticDownloadHint")}</p>
+          <p className="mt-1 text-xs opacity-90">
+            {t("search.semanticDownloadHint")}
+          </p>
         </div>
       )}
 
@@ -264,12 +278,17 @@ export function SearchResultsView() {
         </div>
       )}
 
-      {searchMode === "semantic" && aiStatus && !aiStatus.clip_available && usedSemantic === null && (
-        <div className="border-b border-amber-200/80 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
-          <p>{t("search.semanticFallback")}</p>
-          <p className="mt-1 text-xs opacity-90">{t("search.semanticDownloadHint")}</p>
-        </div>
-      )}
+      {searchMode === "semantic" &&
+        aiStatus &&
+        !aiStatus.clip_available &&
+        usedSemantic === null && (
+          <div className="border-b border-amber-200/80 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200">
+            <p>{t("search.semanticFallback")}</p>
+            <p className="mt-1 text-xs opacity-90">
+              {t("search.semanticDownloadHint")}
+            </p>
+          </div>
+        )}
 
       {error && (
         <ErrorBanner
@@ -281,7 +300,9 @@ export function SearchResultsView() {
       {media.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-2 text-neutral-500">
           <p>{t("search.noResults")}</p>
-          <p className="text-sm text-neutral-600">{t("search.noResultsHint")}</p>
+          <p className="text-sm text-neutral-600">
+            {t("search.noResultsHint")}
+          </p>
         </div>
       ) : (
         <div ref={parentRef} className="flex-1 overflow-y-auto px-1 py-1">
@@ -308,8 +329,10 @@ export function SearchResultsView() {
                         usedSemantic ? "bg-violet-600/80" : "bg-black/60"
                       }`}
                     >
-                      {usedSemantic ? t("search.similarity") : t("search.relevance")}:{" "}
-                      {(relevance * 100).toFixed(0)}%
+                      {usedSemantic
+                        ? t("search.similarity")
+                        : t("search.relevance")}
+                      : {(relevance * 100).toFixed(0)}%
                     </span>
                   )}
                 </div>
@@ -317,7 +340,11 @@ export function SearchResultsView() {
             })}
           </div>
           {loadingMore && (
-            <LoadingIndicator className="py-4" size="sm" label={t("a11y.searching")} />
+            <LoadingIndicator
+              className="py-4"
+              size="sm"
+              label={t("a11y.searching")}
+            />
           )}
           {loadMoreError && !loadingMore && (
             <div className="px-3 py-4">

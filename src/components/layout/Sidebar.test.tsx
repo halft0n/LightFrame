@@ -19,7 +19,8 @@ vi.mock("@/lib/tauri", async (importOriginal) => {
   return {
     ...actual,
     listAlbums: () => listAlbums(),
-    addToAlbum: (...args: Parameters<typeof actual.addToAlbum>) => addToAlbum(...args),
+    addToAlbum: (...args: Parameters<typeof actual.addToAlbum>) =>
+      addToAlbum(...args),
   };
 });
 
@@ -83,7 +84,9 @@ describe("Sidebar", () => {
     render(<Sidebar />);
     const nav = screen.getByRole("navigation", { name: "主导航" });
     expect(nav).toBeInTheDocument();
-    expect(screen.getByRole("complementary", { name: "主导航" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("complementary", { name: "主导航" }),
+    ).toBeInTheDocument();
   });
 
   it("highlights active view with aria-current", () => {
@@ -142,7 +145,9 @@ describe("Sidebar", () => {
     ]);
     render(<Sidebar />);
 
-    const albumButton = await screen.findByRole("button", { name: /Drop Target/ });
+    const albumButton = await screen.findByRole("button", {
+      name: /Drop Target/,
+    });
     const dataTransfer = {
       types: [DRAG_MEDIA_MIME],
       dropEffect: "",
@@ -164,7 +169,9 @@ describe("Sidebar", () => {
     ]);
     render(<Sidebar />);
 
-    const albumButton = await screen.findByRole("button", { name: /Drop Target/ });
+    const albumButton = await screen.findByRole("button", {
+      name: /Drop Target/,
+    });
     const dataTransfer = {
       types: [DRAG_MEDIA_MIME],
       dropEffect: "",

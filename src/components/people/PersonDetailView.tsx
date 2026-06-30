@@ -86,7 +86,11 @@ export function PersonDetailView() {
     if (selectedPersonId == null || loadingMore || !hasMore) return;
     setLoadingMore(true);
     try {
-      const items = await getPersonFaces(selectedPersonId, faces.length, PAGE_SIZE);
+      const items = await getPersonFaces(
+        selectedPersonId,
+        faces.length,
+        PAGE_SIZE,
+      );
       setFaces((prev) => [...prev, ...items]);
       setHasMore(items.length === PAGE_SIZE);
     } catch (err) {
@@ -262,7 +266,9 @@ export function PersonDetailView() {
           </div>
         )}
         {loadingMore && (
-          <div className="py-4 text-center text-sm text-neutral-500">{t("gallery.loading")}</div>
+          <div className="py-4 text-center text-sm text-neutral-500">
+            {t("gallery.loading")}
+          </div>
         )}
       </div>
     </div>

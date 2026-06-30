@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, TileLayer, useMap } from "react-leaflet";
 import L from "leaflet";
 import "leaflet.markercluster";
@@ -13,7 +13,8 @@ import { useTranslation } from "@/i18n/useTranslation";
 import { openViewer, useAppStore } from "@/store/appStore";
 import { EmptyState } from "@/components/ui/EmptyState";
 
-delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })._getIconUrl;
+delete (L.Icon.Default.prototype as unknown as { _getIconUrl?: unknown })
+  ._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconUrl,
   iconRetinaUrl,
@@ -37,7 +38,9 @@ function useResolvedTheme(): "light" | "dark" {
   const { theme } = useAppStore();
   const [resolved, setResolved] = useState<"light" | "dark">(() => {
     if (theme === "system") {
-      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      return window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light";
     }
     return theme;
   });
@@ -67,9 +70,16 @@ interface PhotoMarker {
 interface PhotoClusterLayerProps {
   markers: PhotoMarker[];
   onSelect: (id: number) => void;
+  clusterCountLabel: (count: number) => string;
+  onClusterReady: (cluster: L.MarkerClusterGroup | null) => void;
 }
 
-function PhotoClusterLayer({ markers, onSelect }: PhotoClusterLayerProps) {
+function PhotoClusterLayer({
+  markers,
+  onSelect,
+  clusterCountLabel,
+  onClusterReady,
+}: PhotoClusterLayerProps) {
   const map = useMap();
   const fittedRef = useRef(false);
   const onSelectRef = useRef(onSelect);
@@ -80,7 +90,18 @@ function PhotoClusterLayer({ markers, onSelect }: PhotoClusterLayerProps) {
   }, [markers]);
 
   useEffect(() => {
-    const cluster = L.markerClusterGroup();
+    const cluster = L.markerClusterGroup({
+      iconCreateFunction: (group) => {
+        const count = group.getChildCount();
+        const label = escapeHtml(clusterCountLabel(count));
+        return L.divIcon({
+          html: `<div class="map-cluster-icon" title="${label}"><span class="map-cluster-count">${count}</span></div>`,
+          className: "map-marker-cluster",
+          iconSize: L.point(40, 40),
+        });
+      },
+    });
+
     for (const marker of markers) {
       const popup = L.popup({ maxWidth: 220 }).setContent(
         `<div class="map-popup">
@@ -94,6 +115,7 @@ function PhotoClusterLayer({ markers, onSelect }: PhotoClusterLayerProps) {
     }
 
     map.addLayer(cluster);
+    onClusterReady(cluster);
 
     if (markers.length > 0 && !fittedRef.current) {
       map.fitBounds(cluster.getBounds().pad(0.1));
@@ -101,11 +123,41 @@ function PhotoClusterLayer({ markers, onSelect }: PhotoClusterLayerProps) {
     }
 
     return () => {
+      onClusterReady(null);
       map.removeLayer(cluster);
     };
-  }, [map, markers]);
+  }, [map, markers, clusterCountLabel, onClusterReady]);
 
   return null;
+}
+
+interface CenterOnMarkersButtonProps {
+  clusterRef: React.RefObject<L.MarkerClusterGroup | null>;
+}
+
+function CenterOnMarkersButton({ clusterRef }: CenterOnMarkersButtonProps) {
+  const map = useMap();
+  const { t } = useTranslation();
+
+  const centerOnMarkers = useCallback(() => {
+    const cluster = clusterRef.current;
+    if (!cluster) return;
+    const bounds = cluster.getBounds();
+    if (bounds.isValid()) {
+      map.fitBounds(bounds.pad(0.1));
+    }
+  }, [clusterRef, map]);
+
+  return (
+    <button
+      type="button"
+      onClick={centerOnMarkers}
+      className="absolute right-4 top-4 z-[1000] rounded-lg border border-neutral-200 bg-white px-3 py-2 text-sm font-medium text-neutral-800 shadow-md transition hover:bg-neutral-50 dark:border-neutral-600 dark:bg-neutral-800 dark:text-neutral-100 dark:hover:bg-neutral-700"
+      aria-label={t("map.centerOnMarkers")}
+    >
+      {t("map.centerOnMarkers")}
+    </button>
+  );
 }
 
 export function MapView() {
@@ -114,6 +166,19 @@ export function MapView() {
   const [geoMedia, setGeoMedia] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [previewId, setPreviewId] = useState<number | null>(null);
+  const clusterRef = useRef<L.MarkerClusterGroup | null>(null);
+
+  const clusterCountLabel = useCallback(
+    (count: number) => t("map.clusterPhotoCount", { count }),
+    [t],
+  );
+
+  const handleClusterReady = useCallback(
+    (cluster: L.MarkerClusterGroup | null) => {
+      clusterRef.current = cluster;
+    },
+    [],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -147,7 +212,8 @@ export function MapView() {
     [geoMedia],
   );
 
-  const previewMedia = previewId != null ? geoMedia.find((m) => m.id === previewId) : null;
+  const previewMedia =
+    previewId != null ? geoMedia.find((m) => m.id === previewId) : null;
   const tileLayer = TILE_LAYERS[resolvedTheme];
 
   if (loading) {
@@ -175,18 +241,31 @@ export function MapView() {
           <h1 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
             {t("map.title")}
           </h1>
-          <p className="text-sm text-neutral-500">{t("map.photoCount", { count: geoMedia.length })}</p>
+          <p className="text-sm text-neutral-500">
+            {t("map.photoCount", { count: geoMedia.length })}
+          </p>
         </div>
       </div>
 
       <div className="relative min-h-0 flex-1">
-        <MapContainer center={[20, 0]} zoom={2} className="h-full w-full" scrollWheelZoom>
+        <MapContainer
+          center={[20, 0]}
+          zoom={2}
+          className="h-full w-full"
+          scrollWheelZoom
+        >
           <TileLayer
             key={resolvedTheme}
             url={tileLayer.url}
             attribution={tileLayer.attribution}
           />
-          <PhotoClusterLayer markers={markers} onSelect={setPreviewId} />
+          <PhotoClusterLayer
+            markers={markers}
+            onSelect={setPreviewId}
+            clusterCountLabel={clusterCountLabel}
+            onClusterReady={handleClusterReady}
+          />
+          <CenterOnMarkersButton clusterRef={clusterRef} />
         </MapContainer>
 
         {previewMedia && (

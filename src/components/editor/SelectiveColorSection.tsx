@@ -8,21 +8,40 @@ type ColorKey = "reds" | "yellows" | "greens" | "cyans" | "blues" | "magentas";
 
 const COLOR_TABS: { key: ColorKey; labelKey: string; dot: string }[] = [
   { key: "reds", labelKey: "editor.selectiveColor.reds", dot: "bg-red-500" },
-  { key: "yellows", labelKey: "editor.selectiveColor.yellows", dot: "bg-yellow-400" },
-  { key: "greens", labelKey: "editor.selectiveColor.greens", dot: "bg-green-500" },
+  {
+    key: "yellows",
+    labelKey: "editor.selectiveColor.yellows",
+    dot: "bg-yellow-400",
+  },
+  {
+    key: "greens",
+    labelKey: "editor.selectiveColor.greens",
+    dot: "bg-green-500",
+  },
   { key: "cyans", labelKey: "editor.selectiveColor.cyans", dot: "bg-cyan-400" },
   { key: "blues", labelKey: "editor.selectiveColor.blues", dot: "bg-blue-500" },
-  { key: "magentas", labelKey: "editor.selectiveColor.magentas", dot: "bg-fuchsia-500" },
+  {
+    key: "magentas",
+    labelKey: "editor.selectiveColor.magentas",
+    dot: "bg-fuchsia-500",
+  },
 ];
 
-const DEFAULT_CHANNEL: SelectiveColorChannel = { hue: 0, saturation: 0, luminance: 0 };
+const DEFAULT_CHANNEL: SelectiveColorChannel = {
+  hue: 0,
+  saturation: 0,
+  luminance: 0,
+};
 
 interface SelectiveColorSectionProps {
   params: EditParams;
   onChange: (patch: Partial<EditParams>) => void;
 }
 
-export function SelectiveColorSection({ params, onChange }: SelectiveColorSectionProps) {
+export function SelectiveColorSection({
+  params,
+  onChange,
+}: SelectiveColorSectionProps) {
   const { t } = useTranslation();
   const [active, setActive] = useState<ColorKey>("reds");
   const selectiveColor = params.selectiveColor ?? {};

@@ -20,7 +20,8 @@ class ResizeObserverMock {
   unobserve = vi.fn();
   disconnect = vi.fn();
 }
-globalThis.ResizeObserver = ResizeObserverMock as unknown as typeof ResizeObserver;
+globalThis.ResizeObserver =
+  ResizeObserverMock as unknown as typeof ResizeObserver;
 
 beforeEach(() => {
   localStorage.clear();
@@ -38,7 +39,7 @@ describe("FavoritesView", () => {
     expect(screen.getByText("加载中…")).toBeInTheDocument();
   });
 
-  it('shows empty state when no favorites', async () => {
+  it("shows empty state when no favorites", async () => {
     getFavorites.mockResolvedValue([]);
     getFavoritesCount.mockResolvedValue(0);
 
