@@ -521,4 +521,35 @@ describe("PhotoViewer", () => {
       closeViewerSpy.mockRestore();
     }
   });
+
+  it("shows error state on load failure and retries on click", async () => {
+    let callCount = 0;
+    (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
+      if (cmd === "get_media_by_id") {
+        callCount++;
+        if (callCount <= 1) return Promise.reject(new Error("fail"));
+        return Promise.resolve(mockPhoto);
+      }
+      if (cmd === "get_media_neighbors")
+        return Promise.resolve({ prev_id: null, next_id: null });
+      if (cmd === "get_media_window") return Promise.resolve([mockPhoto]);
+      if (cmd === "has_edits") return Promise.resolve(false);
+      if (cmd === "is_favorite") return Promise.resolve(false);
+      return Promise.resolve(null);
+    });
+
+    render(<PhotoViewer mediaId={1} />);
+
+    await waitFor(() => {
+      expect(screen.getByText("加载媒体失败")).toBeInTheDocument();
+    });
+    expect(screen.getByText("重试")).toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText("重试"));
+
+    await waitFor(() => {
+      expect(getMainImage()).toBeInTheDocument();
+    });
+  });
 });

@@ -104,8 +104,8 @@ const initialState: AppState = {
 let state: AppState = { ...initialState };
 const listeners = new Set<() => void>();
 
-export function resetStore() {
-  state = { ...initialState };
+export function resetStore(overrides?: Partial<AppState>) {
+  state = { ...initialState, ...overrides };
   emit();
 }
 

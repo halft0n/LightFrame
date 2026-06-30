@@ -9,6 +9,7 @@ import {
   toggleMediaSelection,
   clearMediaSelection,
   setThumbnailSize,
+  resetStore,
 } from "@/store/appStore";
 import type { MediaItem } from "@/lib/tauri";
 
@@ -365,5 +366,21 @@ describe("PhotoGrid", () => {
 
     fireEvent.click(cells[0]!, { ctrlKey: true });
     expect(getSnapshot().selectedMediaIds).toEqual([2]);
+  });
+
+  it("shows error banner with retry when mediaLoadError is set and no items", () => {
+    resetStore({ mediaLoadError: "connection refused" });
+    render(<PhotoGrid />);
+
+    expect(screen.getByText("connection refused")).toBeInTheDocument();
+    expect(screen.getByText("重试")).toBeInTheDocument();
+  });
+
+  it("shows empty state instead of error when no error set", () => {
+    resetStore({ mediaLoadError: null });
+    render(<PhotoGrid />);
+
+    expect(screen.getByText("暂无照片")).toBeInTheDocument();
+    expect(screen.queryByText("重试")).not.toBeInTheDocument();
   });
 });

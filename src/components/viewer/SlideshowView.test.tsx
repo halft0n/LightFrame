@@ -180,4 +180,23 @@ describe("SlideshowView", () => {
     expect(screen.queryByLabelText("上一张")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("下一张")).not.toBeInTheDocument();
   });
+
+  it("shows error state on load failure with skip button", async () => {
+    getMediaById
+      .mockRejectedValueOnce(new Error("network error"))
+      .mockResolvedValue(mockPhoto2);
+    startSlideshow([1, 2]);
+    render(<SlideshowView />);
+
+    await waitFor(() => {
+      expect(screen.getByText("加载媒体失败")).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText("下一张"));
+
+    await waitFor(() => {
+      expect(screen.getByAltText("b.jpg")).toBeInTheDocument();
+    });
+  });
 });

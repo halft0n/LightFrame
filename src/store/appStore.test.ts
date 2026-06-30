@@ -590,6 +590,62 @@ describe("appStore", () => {
       expect(getMediaPage).toHaveBeenCalledWith(60, undefined);
     });
 
+    it("loadMedia sets mediaLoadError on failure", async () => {
+      getMediaPage.mockRejectedValue(new Error("connection refused"));
+      getMediaCount.mockRejectedValue(new Error("connection refused"));
+      const consoleSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+
+      await loadMedia();
+
+      expect(getSnapshot().mediaLoadError).toBe("connection refused");
+      consoleSpy.mockRestore();
+    });
+
+    it("loadMedia clears mediaLoadError on success", async () => {
+      getMediaPage.mockRejectedValueOnce(new Error("fail"));
+      getMediaCount.mockRejectedValueOnce(new Error("fail"));
+      const consoleSpy = vi
+        .spyOn(console, "error")
+        .mockImplementation(() => {});
+      await loadMedia();
+      expect(getSnapshot().mediaLoadError).toBe("fail");
+
+      getMediaPage.mockResolvedValue([sampleMedia]);
+      getMediaCount.mockResolvedValue(1);
+      await loadMedia();
+      expect(getSnapshot().mediaLoadError).toBeNull();
+      consoleSpy.mockRestore();
+    });
+
+    it("loadMoreMedia in-flight guard prevents concurrent calls", async () => {
+      const itemWithCursor = {
+        ...sampleMedia,
+        created_at: "2024-01-01T00:00:00",
+      };
+      setMedia([itemWithCursor], 100);
+
+      let resolveFirst: ((v: MediaItem[]) => void) | undefined;
+      getMediaPage.mockImplementationOnce(
+        () =>
+          new Promise<MediaItem[]>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      );
+
+      const p1 = loadMoreMedia();
+      const p2 = loadMoreMedia();
+
+      expect(getMediaPage).toHaveBeenCalledTimes(1);
+
+      resolveFirst!([{ ...sampleMedia, id: 2 }]);
+      await p1;
+      await p2;
+
+      expect(getSnapshot().mediaItems).toHaveLength(2);
+    });
+
     it("setMedia trims items when count exceeds 5000", () => {
       const items = Array.from({ length: 5100 }, (_, i) => ({
         ...sampleMedia,
