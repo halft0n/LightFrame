@@ -105,7 +105,7 @@ function PhotoClusterLayer({
     for (const marker of markers) {
       const popup = L.popup({ maxWidth: 220 }).setContent(
         `<div class="map-popup">
-          <img src="${getThumbnailUrl(marker.id, "small")}" alt="" style="width:100%;border-radius:6px;aspect-ratio:4/3;object-fit:cover" />
+          <img src="${getThumbnailUrl(marker.id, "small")}" alt="" style="width:100%;border-radius:6px;aspect-ratio:1/1;object-fit:cover" />
           <p style="margin:6px 0 0;font-size:12px;font-weight:500">${escapeHtml(marker.filename)}</p>
         </div>`,
       );
@@ -286,7 +286,7 @@ export function MapView() {
               <img
                 src={getThumbnailUrl(previewMedia.id, "small")}
                 alt={previewMedia.filename}
-                className="aspect-[4/3] w-full object-cover"
+                className="aspect-square w-full object-cover"
               />
               <div className="px-3 py-2">
                 <p className="truncate text-sm font-medium text-neutral-900 dark:text-neutral-100">

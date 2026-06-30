@@ -26,6 +26,8 @@ export function VideoPlayer({
   const containerRef = useRef<HTMLDivElement>(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
+  const currentTimeRef = useRef(currentTime);
+  currentTimeRef.current = currentTime;
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(false);
@@ -65,17 +67,17 @@ export function VideoPlayer({
       } else if (e.key === "ArrowLeft") {
         e.preventDefault();
         e.stopPropagation();
-        seek(currentTime - 5);
+        seek(currentTimeRef.current - 5);
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
         e.stopPropagation();
-        seek(currentTime + 5);
+        seek(currentTimeRef.current + 5);
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [togglePlay, seek, currentTime]);
+  }, [togglePlay, seek]);
 
   const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();

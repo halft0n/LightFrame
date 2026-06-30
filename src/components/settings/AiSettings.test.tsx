@@ -8,6 +8,7 @@ import { setLocale } from "@/i18n/index";
 const getModelStatus = vi.fn();
 const openModelsDir = vi.fn();
 const downloadModel = vi.fn();
+const cancelDownload = vi.fn();
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
@@ -26,12 +27,9 @@ vi.mock("@/lib/tauri", async (importOriginal) => {
     getModelStatus: () => getModelStatus(),
     openModelsDir: () => openModelsDir(),
     downloadModel: (...args: unknown[]) => downloadModel(...args),
+    cancelDownload: () => cancelDownload(),
   };
 });
-
-vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn().mockResolvedValue(() => {}),
-}));
 
 const sampleModels = [
   {
@@ -61,6 +59,7 @@ beforeEach(() => {
   setLocale("zh-CN");
   vi.clearAllMocks();
   downloadModel.mockResolvedValue("/models/test.onnx");
+  cancelDownload.mockResolvedValue(undefined);
   delete (window as Window & { __TAURI_INTERNALS__?: unknown })
     .__TAURI_INTERNALS__;
 });

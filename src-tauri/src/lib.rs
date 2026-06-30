@@ -75,6 +75,7 @@ pub fn run() {
             commands::get_screenshot_count,
             commands::get_model_status,
             commands::download_model,
+            commands::cancel_download,
             commands::open_models_dir,
             commands::create_album,
             commands::delete_album,

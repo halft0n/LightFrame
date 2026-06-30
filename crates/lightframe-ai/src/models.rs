@@ -164,7 +164,18 @@ pub fn all_model_statuses() -> Vec<ModelFileStatus> {
     all_models().into_iter().map(model_file_status).collect()
 }
 
-pub fn download_model<F>(info: &ModelInfo, mut on_progress: F) -> Result<PathBuf>
+pub fn download_model<F>(info: &ModelInfo, on_progress: F) -> Result<PathBuf>
+where
+    F: FnMut(u64, u64),
+{
+    download_model_cancellable(info, on_progress, None)
+}
+
+pub fn download_model_cancellable<F>(
+    info: &ModelInfo,
+    mut on_progress: F,
+    cancel: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<PathBuf>
 where
     F: FnMut(u64, u64),
 {
@@ -195,6 +206,12 @@ where
     let mut last_percent: u64 = 0;
 
     loop {
+        if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
+            drop(file);
+            let _ = std::fs::remove_file(&tmp);
+            return Err(Error::Ai("download cancelled".to_string()));
+        }
+
         let n = reader.read(&mut buffer).map_err(Error::Io)?;
         if n == 0 {
             break;

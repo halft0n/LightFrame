@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
+  cancelDownload,
   downloadModel,
   getModelStatus,
   openModelsDir,
@@ -48,31 +49,83 @@ interface DownloadProgressState {
   speedBps: number;
 }
 
-function DownloadProgressBar({
+const CIRCLE_SIZE = 32;
+const STROKE_WIDTH = 3;
+const RADIUS = (CIRCLE_SIZE - STROKE_WIDTH) / 2;
+const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
+
+function CircularProgress({
   progress,
+  onCancel,
 }: {
   progress: DownloadProgressState;
+  onCancel: () => void;
 }) {
-  const { t } = useTranslation();
+  const percent =
+    progress.total > 0
+      ? Math.min(1, progress.downloaded / progress.total)
+      : 0;
+  const offset = CIRCUMFERENCE * (1 - percent);
+
+  return (
+    <button
+      type="button"
+      onClick={onCancel}
+      className="group relative flex items-center justify-center"
+      title="Cancel download"
+    >
+      <svg
+        width={CIRCLE_SIZE}
+        height={CIRCLE_SIZE}
+        className="-rotate-90"
+      >
+        <circle
+          cx={CIRCLE_SIZE / 2}
+          cy={CIRCLE_SIZE / 2}
+          r={RADIUS}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={STROKE_WIDTH}
+          className="text-neutral-200 dark:text-neutral-700"
+        />
+        <circle
+          cx={CIRCLE_SIZE / 2}
+          cy={CIRCLE_SIZE / 2}
+          r={RADIUS}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={STROKE_WIDTH}
+          strokeDasharray={CIRCUMFERENCE}
+          strokeDashoffset={offset}
+          strokeLinecap="round"
+          className="text-blue-500 transition-[stroke-dashoffset] duration-200"
+        />
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center text-neutral-500 opacity-0 transition-opacity group-hover:opacity-100 dark:text-neutral-400">
+        <svg
+          viewBox="0 0 16 16"
+          fill="currentColor"
+          className="h-3 w-3"
+        >
+          <rect x="4" y="4" width="8" height="8" rx="1" />
+        </svg>
+      </span>
+    </button>
+  );
+}
+
+function DownloadInfo({ progress }: { progress: DownloadProgressState }) {
   const { downloaded, total, speedBps } = progress;
   const percent = total > 0 ? Math.min(100, (downloaded / total) * 100) : null;
 
   return (
-    <div className="mt-2 space-y-1">
-      <div className="h-1.5 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
-        <div
-          className="h-full rounded-full bg-blue-600 transition-[width] duration-150"
-          style={{ width: `${percent ?? 0}%` }}
-        />
-      </div>
-      <p className="text-[11px] tabular-nums text-neutral-500 dark:text-neutral-400">
-        {percent != null ? `${percent.toFixed(1)}%` : t("ai.downloading")}
-        {" · "}
-        {formatFileSize(downloaded)}
-        {total > 0 && <> / {formatFileSize(total)}</>}
-        {speedBps > 0 && <> · {formatSpeed(speedBps)}</>}
-      </p>
-    </div>
+    <p className="mt-1 text-[11px] tabular-nums text-neutral-500 dark:text-neutral-400">
+      {percent != null ? `${percent.toFixed(1)}%` : "…"}
+      {" · "}
+      {formatFileSize(downloaded)}
+      {total > 0 && <> / {formatFileSize(total)}</>}
+      {speedBps > 0 && <> · {formatSpeed(speedBps)}</>}
+    </p>
   );
 }
 
@@ -81,11 +134,13 @@ function ModelRow({
   downloading,
   progress,
   onDownload,
+  onCancel,
 }: {
   model: ModelFileStatus;
   downloading: boolean;
   progress: DownloadProgressState | null;
   onDownload: (filename: string) => void;
+  onCancel: () => void;
 }) {
   const { t } = useTranslation();
 
@@ -106,22 +161,23 @@ function ModelRow({
             )}
             {!model.installed && <> · ~{model.size_mb} MB</>}
           </p>
-          {downloading && progress && (
-            <DownloadProgressBar progress={progress} />
-          )}
+          {downloading && progress && <DownloadInfo progress={progress} />}
         </div>
         <div className="flex items-center gap-2">
           <StatusBadge available={model.installed} />
-          {!model.installed && (
-            <button
-              type="button"
-              onClick={() => onDownload(model.filename)}
-              disabled={downloading}
-              className="rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-blue-500 disabled:opacity-50"
-            >
-              {downloading ? t("ai.downloading") : t("ai.downloadModel")}
-            </button>
-          )}
+          {!model.installed &&
+            (downloading && progress ? (
+              <CircularProgress progress={progress} onCancel={onCancel} />
+            ) : (
+              <button
+                type="button"
+                onClick={() => onDownload(model.filename)}
+                disabled={downloading}
+                className="rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white transition hover:bg-blue-500 disabled:opacity-50"
+              >
+                {t("ai.downloadModel")}
+              </button>
+            ))}
         </div>
       </div>
     </li>
@@ -216,11 +272,22 @@ export function AiSettings() {
       await downloadModel(filename);
       await loadStatus();
     } catch (err) {
-      setDownloadError(localizeError(err, t));
+      const msg = localizeError(err, t);
+      if (!msg.includes("cancelled")) {
+        setDownloadError(msg);
+      }
     } finally {
       setDownloadingFile(null);
       setDownloadProgress(null);
       speedSampleRef.current = null;
+    }
+  };
+
+  const handleCancel = async () => {
+    try {
+      await cancelDownload();
+    } catch {
+      // best-effort
     }
   };
 
@@ -247,6 +314,7 @@ export function AiSettings() {
                   downloadingFile === model.filename ? downloadProgress : null
                 }
                 onDownload={(name) => void handleDownload(name)}
+                onCancel={() => void handleCancel()}
               />
             ))}
           </ul>

@@ -118,7 +118,7 @@ export function MemoriesView() {
                 onClick={() => openMemoryDetail(memory.id)}
                 className="group flex flex-col overflow-hidden rounded-lg border border-neutral-200/80 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-900/50 text-left transition hover:border-neutral-300 dark:hover:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800/80"
               >
-                <div className="aspect-[4/3] w-full overflow-hidden bg-neutral-800">
+                <div className="aspect-square w-full overflow-hidden bg-neutral-800">
                   <img
                     src={getThumbnailUrl(memory.cover_media_id, "small")}
                     alt=""

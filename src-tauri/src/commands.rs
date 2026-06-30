@@ -614,6 +614,7 @@ mod batch_export_tests {
             face_detecting: Arc::new(AtomicBool::new(false)),
             dedup_scanning: Arc::new(AtomicBool::new(false)),
             thumb_regenerating: Arc::new(AtomicBool::new(false)),
+            download_cancel: Arc::new(AtomicBool::new(false)),
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: crate::thumb_cache::ThumbCache::new(),
             ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
@@ -777,6 +778,7 @@ mod rename_person_tests {
             face_detecting: Arc::new(AtomicBool::new(false)),
             dedup_scanning: Arc::new(AtomicBool::new(false)),
             thumb_regenerating: Arc::new(AtomicBool::new(false)),
+            download_cancel: Arc::new(AtomicBool::new(false)),
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: crate::thumb_cache::ThumbCache::new(),
             ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
@@ -879,6 +881,7 @@ mod edit_persistence_tests {
             face_detecting: Arc::new(AtomicBool::new(false)),
             dedup_scanning: Arc::new(AtomicBool::new(false)),
             thumb_regenerating: Arc::new(AtomicBool::new(false)),
+            download_cancel: Arc::new(AtomicBool::new(false)),
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: crate::thumb_cache::ThumbCache::new(),
             ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
@@ -1178,28 +1181,46 @@ struct ModelDownloadProgress {
 }
 
 #[tauri::command]
-pub async fn download_model(app: AppHandle, filename: String) -> Result<String, String> {
+pub async fn download_model(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    filename: String,
+) -> Result<String, String> {
     let model = lightframe_ai::model_by_filename(&filename)
         .ok_or_else(|| format!("unknown model: {filename}"))?;
 
+    let cancel = state.download_cancel.clone();
+    cancel.store(false, std::sync::atomic::Ordering::Relaxed);
+
     let emit_filename = filename.clone();
     let path = tokio::task::spawn_blocking(move || {
-        lightframe_ai::download_model(model, move |downloaded, total| {
-            let _ = app.emit(
-                "model-download-progress",
-                ModelDownloadProgress {
-                    filename: emit_filename.clone(),
-                    downloaded,
-                    total,
-                },
-            );
-        })
+        lightframe_ai::download_model_cancellable(
+            model,
+            move |downloaded, total| {
+                let _ = app.emit(
+                    "model-download-progress",
+                    ModelDownloadProgress {
+                        filename: emit_filename.clone(),
+                        downloaded,
+                        total,
+                    },
+                );
+            },
+            Some(&cancel),
+        )
     })
     .await
     .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())?;
 
     Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn cancel_download(state: State<'_, AppState>) {
+    state
+        .download_cancel
+        .store(true, std::sync::atomic::Ordering::Relaxed);
 }
 
 #[tauri::command]

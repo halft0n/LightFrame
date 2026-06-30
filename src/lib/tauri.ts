@@ -240,10 +240,21 @@ export interface PersonClusterInfo {
  * Build a custom-protocol URL using Tauri's native platform detection.
  * On Windows (WebView2): `http://{scheme}.localhost/{path}`
  * On macOS/Linux:        `{scheme}://localhost/{path}`
+ *
+ * Uses convertFileSrc with the actual path to avoid edge cases with empty
+ * base URL concatenation (trailing slash inconsistency across Tauri versions).
  */
 export function protocolUrl(scheme: string, path: string): string {
-  const base = convertFileSrc("", scheme);
-  return `${base}${path}`;
+  try {
+    return convertFileSrc(path, scheme);
+  } catch {
+    const isWindows =
+      typeof navigator !== "undefined" &&
+      navigator.userAgent.includes("Windows");
+    return isWindows
+      ? `http://${scheme}.localhost/${path}`
+      : `${scheme}://localhost/${path}`;
+  }
 }
 
 export function getFaceThumbnailUrl(faceId: number): string {
@@ -660,6 +671,10 @@ export async function getModelStatus(): Promise<ModelStatus> {
 
 export async function downloadModel(filename: string): Promise<string> {
   return invoke<string>("download_model", { filename });
+}
+
+export async function cancelDownload(): Promise<void> {
+  return invoke("cancel_download");
 }
 
 export async function openModelsDir(): Promise<void> {
