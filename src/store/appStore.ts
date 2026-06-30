@@ -125,6 +125,10 @@ export function getSnapshot(): AppState {
 export function setView(view: AppView) {
   setState({
     currentView: view,
+    viewingMediaId: null,
+    slideshowActive: false,
+    slideshowMediaIds: [],
+    slideshowIndex: 0,
     selectedAlbumId: view === "album-detail" ? state.selectedAlbumId : null,
     selectedSmartAlbumId:
       view === "smart-album-detail" ? state.selectedSmartAlbumId : null,
@@ -144,6 +148,10 @@ export function navigate(view: AppView, params?: NavigateParams) {
   if (view === "folder") {
     setState({
       currentView: "folder",
+      viewingMediaId: null,
+      slideshowActive: false,
+      slideshowMediaIds: [],
+      slideshowIndex: 0,
       selectedFolderId: params?.folderId ?? null,
       selectedFolderPath: params?.folderPath ?? null,
       selectedAlbumId: null,
@@ -157,7 +165,12 @@ export function navigate(view: AppView, params?: NavigateParams) {
 }
 
 export function openAlbumDetail(albumId: number) {
-  setState({ currentView: "album-detail", selectedAlbumId: albumId });
+  setState({
+    currentView: "album-detail",
+    selectedAlbumId: albumId,
+    viewingMediaId: null,
+    slideshowActive: false,
+  });
 }
 
 export function closeAlbumDetail() {
@@ -168,6 +181,8 @@ export function openSmartAlbumDetail(smartAlbumId: number) {
   setState({
     currentView: "smart-album-detail",
     selectedSmartAlbumId: smartAlbumId,
+    viewingMediaId: null,
+    slideshowActive: false,
   });
 }
 
@@ -176,7 +191,12 @@ export function closeSmartAlbumDetail() {
 }
 
 export function openMemoryDetail(memoryId: number) {
-  setState({ currentView: "memory-detail", selectedMemoryId: memoryId });
+  setState({
+    currentView: "memory-detail",
+    selectedMemoryId: memoryId,
+    viewingMediaId: null,
+    slideshowActive: false,
+  });
 }
 
 export function closeMemoryDetail() {
@@ -184,7 +204,12 @@ export function closeMemoryDetail() {
 }
 
 export function openPersonDetail(personId: number) {
-  setState({ currentView: "person-detail", selectedPersonId: personId });
+  setState({
+    currentView: "person-detail",
+    selectedPersonId: personId,
+    viewingMediaId: null,
+    slideshowActive: false,
+  });
 }
 
 export function closePersonDetail() {

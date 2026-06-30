@@ -106,6 +106,8 @@ export default function App() {
 
     let unlistenProgress: (() => void) | undefined;
     let unlistenFolder: (() => void) | undefined;
+    let incrementalRefreshTimer: ReturnType<typeof setTimeout> | undefined;
+    let lastIncrementalScanned = 0;
 
     void onScanProgress((progress) => {
       setScanning(progress.status === "scanning", progress);
@@ -120,7 +122,22 @@ export default function App() {
         );
       }
 
+      if (progress.status === "scanning" && progress.scanned > lastIncrementalScanned + 9) {
+        lastIncrementalScanned = progress.scanned;
+        if (!incrementalRefreshTimer) {
+          incrementalRefreshTimer = setTimeout(() => {
+            incrementalRefreshTimer = undefined;
+            void loadMedia().catch(() => {});
+          }, 2000);
+        }
+      }
+
       if (progress.status === "complete") {
+        lastIncrementalScanned = 0;
+        if (incrementalRefreshTimer) {
+          clearTimeout(incrementalRefreshTimer);
+          incrementalRefreshTimer = undefined;
+        }
         void (async () => {
           try {
             const folders = await listWatchedFolders();
@@ -161,6 +178,7 @@ export default function App() {
       cancelled = true;
       unlistenProgress?.();
       unlistenFolder?.();
+      if (incrementalRefreshTimer) clearTimeout(incrementalRefreshTimer);
     };
   }, [t]);
 

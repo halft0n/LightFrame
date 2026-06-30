@@ -22,16 +22,49 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { UpdateChecker } from "@/components/settings/UpdateChecker";
 import { AiSettings } from "@/components/settings/AiSettings";
 import { LogSettings } from "@/components/settings/LogSettings";
+import type { ScanProgress } from "@/lib/tauri";
 
-function ScanIndicator({ status }: { status: ScanStatus }) {
+function ScanIndicator({
+  status,
+  folderId,
+}: {
+  status: ScanStatus;
+  folderId: number;
+}) {
   const { t } = useTranslation();
+  const scanProgress = useAppStore((s) => s.scanProgress);
+  const progress =
+    scanProgress?.folder_id === folderId ? scanProgress : null;
 
   if (status === "scanning") {
+    const isDiscovering = !progress || progress.total === 0;
+    const pct =
+      progress && progress.total > 0
+        ? Math.round((progress.scanned / progress.total) * 100)
+        : 0;
+
     return (
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-500/10 px-2 py-0.5 text-xs font-medium text-blue-600 dark:text-blue-400">
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
-        {t("settings.scanning")}
-      </span>
+      <div className="flex flex-col gap-1">
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-600 dark:text-blue-400">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-blue-500" />
+          {isDiscovering
+            ? t("settings.discovering")
+            : t("settings.scanProgress", {
+                scanned: progress!.scanned,
+                total: progress!.total,
+              })}
+          {progress && progress.errors > 0 &&
+            t("settings.scanErrors", { count: progress.errors })}
+        </span>
+        {!isDiscovering && (
+          <div className="h-1 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-300"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -281,7 +314,7 @@ export function FolderManager() {
                           t("common.notAvailable"),
                         )}
                       </span>
-                      <ScanIndicator status={folder.scan_status} />
+                      <ScanIndicator status={folder.scan_status} folderId={folder.id} />
                     </div>
                   </div>
 
