@@ -31,6 +31,7 @@ import {
   loadMedia,
   loadMoreMedia,
   appendMedia,
+  mergeNewMedia,
   startSlideshow,
   closeSlideshow,
   nextSlideshow,
@@ -594,6 +595,182 @@ describe("appStore", () => {
     it("setMedia sets mediaCursor to null when created_at is missing", () => {
       setMedia([sampleMedia], 1);
       expect(getSnapshot().mediaCursor).toBeNull();
+    });
+  });
+
+  describe("mergeNewMedia", () => {
+    it("mergeNewMedia does not modify state when items is empty", () => {
+      const items = [
+        { ...sampleMedia, id: 1, created_at: "2024-01-01T00:00:00" },
+        { ...sampleMedia, id: 2, created_at: "2024-01-02T00:00:00" },
+      ];
+      setMedia(items, 2);
+      const before = getSnapshot();
+
+      mergeNewMedia([]);
+
+      const after = getSnapshot();
+      expect(after.mediaItems).toEqual(before.mediaItems);
+      expect(after.totalCount).toBe(before.totalCount);
+      expect(after.mediaCursor).toEqual(before.mediaCursor);
+    });
+
+    it("mergeNewMedia does not modify state when all items are duplicates", () => {
+      const items = [
+        { ...sampleMedia, id: 1, created_at: "2024-01-01T00:00:00" },
+        { ...sampleMedia, id: 2, created_at: "2024-01-02T00:00:00" },
+      ];
+      setMedia(items, 2);
+      const before = getSnapshot();
+
+      mergeNewMedia([
+        { ...sampleMedia, id: 1, created_at: "2024-01-01T00:00:00" },
+        { ...sampleMedia, id: 2, created_at: "2024-01-02T00:00:00" },
+      ]);
+
+      const after = getSnapshot();
+      expect(after.mediaItems).toEqual(before.mediaItems);
+      expect(after.totalCount).toBe(before.totalCount);
+      expect(after.mediaCursor).toEqual(before.mediaCursor);
+    });
+
+    it("mergeNewMedia appends new items and sorts by date descending", () => {
+      setMedia(
+        [
+          { ...sampleMedia, id: 1, created_at: "2024-01-01T00:00:00" },
+          { ...sampleMedia, id: 2, created_at: "2024-01-03T00:00:00" },
+        ],
+        2,
+      );
+
+      mergeNewMedia([
+        { ...sampleMedia, id: 3, created_at: "2024-01-02T00:00:00" },
+      ]);
+
+      const dates = getSnapshot().mediaItems.map(
+        (m) => m.created_at ?? m.modified_at,
+      );
+      expect(dates).toEqual([
+        "2024-01-03T00:00:00",
+        "2024-01-02T00:00:00",
+        "2024-01-01T00:00:00",
+      ]);
+    });
+
+    it("mergeNewMedia handles items without created_at, falls back to modified_at", () => {
+      setMedia(
+        [
+          {
+            ...sampleMedia,
+            id: 1,
+            created_at: null,
+            modified_at: "2024-01-01T00:00:00",
+          },
+          {
+            ...sampleMedia,
+            id: 2,
+            created_at: null,
+            modified_at: "2024-01-03T00:00:00",
+          },
+        ],
+        2,
+      );
+
+      mergeNewMedia([
+        {
+          ...sampleMedia,
+          id: 3,
+          created_at: null,
+          modified_at: "2024-01-02T00:00:00",
+        },
+      ]);
+
+      const dates = getSnapshot().mediaItems.map(
+        (m) => m.created_at ?? m.modified_at,
+      );
+      expect(dates).toEqual([
+        "2024-01-03T00:00:00",
+        "2024-01-02T00:00:00",
+        "2024-01-01T00:00:00",
+      ]);
+    });
+
+    it("mergeNewMedia updates totalCount correctly", () => {
+      setMedia([sampleMedia], 10);
+
+      mergeNewMedia([
+        { ...sampleMedia, id: 2 },
+        { ...sampleMedia, id: 3 },
+        { ...sampleMedia, id: 4 },
+      ]);
+
+      expect(getSnapshot().totalCount).toBe(13);
+    });
+
+    it("mergeNewMedia filters duplicates from mixed batch", () => {
+      setMedia(
+        [
+          { ...sampleMedia, id: 1, created_at: "2024-01-01T00:00:00" },
+          { ...sampleMedia, id: 2, created_at: "2024-01-02T00:00:00" },
+        ],
+        2,
+      );
+
+      mergeNewMedia([
+        { ...sampleMedia, id: 2, created_at: "2024-01-02T00:00:00" },
+        { ...sampleMedia, id: 3, created_at: "2024-01-03T00:00:00" },
+        { ...sampleMedia, id: 4, created_at: "2024-01-04T00:00:00" },
+      ]);
+
+      const state = getSnapshot();
+      expect(state.mediaItems.map((m) => m.id)).toEqual([4, 3, 2, 1]);
+      expect(state.totalCount).toBe(4);
+    });
+
+    it("mergeNewMedia handles multiple rapid calls", () => {
+      setMedia([], 0);
+
+      mergeNewMedia([
+        { ...sampleMedia, id: 1, created_at: "2024-01-01T00:00:00" },
+      ]);
+      mergeNewMedia([
+        { ...sampleMedia, id: 2, created_at: "2024-01-03T00:00:00" },
+      ]);
+      mergeNewMedia([
+        { ...sampleMedia, id: 3, created_at: "2024-01-02T00:00:00" },
+      ]);
+
+      const state = getSnapshot();
+      expect(state.mediaItems.map((m) => m.id)).toEqual([2, 3, 1]);
+      expect(state.totalCount).toBe(3);
+    });
+
+    it("mergeNewMedia sorts by id descending when dates are equal", () => {
+      setMedia(
+        [
+          {
+            ...sampleMedia,
+            id: 1,
+            created_at: "2024-01-01T00:00:00",
+          },
+          {
+            ...sampleMedia,
+            id: 3,
+            created_at: "2024-01-01T00:00:00",
+          },
+        ],
+        2,
+      );
+
+      mergeNewMedia([
+        {
+          ...sampleMedia,
+          id: 2,
+          created_at: "2024-01-01T00:00:00",
+        },
+      ]);
+
+      expect(getSnapshot().mediaItems.map((m) => m.id)).toEqual([3, 2, 1]);
     });
   });
 

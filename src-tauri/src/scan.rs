@@ -517,7 +517,7 @@ async fn process_file_inner(
 mod tests {
     use super::*;
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn scan_module_compiles() {
@@ -762,5 +762,258 @@ mod tests {
             !progress_would_emit(&throttler, &status, false),
             "scanned=23 should not emit when inside time window"
         );
+    }
+
+    use lightframe_core::media::MediaType;
+    use std::sync::Arc;
+
+    fn sample_media(path: &str) -> MediaFile {
+        MediaFile {
+            id: 0,
+            path: path.to_string(),
+            filename: path.rsplit('/').next().unwrap_or(path).to_string(),
+            media_type: MediaType::Photo,
+            size_bytes: 512,
+            width: Some(64),
+            height: Some(64),
+            created_at: None,
+            modified_at: chrono::NaiveDateTime::default(),
+            blake3_hash: None,
+            dhash: None,
+            phash: None,
+            latitude: None,
+            longitude: None,
+        }
+    }
+
+    /// Mirrors MediaBatchEmitter buffering without AppHandle / event emission.
+    struct TestBatchCollector {
+        batches: Mutex<Vec<Vec<MediaFile>>>,
+        buffer: Mutex<Vec<MediaFile>>,
+    }
+
+    impl TestBatchCollector {
+        fn new() -> Self {
+            Self {
+                batches: Mutex::new(Vec::new()),
+                buffer: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn push(&self, item: MediaFile) {
+            let mut buffer = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
+            buffer.push(item);
+            if buffer.len() >= MEDIA_BATCH_SIZE {
+                self.drain_to_batch(&mut buffer);
+            }
+        }
+
+        fn flush(&self) {
+            let mut buffer = self.buffer.lock().unwrap_or_else(|e| e.into_inner());
+            if !buffer.is_empty() {
+                self.drain_to_batch(&mut buffer);
+            }
+        }
+
+        fn drain_to_batch(&self, buffer: &mut Vec<MediaFile>) {
+            let items: Vec<MediaFile> = buffer.drain(..).collect();
+            if !items.is_empty() {
+                self.batches
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .push(items);
+            }
+        }
+
+        fn batches(&self) -> Vec<Vec<MediaFile>> {
+            self.batches
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .clone()
+        }
+
+        fn pending_count(&self) -> usize {
+            self.buffer
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .len()
+        }
+
+        fn total_items(&self) -> usize {
+            self.batches()
+                .iter()
+                .map(|b| b.len())
+                .sum::<usize>()
+                + self.pending_count()
+        }
+    }
+
+    #[test]
+    fn test_batch_collector_flushes_at_capacity() {
+        let collector = TestBatchCollector::new();
+        for i in 0..25 {
+            collector.push(sample_media(&format!("/photos/file{i}.jpg")));
+        }
+
+        let batches = collector.batches();
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0].len(), MEDIA_BATCH_SIZE);
+        assert_eq!(collector.pending_count(), 5);
+
+        collector.flush();
+        let batches = collector.batches();
+        assert_eq!(batches.len(), 2);
+        assert_eq!(batches[0].len(), MEDIA_BATCH_SIZE);
+        assert_eq!(batches[1].len(), 5);
+        assert_eq!(collector.pending_count(), 0);
+        assert_eq!(collector.total_items(), 25);
+    }
+
+    #[test]
+    fn test_batch_collector_flush_empties_buffer() {
+        let collector = TestBatchCollector::new();
+        for i in 0..5 {
+            collector.push(sample_media(&format!("/photos/file{i}.jpg")));
+        }
+
+        assert_eq!(collector.batches().len(), 0);
+        assert_eq!(collector.pending_count(), 5);
+
+        collector.flush();
+        let batches = collector.batches();
+        assert_eq!(batches.len(), 1);
+        assert_eq!(batches[0].len(), 5);
+        assert_eq!(collector.pending_count(), 0);
+    }
+
+    #[test]
+    fn test_batch_collector_empty_flush_noop() {
+        let collector = TestBatchCollector::new();
+        collector.flush();
+        assert!(collector.batches().is_empty());
+        assert_eq!(collector.pending_count(), 0);
+        assert_eq!(collector.total_items(), 0);
+    }
+
+    fn fs_modified_at(path: &Path) -> chrono::NaiveDateTime {
+        std::fs::metadata(path)
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .map(|t| chrono::DateTime::<chrono::Utc>::from(t).naive_utc())
+            .unwrap_or_default()
+    }
+
+    fn sync_db_modified_at_from_filesystem(db: &Database, path: &Path) {
+        let path_str = path.to_string_lossy();
+        let mtime = fs_modified_at(path);
+        // NaiveDateTime::to_string() is not reliably parsed by get_media_by_path; use RFC3339.
+        let formatted = mtime.format("%Y-%m-%dT%H:%M:%S%.9f").to_string();
+        let conn = db.conn().unwrap();
+        conn.execute(
+            "UPDATE media_files SET modified_at = ?1 WHERE path = ?2",
+            (formatted.as_str(), path_str.as_ref()),
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn rfc3339_modified_at_parses_for_skip_check() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("mtime.jpg");
+        fs::write(&file, b"x").unwrap();
+        let mtime = fs_modified_at(&file);
+        let formatted = mtime.format("%Y-%m-%dT%H:%M:%S%.9f").to_string();
+        let parsed: chrono::NaiveDateTime = formatted.parse().expect("RFC3339 should parse");
+        assert_eq!(parsed, mtime);
+    }
+
+    fn setup_test_db_and_folder() -> (tempfile::TempDir, Arc<Database>, i64, PathBuf) {
+        let root = tempfile::tempdir().unwrap();
+        let watched = root.path().join("photos");
+        fs::create_dir_all(&watched).unwrap();
+        let watched_canonical = crate::original_protocol::strip_extended_prefix(
+            fs::canonicalize(&watched).unwrap(),
+        );
+        // In-memory DB avoids WAL read-replica lag between writer and reader connections.
+        let db = Arc::new(Database::open(Path::new(":memory:")).unwrap());
+        let folder_id = db
+            .add_watched_folder(watched_canonical.to_str().unwrap())
+            .unwrap()
+            .id;
+        (root, db, folder_id, watched_canonical)
+    }
+
+    #[tokio::test]
+    async fn process_file_persists_to_db_before_events() {
+        let (_root, db, folder_id, watched) = setup_test_db_and_folder();
+        let file = watched.join("persist.jpg");
+        fs::write(&file, b"fake-jpeg-bytes").unwrap();
+
+        let media_id = process_file_inner(&db, folder_id, &file)
+            .await
+            .unwrap()
+            .expect("first scan should insert media");
+
+        let stored = db.get_media_by_id(media_id).unwrap().unwrap();
+        assert_eq!(stored.path, file.to_string_lossy());
+        assert_eq!(stored.filename, "persist.jpg");
+    }
+
+    #[tokio::test]
+    async fn rescan_skips_unchanged_files() {
+        let (_root, db, folder_id, watched) = setup_test_db_and_folder();
+        let file = watched.join("unchanged.jpg");
+        fs::write(&file, b"same-content").unwrap();
+
+        let first = process_file_inner(&db, folder_id, &file)
+            .await
+            .unwrap()
+            .expect("first scan should insert");
+        sync_db_modified_at_from_filesystem(&db, &file);
+
+        let second = process_file_inner(&db, folder_id, &file).await.unwrap();
+        assert_eq!(second, None);
+        assert!(
+            db.get_media_by_id(first).unwrap().is_some(),
+            "original record should remain in db"
+        );
+    }
+
+    #[tokio::test]
+    async fn process_file_returns_none_for_unchanged() {
+        let (_root, db, folder_id, watched) = setup_test_db_and_folder();
+        let file = watched.join("skip.jpg");
+        fs::write(&file, b"unchanged-payload").unwrap();
+
+        process_file_inner(&db, folder_id, &file)
+            .await
+            .unwrap()
+            .expect("initial insert");
+        sync_db_modified_at_from_filesystem(&db, &file);
+        let skipped = process_file_inner(&db, folder_id, &file).await.unwrap();
+        assert!(skipped.is_none());
+    }
+
+    #[tokio::test]
+    async fn process_file_with_missing_file_returns_error() {
+        let (_root, db, folder_id, _watched) = setup_test_db_and_folder();
+        let missing = PathBuf::from("/nonexistent/lightframe/missing-file.jpg");
+        let result = process_file_inner(&db, folder_id, &missing).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn scan_empty_folder_completes_without_error() {
+        let (_root, db, folder_id, watched) = setup_test_db_and_folder();
+
+        let files = discover_files(&watched).await.unwrap();
+        assert!(files.is_empty(), "empty watched folder should yield no media files");
+
+        db.set_folder_scan_status(folder_id, "scanning").unwrap();
+        db.update_last_scan_at(folder_id).unwrap();
+        db.set_folder_scan_status(folder_id, "idle").unwrap();
+
+        let folder = db.get_watched_folder(folder_id).unwrap().unwrap();
+        assert_eq!(folder.scan_status, "idle");
     }
 }

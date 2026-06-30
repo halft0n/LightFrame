@@ -275,6 +275,48 @@ mod tests {
     }
 
     #[test]
+    fn scan_queue_is_running_default_false() {
+        let queue = ScanQueue::new();
+        assert!(!queue.is_running());
+    }
+
+    #[test]
+    fn scan_queue_enqueue_multiple_folders() {
+        let queue = ScanQueue::new();
+        queue.enqueue(10);
+        queue.enqueue(20);
+        queue.enqueue(30);
+
+        let mut rx = queue.try_start_worker().expect("worker should start once");
+        assert_eq!(rx.try_recv().unwrap(), 10);
+        assert_eq!(rx.try_recv().unwrap(), 20);
+        assert_eq!(rx.try_recv().unwrap(), 30);
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[test]
+    fn scan_queue_try_start_only_once() {
+        let queue = ScanQueue::new();
+        assert!(queue.try_start_worker().is_some());
+        assert!(queue.try_start_worker().is_none());
+    }
+
+    #[test]
+    fn scan_queue_running_flag_shared() {
+        use std::sync::atomic::Ordering;
+
+        let queue = ScanQueue::new();
+        assert!(!queue.is_running());
+
+        let flag = queue.running_flag();
+        flag.store(true, Ordering::SeqCst);
+        assert!(queue.is_running());
+
+        flag.store(false, Ordering::SeqCst);
+        assert!(!queue.is_running());
+    }
+
+    #[test]
     fn scan_status_tracks_progress_and_errors() {
         let status = ScanStatus::new();
         status.reset(42);
