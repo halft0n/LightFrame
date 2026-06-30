@@ -521,12 +521,10 @@ mod tests {
         let bottom_start = h.saturating_sub((h as f32 * 0.05).max(6.0) as u32);
 
         for (x, y, pixel) in img.enumerate_pixels_mut() {
-            if top_bar && y < top_limit {
-                *pixel = Rgba([30, 30, 30, 255]);
-            } else if bottom_bar && y >= bottom_start {
+            let is_bar = (top_bar && y < top_limit) || (bottom_bar && y >= bottom_start);
+            if is_bar {
                 *pixel = Rgba([30, 30, 30, 255]);
             } else {
-                // Varied content region so plain bands are distinguishable.
                 let r = ((x * 17 + y * 31) % 256) as u8;
                 let g = ((x * 13 + y * 23) % 256) as u8;
                 let b = ((x * 11 + y * 19) % 256) as u8;

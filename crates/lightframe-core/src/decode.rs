@@ -915,7 +915,7 @@ mod tests {
     fn detect_image_format_truncated_file_uses_extension() {
         let dir = tempfile::tempdir().unwrap();
         let truncated = dir.path().join("truncated.avif");
-        std::fs::write(&truncated, &[0x00, 0x01, 0x02]).unwrap();
+        std::fs::write(&truncated, [0x00, 0x01, 0x02]).unwrap();
 
         assert_eq!(detect_image_format(&truncated), ImageFormatKind::Avif);
         assert!(decode_image(&truncated).is_err());

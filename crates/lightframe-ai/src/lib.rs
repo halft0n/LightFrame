@@ -14,8 +14,8 @@ pub mod face;
 
 pub use dispatcher::AiDispatcher;
 pub use models::{
-    ModelFileStatus, ModelInfo, all_model_statuses, all_models, download_model,
-    download_model_cancellable, model_by_filename,
+    ModelFileStatus, ModelInfo, all_model_statuses, all_models, cleanup_partial_downloads,
+    download_model, download_model_cancellable, model_by_filename,
 };
 pub use python_sidecar::PythonSidecar;
 pub use screenshot::{ScreenshotScore, ScreenshotType, classify_screenshot, detect_screenshot};

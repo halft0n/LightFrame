@@ -1561,6 +1561,7 @@ fn sample_screenshot(path: &str) -> MediaFile {
     media
 }
 
+#[allow(clippy::too_many_arguments)]
 fn insert_photo_with_location(
     db: &Database,
     fid: i64,

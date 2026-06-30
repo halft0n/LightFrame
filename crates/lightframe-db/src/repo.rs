@@ -2868,53 +2868,67 @@ impl Database {
     pub fn merge_persons(&self, target_id: i64, source_ids: &[i64]) -> lightframe_core::Result<()> {
         let conn = self.conn()?;
 
-        let target_exists: bool = conn
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM persons WHERE id = ?1)",
-                params![target_id],
-                |row| row.get(0),
-            )
+        conn.execute_batch("BEGIN IMMEDIATE")
             .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
-        if !target_exists {
-            return Err(lightframe_core::Error::Other(format!(
-                "person {target_id} not found"
-            )));
-        }
 
-        for source_id in source_ids {
-            if *source_id == target_id {
-                continue;
-            }
-            let source_exists: bool = conn
+        let result = (|| -> lightframe_core::Result<()> {
+            let target_exists: bool = conn
                 .query_row(
                     "SELECT EXISTS(SELECT 1 FROM persons WHERE id = ?1)",
-                    params![source_id],
+                    params![target_id],
                     |row| row.get(0),
                 )
                 .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
-            if !source_exists {
+            if !target_exists {
                 return Err(lightframe_core::Error::Other(format!(
-                    "person {source_id} not found"
+                    "person {target_id} not found"
                 )));
             }
+
+            for source_id in source_ids {
+                if *source_id == target_id {
+                    continue;
+                }
+                let source_exists: bool = conn
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM persons WHERE id = ?1)",
+                        params![source_id],
+                        |row| row.get(0),
+                    )
+                    .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+                if !source_exists {
+                    return Err(lightframe_core::Error::Other(format!(
+                        "person {source_id} not found"
+                    )));
+                }
+                conn.execute(
+                    "UPDATE face_detections SET person_id = ?1 WHERE person_id = ?2",
+                    params![target_id, source_id],
+                )
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+                conn.execute("DELETE FROM persons WHERE id = ?1", params![source_id])
+                    .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+            }
+
             conn.execute(
-                "UPDATE face_detections SET person_id = ?1 WHERE person_id = ?2",
-                params![target_id, source_id],
+                "UPDATE persons SET face_count = (
+                     SELECT COUNT(*) FROM face_detections WHERE person_id = ?1
+                 ) WHERE id = ?1",
+                params![target_id],
             )
             .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
-            conn.execute("DELETE FROM persons WHERE id = ?1", params![source_id])
+
+            Ok(())
+        })();
+
+        if result.is_ok() {
+            conn.execute_batch("COMMIT")
                 .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        } else {
+            let _ = conn.execute_batch("ROLLBACK");
         }
 
-        conn.execute(
-            "UPDATE persons SET face_count = (
-                 SELECT COUNT(*) FROM face_detections WHERE person_id = ?1
-             ) WHERE id = ?1",
-            params![target_id],
-        )
-        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
-
-        Ok(())
+        result
     }
 
     pub fn get_persons_count(&self) -> lightframe_core::Result<i64> {
@@ -3282,62 +3296,74 @@ impl Database {
     ) -> lightframe_core::Result<i64> {
         let conn = self.conn()?;
 
-        let old_person_id: Option<i64> = conn
-            .query_row(
-                "SELECT person_id FROM face_detections WHERE id = ?1",
-                params![face_id],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
-            .flatten();
-
-        conn.execute(
-            "INSERT INTO persons (name) VALUES (?1)",
-            params![new_person_name],
-        )
-        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
-        let new_person_id = conn.last_insert_rowid();
-
-        let updated = conn
-            .execute(
-                "UPDATE face_detections SET person_id = ?1 WHERE id = ?2",
-                params![new_person_id, face_id],
-            )
+        conn.execute_batch("BEGIN IMMEDIATE")
             .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
 
-        if updated == 0 {
-            conn.execute("DELETE FROM persons WHERE id = ?1", params![new_person_id])
-                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
-            return Err(lightframe_core::Error::Database(format!(
-                "face {face_id} not found"
-            )));
-        }
-
-        for person_id in [Some(new_person_id), old_person_id].into_iter().flatten() {
-            conn.execute(
-                "UPDATE persons SET face_count = (
-                     SELECT COUNT(*) FROM face_detections WHERE person_id = ?1
-                 ) WHERE id = ?1",
-                params![person_id],
-            )
-            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
-
-            let remaining: i64 = conn
+        let result = (|| -> lightframe_core::Result<i64> {
+            let old_person_id: Option<i64> = conn
                 .query_row(
-                    "SELECT COUNT(*) FROM face_detections WHERE person_id = ?1",
-                    params![person_id],
+                    "SELECT person_id FROM face_detections WHERE id = ?1",
+                    params![face_id],
                     |row| row.get(0),
+                )
+                .optional()
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+                .flatten();
+
+            conn.execute(
+                "INSERT INTO persons (name) VALUES (?1)",
+                params![new_person_name],
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+            let new_person_id = conn.last_insert_rowid();
+
+            let updated = conn
+                .execute(
+                    "UPDATE face_detections SET person_id = ?1 WHERE id = ?2",
+                    params![new_person_id, face_id],
                 )
                 .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
 
-            if remaining == 0 {
-                conn.execute("DELETE FROM persons WHERE id = ?1", params![person_id])
-                    .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+            if updated == 0 {
+                return Err(lightframe_core::Error::Database(format!(
+                    "face {face_id} not found"
+                )));
             }
+
+            for person_id in [Some(new_person_id), old_person_id].into_iter().flatten() {
+                conn.execute(
+                    "UPDATE persons SET face_count = (
+                         SELECT COUNT(*) FROM face_detections WHERE person_id = ?1
+                     ) WHERE id = ?1",
+                    params![person_id],
+                )
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+                let remaining: i64 = conn
+                    .query_row(
+                        "SELECT COUNT(*) FROM face_detections WHERE person_id = ?1",
+                        params![person_id],
+                        |row| row.get(0),
+                    )
+                    .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+                if remaining == 0 {
+                    conn.execute("DELETE FROM persons WHERE id = ?1", params![person_id])
+                        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+                }
+            }
+
+            Ok(new_person_id)
+        })();
+
+        if result.is_ok() {
+            conn.execute_batch("COMMIT")
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        } else {
+            let _ = conn.execute_batch("ROLLBACK");
         }
 
-        Ok(new_person_id)
+        result
     }
 
     pub fn save_edit_params(&self, media_id: i64, params: &str) -> lightframe_core::Result<()> {

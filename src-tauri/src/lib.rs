@@ -34,6 +34,8 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            lightframe_ai::cleanup_partial_downloads();
+
             let handle = app.handle().clone();
             let state = app.state::<AppState>();
             if let Err(e) = watcher::start(&handle, &state) {

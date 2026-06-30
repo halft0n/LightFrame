@@ -321,7 +321,7 @@ fn unique_export_path(dir: &std::path::Path, filename: &str) -> std::path::PathB
         .unwrap_or(&filename);
     let ext = path.extension().and_then(|s| s.to_str());
 
-    for i in 1..1000 {
+    for i in 1..10000 {
         let candidate_name = match ext {
             Some(ext) => format!("{stem}_{i}.{ext}"),
             None => format!("{stem}_{i}"),
@@ -332,7 +332,15 @@ fn unique_export_path(dir: &std::path::Path, filename: &str) -> std::path::PathB
         }
     }
 
-    dir.join(&filename)
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let fallback = match ext {
+        Some(ext) => format!("{stem}_{ts}.{ext}"),
+        None => format!("{stem}_{ts}"),
+    };
+    dir.join(fallback)
 }
 
 #[cfg(test)]
@@ -2365,7 +2373,7 @@ pub fn get_media_with_geo(
     limit: i64,
     offset: i64,
 ) -> Result<Vec<MediaFile>, String> {
-    let limit = limit.clamp(1, 5000);
+    let limit = limit.clamp(1, 50000);
     let offset = offset.max(0);
     state
         .db

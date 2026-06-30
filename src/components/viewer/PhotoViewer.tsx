@@ -127,6 +127,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   const [rotation, setRotation] = useState(0);
   const [closing, setClosing] = useState(false);
   const [currentImageLoaded, setCurrentImageLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
   const filmstripRef = useRef<HTMLDivElement>(null);
@@ -177,26 +178,31 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   useEffect(() => {
     resetView();
     setShowSimilar(false);
+    setLoadError(false);
     let cancelled = false;
 
     void (async () => {
-      const [item, nb, strip, hasEdit, favoriteState] = await Promise.all([
-        getMediaById(mediaId),
-        getMediaNeighbors(mediaId),
-        loadContextFilmstrip(mediaId, contextItems, FILMSTRIP_SIZE),
-        hasEdits(mediaId),
-        getFavoriteState(mediaId),
-      ]);
-      if (cancelled) return;
-      setMedia(item);
-      setDbNeighbors(nb);
-      setFilmstrip(strip ?? []);
-      setEdited(hasEdit);
-      setIsFavorite(favoriteState);
-      if (hasEdit) {
-        setEditParamsJson(await getEdit(mediaId));
-      } else {
-        setEditParamsJson(null);
+      try {
+        const [item, nb, strip, hasEdit, favoriteState] = await Promise.all([
+          getMediaById(mediaId),
+          getMediaNeighbors(mediaId),
+          loadContextFilmstrip(mediaId, contextItems, FILMSTRIP_SIZE),
+          hasEdits(mediaId),
+          getFavoriteState(mediaId),
+        ]);
+        if (cancelled) return;
+        setMedia(item);
+        setDbNeighbors(nb);
+        setFilmstrip(strip ?? []);
+        setEdited(hasEdit);
+        setIsFavorite(favoriteState);
+        if (hasEdit) {
+          setEditParamsJson(await getEdit(mediaId));
+        } else {
+          setEditParamsJson(null);
+        }
+      } catch {
+        if (!cancelled) setLoadError(true);
       }
     })();
 
@@ -675,6 +681,21 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
             filmstripIds={filmstrip.map((item) => item.id)}
             onNavigate={openViewer}
           />
+        ) : loadError ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-neutral-400">
+            <span className="text-4xl">⚠</span>
+            <span>{t("viewer.loadError")}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setLoadError(false);
+                setMedia(null);
+              }}
+              className="rounded-lg bg-white/10 px-4 py-1.5 text-sm transition hover:bg-white/20"
+            >
+              {t("viewer.retry")}
+            </button>
+          </div>
         ) : !media ? (
           <div className="flex flex-1 items-center justify-center">
             <LoadingIndicator label={t("gallery.loading")} />

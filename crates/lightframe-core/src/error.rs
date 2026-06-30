@@ -56,10 +56,15 @@ mod tests {
 
     #[test]
     fn result_type_works() {
-        let ok: Result<i32> = Ok(42);
+        fn make_ok() -> Result<i32> {
+            Ok(42)
+        }
+        let ok = make_ok();
         assert_eq!(ok.unwrap(), 42);
 
-        let err: Result<i32> = Err(Error::Config("bad value".into()));
-        assert!(err.is_err());
+        fn make_err() -> Result<i32> {
+            Err(Error::Config("bad value".into()))
+        }
+        assert!(make_err().is_err());
     }
 }

@@ -259,6 +259,8 @@
   "similar.retry": "Retry",
   "similar.match": "similar",
   "viewer.edit": "Edit",
+  "viewer.loadError": "Failed to load media",
+  "viewer.retry": "Retry",
   "viewer.confirmDelete": "Move this item to trash?",
   "editor.title": "Edit",
   "editor.save": "Save",

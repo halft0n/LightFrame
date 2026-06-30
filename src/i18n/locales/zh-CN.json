@@ -259,6 +259,8 @@
   "similar.retry": "重试",
   "similar.match": "相似",
   "viewer.edit": "编辑",
+  "viewer.loadError": "加载媒体失败",
+  "viewer.retry": "重试",
   "viewer.confirmDelete": "将此项目移至回收站？",
   "editor.title": "编辑",
   "editor.save": "保存",

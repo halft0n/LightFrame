@@ -132,6 +132,19 @@ pub fn model_exists(path: &Path) -> bool {
     path.is_file()
 }
 
+pub fn cleanup_partial_downloads() {
+    let dir = models_dir();
+    if let Ok(entries) = std::fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("part") {
+                tracing::info!(path = %path.display(), "removing orphan partial download");
+                let _ = std::fs::remove_file(&path);
+            }
+        }
+    }
+}
+
 pub fn model_path_for(info: &ModelInfo) -> PathBuf {
     models_dir().join(info.filename)
 }
@@ -252,8 +265,17 @@ where
 fn verify_file_sha256(path: &Path, expected: &str) -> Result<()> {
     use sha2::{Digest, Sha256};
 
-    let bytes = std::fs::read(path).map_err(Error::Io)?;
-    let hash = Sha256::digest(bytes);
+    let mut file = std::fs::File::open(path).map_err(Error::Io)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buffer).map_err(Error::Io)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buffer[..n]);
+    }
+    let hash = hasher.finalize();
     let hex = hash.iter().map(|b| format!("{b:02x}")).collect::<String>();
 
     if hex.eq_ignore_ascii_case(expected) {
