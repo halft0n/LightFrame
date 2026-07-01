@@ -748,9 +748,9 @@ flowchart TB
 
 | 层级 | 数量 | 命令 |
 |------|------|------|
-| Rust workspace | **737** | `cargo test --workspace` |
+| Rust workspace | **752** | `cargo test --workspace` |
 | React (Vitest) | **639**（57 文件） | `pnpm test` |
-| **合计** | **1376** | CI 每 PR 运行 |
+| **合计** | **1391** | CI 每 PR 运行 |
 
 **运行命令**：
 

@@ -1,6 +1,6 @@
 # LightFrame v0.1.0-beta Roadmap
 
-> **Current version:** v0.0.17  
+> **Current version:** v0.0.19  
 > **Last updated:** 2026-07-01
 
 ## Current Status (v0.0.17)
@@ -107,7 +107,7 @@ When `raw-decode` is enabled, `decode_image()` tries full RAW decode first and f
 | Criterion | Status | Notes |
 |-----------|--------|-------|
 | All tests passing on Windows, macOS, Linux | ⚠️ Partial | CI: Ubuntu + Windows on every PR; macOS on tag builds only |
-| Rust + frontend test suite green | ✅ | **643** Rust + **561** frontend = **1204** tests (v0.0.17) |
+| Rust + frontend test suite green | ✅ | **752** Rust + **639** frontend = **1391** tests (v0.0.19) |
 | <3s cold start time | ⬜ Unverified | Target from roadmap; needs release-build measurement |
 | <100MB memory usage for 10K photos | ⬜ Unverified | Needs profiling on real library |
 | 10万+ library performance targets | ⬜ Pending | Criterion benches exist; soak test on 100K+ library not done |

@@ -8,7 +8,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- (nothing yet)
+- Integration tests: `e2e_rebuild_cache_full_pipeline`, `e2e_rebuild_cache_persistence_across_db_reopen`, `e2e_scan_thumbnail_pipeline_all_formats`
+- Performance benchmarks: `scan_bench` for indexer (walkdir 1K/5K/10K, is_media_file, classify_extension)
+- CI: benchmark compilation check (`cargo bench --no-run`) in test-rust job
+- CI: code coverage reporting job (`cargo-llvm-cov` → lcov artifact)
+- CI: performance regression detection workflow (`bench.yml`, 10% threshold alerting)
+- Tests: 8 new EXIF metadata tests, 5 new thumbnail tests
+
+### Tests
+- Rust: 752 tests (up from 737)
+- Frontend: 639 tests (unchanged)
+- Total: 1391
 
 ## [0.0.19] - 2026-07-01
 
