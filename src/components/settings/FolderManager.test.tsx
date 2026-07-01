@@ -35,6 +35,15 @@ vi.mock("@/hooks/useTheme", () => ({
   changeTheme: vi.fn(),
 }));
 
+const loadMediaMock = vi.fn().mockResolvedValue(undefined);
+vi.mock("@/store/appStore", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/store/appStore")>();
+  return {
+    ...actual,
+    loadMedia: (...args: unknown[]) => loadMediaMock(...args),
+  };
+});
+
 const sampleFolder: WatchedFolder = {
   id: 1,
   path: "/home/user/photos",
@@ -48,6 +57,7 @@ beforeEach(() => {
   setWatchedFolders([]);
   removeWatchedFolder.mockReset();
   scanFolder.mockReset();
+  loadMediaMock.mockReset().mockResolvedValue(undefined);
   vi.clearAllMocks();
   (invoke as ReturnType<typeof vi.fn>).mockImplementation((cmd: string) => {
     if (cmd === "get_log_config") {
@@ -171,5 +181,21 @@ describe("FolderManager", () => {
     expect(
       screen.getByText("配置应用日志级别、保留策略和存储限制"),
     ).toBeInTheDocument();
+  });
+
+  it("refreshes media list after removing a folder", async () => {
+    const user = userEvent.setup();
+    setWatchedFolders([sampleFolder]);
+    removeWatchedFolder.mockResolvedValue(undefined);
+
+    render(<FolderManager />);
+    await user.click(screen.getByRole("button", { name: "移除" }));
+
+    await waitFor(() => {
+      expect(removeWatchedFolder).toHaveBeenCalledWith(1);
+    });
+    await waitFor(() => {
+      expect(loadMediaMock).toHaveBeenCalled();
+    });
   });
 });

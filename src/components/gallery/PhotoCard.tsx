@@ -3,6 +3,7 @@ import type { MediaItem } from "@/lib/tauri";
 import { getThumbnailUrl } from "@/lib/tauri";
 import { dragMediaIdsForItem, setDragMediaIds } from "@/lib/dragMedia";
 import { useTranslation } from "@/i18n/useTranslation";
+import type { ThumbnailSize } from "@/store/appStore";
 
 interface PhotoCardProps {
   item: MediaItem;
@@ -11,6 +12,13 @@ interface PhotoCardProps {
   onSelect: (id: number, event: React.MouseEvent) => void;
   onOpen?: (id: number) => void;
   animationIndex?: number;
+  thumbnailSize?: ThumbnailSize;
+}
+
+function thumbnailProtocolSize(
+  uiSize: ThumbnailSize,
+): "small" | "large" {
+  return uiSize === "large" ? "large" : "small";
 }
 
 function formatDuration(seconds: number): string {
@@ -31,6 +39,7 @@ export const PhotoCard = memo(function PhotoCard({
   onSelect,
   onOpen,
   animationIndex = 0,
+  thumbnailSize = "small",
 }: PhotoCardProps) {
   const { t } = useTranslation();
   const [loaded, setLoaded] = useState(false);
@@ -98,7 +107,7 @@ export const PhotoCard = memo(function PhotoCard({
         </div>
       ) : (
         <img
-          src={getThumbnailUrl(item.id, "small")}
+          src={getThumbnailUrl(item.id, thumbnailProtocolSize(thumbnailSize))}
           alt={item.filename}
           loading="lazy"
           decoding="async"

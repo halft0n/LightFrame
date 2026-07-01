@@ -25,6 +25,7 @@ pub fn regenerate_thumbnails_for_media(state: &AppState, media_id: i64) -> Resul
     let result = regenerate_thumbnails_for_media_db(&state.db, media_id)?;
     if result {
         state.thumb_cache.invalidate_media(media_id);
+        crate::face_protocol::invalidate_face_cache_for_media(state, media_id);
     }
     Ok(result)
 }
@@ -311,6 +312,7 @@ mod tests {
                 watch_manager: crate::watcher::WatchManager::new(),
                 thumb_cache: crate::thumb_cache::ThumbCache::new(),
                 ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
+                face_cache_dir: tempfile::tempdir().unwrap().into_path(),
             };
 
             Self {

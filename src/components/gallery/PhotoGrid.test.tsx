@@ -383,4 +383,38 @@ describe("PhotoGrid", () => {
     expect(screen.getByText("暂无照片")).toBeInTheDocument();
     expect(screen.queryByText("重试")).not.toBeInTheDocument();
   });
+
+  it("does not render grid cells before container width is measured", () => {
+    setMedia([sampleMedia], 1);
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get: () => 0,
+    });
+    render(<PhotoGrid />);
+
+    expect(screen.queryByRole("grid")).not.toBeInTheDocument();
+    expect(screen.queryByRole("gridcell")).not.toBeInTheDocument();
+
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get: () => 800,
+    });
+  });
+
+  it("renders square grid cells after container width is measured", async () => {
+    setMedia([sampleMedia], 1);
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get: () => 800,
+    });
+    render(<PhotoGrid />);
+
+    lastResizeObserver?.trigger(800);
+
+    await waitFor(() => {
+      expect(screen.getByRole("grid")).toBeInTheDocument();
+    });
+    const cells = screen.getAllByRole("gridcell");
+    expect(cells.length).toBeGreaterThan(0);
+  });
 });

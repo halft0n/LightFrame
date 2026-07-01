@@ -594,4 +594,114 @@ mod tests {
         assert!(good.is_ok(), "correct sha256 should succeed: {:?}", good);
         let _ = std::fs::remove_file(&dest);
     }
+
+    #[test]
+    fn download_model_cancellable_stops_when_flag_set() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let body = vec![0xCD_u8; 300 * 1024];
+        let (url, server) = start_test_http_server(body);
+        let url_leaked: &'static str = Box::leak(url.into_boxed_str());
+        let filename = leaked_test_filename("lf-dl-cancel");
+        let dest = models_dir().join(filename);
+        let part = dest.with_extension("onnx.part");
+        let _ = std::fs::remove_file(&dest);
+        let _ = std::fs::remove_file(&part);
+
+        let info = ModelInfo {
+            name: "Cancel Test",
+            filename,
+            url: url_leaked,
+            size_mb: 1,
+            sha256: "",
+            description: "test",
+        };
+
+        let cancel = AtomicBool::new(true);
+
+        let result = download_model_cancellable(&info, |_, _| {}, Some(&cancel));
+        let _ = server.join();
+
+        match &result {
+            Err(e) => {
+                let msg = e.to_string();
+                if msg.contains("download failed") || msg.contains("connection") {
+                    return;
+                }
+                assert!(msg.contains("cancelled"), "expected cancelled error: {msg}");
+                assert!(
+                    !part.exists(),
+                    "partial file should be cleaned up on cancel"
+                );
+                assert!(!dest.exists(), "final file should not exist on cancel");
+            }
+            Ok(_) => {
+                panic!("download should have been cancelled");
+            }
+        }
+    }
+
+    #[test]
+    fn cleanup_partial_downloads_removes_part_files() {
+        ensure_models_dir().unwrap();
+        let dir = models_dir();
+        let part_file = dir.join("test-cleanup-orphan.onnx.part");
+        let normal_file = dir.join("test-cleanup-normal.onnx");
+        std::fs::write(&part_file, b"partial data").unwrap();
+        std::fs::write(&normal_file, b"real model data").unwrap();
+
+        cleanup_partial_downloads();
+
+        assert!(!part_file.exists(), ".part file should be removed");
+        assert!(
+            normal_file.exists(),
+            "normal .onnx file should not be removed"
+        );
+
+        let _ = std::fs::remove_file(&normal_file);
+    }
+
+    #[test]
+    fn download_model_cancellable_with_no_cancel_completes_normally() {
+        let body = vec![0xEF_u8; 50 * 1024];
+        let (url, server) = start_test_http_server(body.clone());
+        let url_leaked: &'static str = Box::leak(url.into_boxed_str());
+        let filename = leaked_test_filename("lf-dl-nocancel");
+        let dest = models_dir().join(filename);
+        let _ = std::fs::remove_file(&dest);
+
+        let info = ModelInfo {
+            name: "No Cancel Test",
+            filename,
+            url: url_leaked,
+            size_mb: 1,
+            sha256: "",
+            description: "test",
+        };
+
+        let result = download_model_cancellable(&info, |_, _| {}, None);
+        let _ = server.join();
+
+        match result {
+            Ok(path) => {
+                assert!(path.is_file());
+                assert_eq!(std::fs::read(&path).unwrap(), body);
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                assert!(
+                    msg.contains("download failed") || msg.contains("connection"),
+                    "unexpected error: {msg}"
+                );
+            }
+        }
+        let _ = std::fs::remove_file(&dest);
+    }
+
+    #[test]
+    fn model_by_filename_returns_none_for_unknown() {
+        assert!(model_by_filename("totally-fake-model.onnx").is_none());
+        assert!(model_by_filename("").is_none());
+        assert!(model_by_filename("../escape.onnx").is_none());
+    }
 }

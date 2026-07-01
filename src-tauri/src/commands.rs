@@ -671,6 +671,7 @@ mod batch_export_tests {
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: crate::thumb_cache::ThumbCache::new(),
             ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
+            face_cache_dir: tempfile::tempdir().unwrap().into_path(),
         }
     }
 
@@ -835,6 +836,7 @@ mod rename_person_tests {
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: crate::thumb_cache::ThumbCache::new(),
             ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
+            face_cache_dir: tempfile::tempdir().unwrap().into_path(),
         }
     }
 
@@ -938,6 +940,7 @@ mod edit_persistence_tests {
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: crate::thumb_cache::ThumbCache::new(),
             ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
+            face_cache_dir: tempfile::tempdir().unwrap().into_path(),
         };
 
         let err = detect_and_store_faces_for_media(&state, 99999)
@@ -1140,6 +1143,7 @@ pub async fn resolve_duplicate(
 
     for media_id in removed_ids {
         state.thumb_cache.invalidate_media(media_id);
+        crate::face_protocol::invalidate_face_cache_for_media(&state, media_id);
     }
     Ok(())
 }
@@ -1508,6 +1512,7 @@ pub fn permanently_delete(state: State<'_, AppState>, media_id: i64) -> Result<(
         .map_err(|e| db_err("permanently_delete", &media_id.to_string(), e))?;
     remove_media_from_disk(&path, hash.as_deref(), &state.db);
     state.thumb_cache.invalidate_media(media_id);
+    crate::face_protocol::invalidate_face_cache_for_media(&state, media_id);
     Ok(())
 }
 
@@ -1602,6 +1607,7 @@ pub fn batch_permanent_delete(
 
     for media_id in &media_ids {
         state.thumb_cache.invalidate_media(*media_id);
+        crate::face_protocol::invalidate_face_cache_for_media(&state, *media_id);
     }
 
     Ok(affected)
@@ -2141,6 +2147,8 @@ async fn detect_and_store_faces_for_media(state: &AppState, media_id: i64) -> Re
             embedding: f.embedding.clone(),
         })
         .collect();
+    // Invalidate old face cache before storing new detections
+    crate::face_protocol::invalidate_face_cache_for_media(state, media_id);
     state
         .db
         .store_face_detections(media_id, &inputs)
@@ -2408,6 +2416,7 @@ pub async fn regenerate_thumbnail_single(
 
     if regenerated {
         state.thumb_cache.invalidate_media(media_id);
+        crate::face_protocol::invalidate_face_cache_for_media(&state, media_id);
     }
     Ok(regenerated)
 }

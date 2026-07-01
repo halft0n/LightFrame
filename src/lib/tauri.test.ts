@@ -79,6 +79,7 @@ import {
   getModelStatus,
   downloadModel,
   openModelsDir,
+  cancelDownload,
   getScreenshots,
   getScreenshotCount,
   computeClipEmbedding,
@@ -832,6 +833,12 @@ describe("AI and models", () => {
     mockInvoke.mockResolvedValue(undefined);
     await openModelsDir();
     expect(mockInvoke).toHaveBeenCalledWith("open_models_dir");
+  });
+
+  it("cancelDownload invokes cancel_download", async () => {
+    mockInvoke.mockResolvedValue(undefined);
+    await cancelDownload();
+    expect(mockInvoke).toHaveBeenCalledWith("cancel_download");
   });
 });
 

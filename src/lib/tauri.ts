@@ -19,7 +19,12 @@ export async function invokeCommand<T>(
 export type MediaType =
   "Photo" | "Video" | "Screenshot" | "LivePhoto" | "Raw" | "Unknown";
 
-export type ScanStatus = "idle" | "scanning" | "complete" | "error";
+export type ScanStatus =
+  | "idle"
+  | "scanning"
+  | "indexed"
+  | "complete"
+  | "error";
 
 export interface WatchedFolder {
   id: number;
@@ -291,7 +296,10 @@ export async function getMediaList(
   return invoke<MediaItem[]>("get_media_list", { offset, limit });
 }
 
-export async function getMediaPage(limit: number, cursor?: [string, number]) {
+/** Keyset cursor: [sortTimestamp, id] where sortTimestamp is created_at ?? modified_at. */
+export type MediaPageCursor = [string, number];
+
+export async function getMediaPage(limit: number, cursor?: MediaPageCursor) {
   return invokeCommand<MediaItem[]>("get_media_page", {
     limit,
     cursor: cursor ?? null,

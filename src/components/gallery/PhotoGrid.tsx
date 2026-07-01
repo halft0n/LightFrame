@@ -325,6 +325,7 @@ export function PhotoGrid({
         </div>
       )}
       <div ref={parentRef} className="flex-1 overflow-y-auto px-1 py-1">
+        {containerWidth === 0 ? null : (
         <div
           role="grid"
           aria-label={t("gallery.gridLabel")}
@@ -370,6 +371,7 @@ export function PhotoGrid({
                         onSelect={handleSelect}
                         onOpen={openViewer}
                         animationIndex={colIndex}
+                        thumbnailSize={thumbnailSize}
                       />
                     );
                   })}
@@ -378,6 +380,7 @@ export function PhotoGrid({
             );
           })}
         </div>
+        )}
 
         {loadingMore && (
           <LoadingIndicator className="py-6" label={t("a11y.loadingPhotos")} />

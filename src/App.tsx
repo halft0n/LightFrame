@@ -113,10 +113,16 @@ export default function App() {
     let unlistenBatch: (() => void) | undefined;
 
     void onScanProgress((progress) => {
-      setScanning(progress.status === "scanning", progress);
+      const inProgress =
+        progress.status === "scanning" || progress.status === "indexed";
+      setScanning(inProgress, inProgress ? progress : null);
       updateFolder(progress.folder_id, {
         scan_status: progress.status,
       });
+
+      if (progress.status === "indexed") {
+        void loadMedia();
+      }
 
       if (progress.status === "error") {
         console.error(
@@ -191,7 +197,12 @@ export default function App() {
     if (watchedFolders.length === 0) return;
 
     const foldersToRescan = watchedFolders.filter((folder) => {
-      if (folder.scan_status === "scanning") return false;
+      if (
+        folder.scan_status === "scanning" ||
+        folder.scan_status === "indexed"
+      ) {
+        return false;
+      }
       if (!folder.last_scan) return true;
       const lastScan = new Date(folder.last_scan).getTime();
       return now - lastScan > RESCAN_COOLDOWN_MS;

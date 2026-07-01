@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   getMediaById,
   getMediaNeighbors,
@@ -677,7 +678,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
       <div className="relative flex flex-1 overflow-hidden">
         {isVideo && media ? (
           <VideoPlayer
-            src={getOriginalUrl(media.path)}
+            src={convertFileSrc(media.path)}
             mediaId={mediaId}
             filmstripIds={filmstrip.map((item) => item.id)}
             onNavigate={openViewer}

@@ -4,6 +4,7 @@ use lightframe_core::media::ThumbnailSize;
 use lightframe_db::Database;
 use lightframe_thumbnail::thumb_path;
 use serde::Serialize;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -149,6 +150,7 @@ pub struct AppState {
     pub watch_manager: WatchManager,
     pub thumb_cache: ThumbCache,
     pub ai: Arc<tokio::sync::Mutex<AiDispatcher>>,
+    pub face_cache_dir: PathBuf,
 }
 
 const TRASH_RETENTION_DAYS: i64 = 30;
@@ -229,6 +231,7 @@ impl AppState {
             watch_manager: WatchManager::new(),
             thumb_cache: ThumbCache::new(),
             ai: Arc::new(tokio::sync::Mutex::new(AiDispatcher::new())),
+            face_cache_dir: lightframe_core::config::thumb_cache_dir().join("faces"),
         })
     }
 }

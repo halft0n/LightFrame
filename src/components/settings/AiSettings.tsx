@@ -303,9 +303,9 @@ export function AiSettings() {
       await downloadModel(filename);
       await loadStatus();
     } catch (err) {
-      const msg = localizeError(err, t);
-      if (!msg.includes("cancelled")) {
-        setDownloadError(msg);
+      const raw = err instanceof Error ? err.message : String(err);
+      if (!raw.includes("cancelled")) {
+        setDownloadError(localizeError(err, t));
       }
     } finally {
       setDownloadingFile(null);

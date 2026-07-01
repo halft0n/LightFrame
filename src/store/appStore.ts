@@ -302,8 +302,9 @@ export function mergeNewMedia(items: MediaItem[]) {
 function mediaCursorFromItems(items: MediaItem[]): MediaCursor {
   if (items.length === 0) return null;
   const last = items[items.length - 1];
-  if (!last.created_at) return null;
-  return [last.created_at, last.id];
+  const sortTimestamp = last.created_at ?? last.modified_at;
+  if (!sortTimestamp) return null;
+  return [sortTimestamp, last.id];
 }
 
 export async function loadMedia() {

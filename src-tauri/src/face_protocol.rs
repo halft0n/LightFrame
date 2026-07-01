@@ -4,8 +4,53 @@ use crate::state::AppState;
 use http::{StatusCode, header};
 use image::GenericImageView;
 use std::io::Cursor;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tauri::http::Response;
+
+fn face_cache_path(state: &AppState, face_id: i64) -> PathBuf {
+    state.face_cache_dir.join(format!("{face_id}.jpg"))
+}
+
+fn jpeg_response(body: Vec<u8>) -> Response<Vec<u8>> {
+    ok_response(
+        cors_headers(
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "image/jpeg")
+                .header(header::CACHE_CONTROL, "max-age=86400"),
+        ),
+        body,
+    )
+}
+
+fn read_face_cache(state: &AppState, face_id: i64) -> Option<Vec<u8>> {
+    let path = face_cache_path(state, face_id);
+    match std::fs::read(&path) {
+        Ok(bytes) if !bytes.is_empty() => Some(bytes),
+        _ => None,
+    }
+}
+
+fn write_face_cache(state: &AppState, face_id: i64, jpeg: &[u8]) {
+    let path = face_cache_path(state, face_id);
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(path, jpeg);
+}
+
+/// Remove cached face crops for all faces of a given media.
+/// Call this when media is deleted, moved, or re-scanned.
+pub fn invalidate_face_cache_for_media(state: &AppState, media_id: i64) {
+    let faces = match state.db.get_faces_for_media(media_id) {
+        Ok(f) => f,
+        Err(_) => return,
+    };
+    for face in faces {
+        let path = face_cache_path(state, face.id);
+        let _ = std::fs::remove_file(path);
+    }
+}
 
 pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
     tracing::debug!("face protocol request: {request_path}");
@@ -42,22 +87,27 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
     };
 
     let file_path = Path::new(&media.path);
+
+    // Quick watched-folder check using the DB path (not canonicalized yet)
+    let path_plausible = file_path
+        .parent()
+        .map(|p| path_is_in_watched_folders(p, &watched_folders))
+        .unwrap_or(false)
+        || path_is_in_watched_folders(file_path, &watched_folders);
+
+    if !path_plausible {
+        return error_response(StatusCode::FORBIDDEN, "path not allowed");
+    }
+
+    // Serve from disk cache after basic security check
+    if let Some(cached) = read_face_cache(state, face_id) {
+        return jpeg_response(cached);
+    }
+
     let canonical = match std::fs::canonicalize(file_path) {
         Ok(p) => strip_extended_prefix(p),
         Err(_) => {
-            let parent_in_watched = file_path
-                .parent()
-                .and_then(|p| std::fs::canonicalize(p).ok())
-                .map(strip_extended_prefix)
-                .map(|cp| path_is_in_watched_folders(&cp, &watched_folders))
-                .unwrap_or(false)
-                || path_is_in_watched_folders(file_path, &watched_folders);
-
-            return if parent_in_watched {
-                error_response(StatusCode::NOT_FOUND, "source file missing")
-            } else {
-                error_response(StatusCode::FORBIDDEN, "path not allowed")
-            };
+            return error_response(StatusCode::NOT_FOUND, "source file missing");
         }
     };
 
@@ -114,15 +164,9 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
         return error_response(StatusCode::INTERNAL_SERVER_ERROR, "failed to encode crop");
     }
 
-    ok_response(
-        cors_headers(
-            Response::builder()
-                .status(StatusCode::OK)
-                .header(header::CONTENT_TYPE, "image/jpeg")
-                .header(header::CACHE_CONTROL, "max-age=86400"),
-        ),
-        buf.into_inner(),
-    )
+    let jpeg = buf.into_inner();
+    write_face_cache(state, face_id, &jpeg);
+    jpeg_response(jpeg)
 }
 
 #[cfg(test)]
@@ -137,6 +181,7 @@ mod tests {
     use std::sync::atomic::AtomicBool;
 
     fn test_state() -> AppState {
+        let face_cache = tempfile::tempdir().unwrap();
         AppState {
             db: Arc::new(Database::open(std::path::Path::new(":memory:")).expect("in-memory db")),
             config: AppConfig::default(),
@@ -150,6 +195,7 @@ mod tests {
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: crate::thumb_cache::ThumbCache::new(),
             ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
+            face_cache_dir: face_cache.into_path(),
         }
     }
 
@@ -293,6 +339,28 @@ mod tests {
             Some("image/jpeg")
         );
         assert!(resp.body().starts_with(&[0xFF, 0xD8, 0xFF]));
+    }
+
+    #[test]
+    fn handle_valid_face_crop_uses_disk_cache_on_second_request() {
+        let state = test_state();
+        let dir = tempfile::tempdir().unwrap();
+        let (face_id, _) = insert_face_media(&state, dir.path(), [20.0, 30.0, 80.0, 90.0]);
+
+        let cache_path = face_cache_path(&state, face_id);
+        let _ = std::fs::remove_file(&cache_path);
+
+        let first = handle(&state, &format!("/{face_id}"));
+        assert_eq!(first.status(), StatusCode::OK);
+        assert!(cache_path.exists(), "first request should write face cache");
+
+        std::fs::remove_file(dir.path().join("face_source.jpg")).unwrap();
+
+        let second = handle(&state, &format!("/{face_id}"));
+        assert_eq!(second.status(), StatusCode::OK);
+        assert_eq!(first.body(), second.body());
+
+        let _ = std::fs::remove_file(&cache_path);
     }
 
     #[test]

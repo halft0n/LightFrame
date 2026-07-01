@@ -14,6 +14,7 @@ import {
   removeFolder,
   updateFolder,
   useAppStore,
+  loadMedia,
   type Theme,
 } from "@/store/appStore";
 import { changeTheme } from "@/hooks/useTheme";
@@ -63,6 +64,15 @@ function ScanIndicator({
           </div>
         )}
       </div>
+    );
+  }
+
+  if (status === "indexed") {
+    return (
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+        {t("settings.indexed")}
+      </span>
     );
   }
 
@@ -170,6 +180,7 @@ export function FolderManager() {
     try {
       await removeWatchedFolder(id);
       removeFolder(id);
+      await loadMedia();
     } catch (err) {
       console.error("Failed to remove watched folder:", err);
     }
@@ -185,7 +196,9 @@ export function FolderManager() {
   };
 
   const handleRescanAll = async () => {
-    const targets = watchedFolders.filter((f) => f.scan_status !== "scanning");
+    const targets = watchedFolders.filter(
+      (f) => f.scan_status !== "scanning" && f.scan_status !== "indexed",
+    );
     if (targets.length === 0) return;
 
     setRescanningAll(true);
@@ -251,7 +264,11 @@ export function FolderManager() {
                 onClick={() => void handleRescanAll()}
                 disabled={
                   rescanningAll ||
-                  watchedFolders.some((f) => f.scan_status === "scanning")
+                  watchedFolders.some(
+                    (f) =>
+                      f.scan_status === "scanning" ||
+                      f.scan_status === "indexed",
+                  )
                 }
                 className="rounded-lg border border-neutral-200 px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
               >
@@ -320,12 +337,17 @@ export function FolderManager() {
                     <button
                       type="button"
                       onClick={() => void handleRescanFolder(folder.id)}
-                      disabled={folder.scan_status === "scanning"}
+                      disabled={
+                        folder.scan_status === "scanning" ||
+                        folder.scan_status === "indexed"
+                      }
                       className="rounded-lg px-3 py-1.5 text-xs font-medium text-neutral-600 transition-colors hover:bg-neutral-200 disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-neutral-800"
                     >
                       {folder.scan_status === "scanning"
                         ? t("settings.scanning")
-                        : t("settings.rescan")}
+                        : folder.scan_status === "indexed"
+                          ? t("settings.indexed")
+                          : t("settings.rescan")}
                     </button>
                     <button
                       type="button"

@@ -330,6 +330,7 @@ mod tests {
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: crate::thumb_cache::ThumbCache::new(),
             ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
+            face_cache_dir: tempfile::tempdir().unwrap().into_path(),
         }
     }
 
@@ -699,6 +700,7 @@ mod tests {
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: crate::thumb_cache::ThumbCache::new(),
             ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
+            face_cache_dir: tempfile::tempdir().unwrap().into_path(),
         };
 
         let dir = tempfile::tempdir().unwrap();

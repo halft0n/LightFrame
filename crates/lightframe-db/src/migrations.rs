@@ -1,5 +1,25 @@
 use rusqlite::Connection;
 
+fn run_migration<F>(conn: &Connection, migrate: F) -> lightframe_core::Result<()>
+where
+    F: FnOnce(&Connection) -> lightframe_core::Result<()>,
+{
+    conn.execute_batch("BEGIN IMMEDIATE;")
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+    match migrate(conn) {
+        Ok(()) => conn
+            .execute_batch("COMMIT;")
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?,
+        Err(e) => {
+            let _ = conn.execute_batch("ROLLBACK;");
+            return Err(e);
+        }
+    }
+
+    Ok(())
+}
+
 pub fn run(conn: &Connection) -> lightframe_core::Result<()> {
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS schema_version (
@@ -17,51 +37,51 @@ pub fn run(conn: &Connection) -> lightframe_core::Result<()> {
         .unwrap_or(0);
 
     if current < 1 {
-        v1(conn)?;
+        run_migration(conn, v1)?;
     }
 
     if current < 2 {
-        v2(conn)?;
+        run_migration(conn, v2)?;
     }
 
     if current < 3 {
-        v3(conn)?;
+        run_migration(conn, v3)?;
     }
 
     if current < 4 {
-        v4(conn)?;
+        run_migration(conn, v4)?;
     }
 
     if current < 5 {
-        v5(conn)?;
+        run_migration(conn, v5)?;
     }
 
     if current < 6 {
-        v6(conn)?;
+        run_migration(conn, v6)?;
     }
 
     if current < 7 {
-        v7(conn)?;
+        run_migration(conn, v7)?;
     }
 
     if current < 8 {
-        v8(conn)?;
+        run_migration(conn, v8)?;
     }
 
     if current < 9 {
-        v9(conn)?;
+        run_migration(conn, v9)?;
     }
 
     if current < 10 {
-        v10(conn)?;
+        run_migration(conn, v10)?;
     }
 
     if current < 11 {
-        v11(conn)?;
+        run_migration(conn, v11)?;
     }
 
     if current < 12 {
-        v12(conn)?;
+        run_migration(conn, v12)?;
     }
 
     Ok(())

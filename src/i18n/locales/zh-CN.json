@@ -76,6 +76,7 @@
   "settings.tauriOnly": "此功能仅在桌面应用中可用，请使用 Tauri 桌面版",
   "settings.removeFolder": "移除",
   "settings.scanning": "扫描中…",
+  "settings.indexed": "正在生成缩略图…",
   "settings.discovering": "正在发现文件…",
   "settings.scanProgress": "处理中 {scanned}/{total}",
   "settings.scanErrors": " · {count} 个错误",

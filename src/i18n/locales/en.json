@@ -76,6 +76,7 @@
   "settings.tauriOnly": "This feature is only available in the desktop app. Please use the Tauri desktop version.",
   "settings.removeFolder": "Remove",
   "settings.scanning": "Scanning…",
+  "settings.indexed": "Generating thumbnails…",
   "settings.discovering": "Discovering files…",
   "settings.scanProgress": "Processing {scanned}/{total}",
   "settings.scanErrors": " · {count} errors",

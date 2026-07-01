@@ -270,8 +270,8 @@ pub async fn run_scan(
     db.update_last_scan_at(folder_id).inspect_err(|_| {
         let _ = db.set_folder_scan_status(folder_id, "error");
     })?;
-    db.set_folder_scan_status(folder_id, "idle")?;
-    scan_status.set_status("complete");
+    db.set_folder_scan_status(folder_id, "indexed")?;
+    scan_status.set_status("indexed");
     progress.maybe_emit(app, &scan_status, true);
 
     info!(
@@ -321,6 +321,10 @@ pub async fn run_scan(
         .await;
         info!(folder_id, "phase 2 (enrichment) complete");
     }
+
+    db.set_folder_scan_status(folder_id, "idle")?;
+    scan_status.set_status("complete");
+    progress.maybe_emit(app, &scan_status, true);
 
     memory::log_memory("scan_end");
     Ok(())
@@ -433,7 +437,7 @@ async fn quick_index_inner(
 }
 
 /// Phase 2: Background enrichment — blake3 hash, thumbnails, dhash/phash,
-/// screenshot detection. Runs after the main index loop reports "complete".
+/// screenshot detection. Runs after the main index loop reports "indexed".
 async fn enrich_media(db: &Database, media_id: i64) -> lightframe_core::Result<()> {
     let media = db
         .get_media_by_id(media_id)?

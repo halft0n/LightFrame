@@ -232,4 +232,150 @@ describe("AiSettings", () => {
 
     resolveDownload("/models/scrfd_500m_bnkps.onnx");
   });
+
+  it("cancel button calls cancelDownload during active download", async () => {
+    let resolveDownload: (value: string) => void = () => {};
+    downloadModel.mockImplementation(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveDownload = resolve;
+        }),
+    );
+
+    (listen as ReturnType<typeof vi.fn>).mockImplementation(
+      (_event: string, handler: (event: { payload: { filename: string; downloaded: number; total: number } }) => void) => {
+        setTimeout(() => {
+          handler({
+            payload: { filename: "scrfd_500m_bnkps.onnx", downloaded: 100_000, total: 5_000_000 },
+          });
+        }, 0);
+        return Promise.resolve(() => {});
+      },
+    );
+
+    (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ =
+      {};
+
+    getModelStatus.mockResolvedValue({
+      models_dir: "/models",
+      clip_available: false,
+      face_available: false,
+      models: [
+        {
+          name: "Face Detection",
+          filename: "scrfd_500m_bnkps.onnx",
+          url: "https://example.com/face.onnx",
+          size_mb: 5,
+          description: "Face detection",
+          installed: false,
+          file_size_bytes: null,
+          sha256_verified: null,
+        },
+      ],
+    });
+
+    const user = userEvent.setup();
+    render(<AiSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "下载" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "下载" }));
+
+    await waitFor(() => {
+      expect(downloadModel).toHaveBeenCalled();
+    });
+
+    const cancelBtn = await waitFor(() => screen.getByRole("button", { name: "Cancel download" }));
+    await user.click(cancelBtn);
+
+    expect(cancelDownload).toHaveBeenCalled();
+
+    resolveDownload("/models/done.onnx");
+  });
+
+  it("does not show error when download is cancelled", async () => {
+    downloadModel.mockRejectedValue(new Error("download cancelled"));
+
+    (listen as ReturnType<typeof vi.fn>).mockResolvedValue(() => {});
+
+    (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ =
+      {};
+
+    getModelStatus.mockResolvedValue({
+      models_dir: "/models",
+      clip_available: false,
+      face_available: false,
+      models: [
+        {
+          name: "Face Detection",
+          filename: "scrfd_500m_bnkps.onnx",
+          url: "https://example.com/face.onnx",
+          size_mb: 5,
+          description: "Face detection",
+          installed: false,
+          file_size_bytes: null,
+          sha256_verified: null,
+        },
+      ],
+    });
+
+    const user = userEvent.setup();
+    render(<AiSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "下载" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "下载" }));
+
+    await waitFor(() => {
+      expect(downloadModel).toHaveBeenCalled();
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText(/download cancelled/i)).not.toBeInTheDocument();
+    });
+  });
+
+  it("shows error message when download fails with non-cancel error", async () => {
+    downloadModel.mockRejectedValue(new Error("network timeout"));
+
+    (listen as ReturnType<typeof vi.fn>).mockResolvedValue(() => {});
+
+    (window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__ =
+      {};
+
+    getModelStatus.mockResolvedValue({
+      models_dir: "/models",
+      clip_available: false,
+      face_available: false,
+      models: [
+        {
+          name: "Face Detection",
+          filename: "scrfd_500m_bnkps.onnx",
+          url: "https://example.com/face.onnx",
+          size_mb: 5,
+          description: "Face detection",
+          installed: false,
+          file_size_bytes: null,
+          sha256_verified: null,
+        },
+      ],
+    });
+
+    const user = userEvent.setup();
+    render(<AiSettings />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "下载" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "下载" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/操作失败/)).toBeInTheDocument();
+    });
+  });
 });

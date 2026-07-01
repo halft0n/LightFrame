@@ -94,7 +94,19 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
         ?size,
         "on-demand thumbnail generation — scan may not have completed for this file"
     );
-    thumb_ok_response(PLACEHOLDER_PNG.to_vec(), "image/png")
+    placeholder_response()
+}
+
+fn placeholder_response() -> Response<Vec<u8>> {
+    ok_response(
+        cors_headers(
+            Response::builder()
+                .status(StatusCode::OK)
+                .header(header::CONTENT_TYPE, "image/png")
+                .header(header::CACHE_CONTROL, "no-cache"),
+        ),
+        PLACEHOLDER_PNG.to_vec(),
+    )
 }
 
 fn thumb_ok_response(bytes: Vec<u8>, content_type: &str) -> Response<Vec<u8>> {
@@ -149,6 +161,7 @@ mod tests {
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: crate::thumb_cache::ThumbCache::new(),
             ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
+            face_cache_dir: tempfile::tempdir().unwrap().into_path(),
         }
     }
 

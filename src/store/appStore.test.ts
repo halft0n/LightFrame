@@ -581,13 +581,13 @@ describe("appStore", () => {
       consoleSpy.mockRestore();
     });
 
-    it("loadMoreMedia uses undefined cursor when created_at is null", async () => {
+    it("loadMoreMedia uses modified_at cursor when created_at is null", async () => {
       setMedia([sampleMedia], 10);
       getMediaPage.mockResolvedValue([{ ...sampleMedia, id: 2 }]);
 
       await loadMoreMedia();
 
-      expect(getMediaPage).toHaveBeenCalledWith(60, undefined);
+      expect(getMediaPage).toHaveBeenCalledWith(60, ["2024-01-01T00:00:00", 1]);
     });
 
     it("loadMedia sets mediaLoadError on failure", async () => {
@@ -659,9 +659,9 @@ describe("appStore", () => {
       expect(state.mediaItems[0].id).toBe(101);
     });
 
-    it("setMedia sets mediaCursor to null when created_at is missing", () => {
+    it("setMedia sets mediaCursor from modified_at when created_at is missing", () => {
       setMedia([sampleMedia], 1);
-      expect(getSnapshot().mediaCursor).toBeNull();
+      expect(getSnapshot().mediaCursor).toEqual(["2024-01-01T00:00:00", 1]);
     });
   });
 

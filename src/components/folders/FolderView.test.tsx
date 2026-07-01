@@ -30,10 +30,18 @@ vi.mock("@tauri-apps/api/event", () => ({
 }));
 
 class ResizeObserverMock {
-  observe = vi.fn();
+  private callback?: ResizeObserverCallback;
+  observe = vi.fn().mockImplementation(() => {
+    this.callback?.(
+      [{ contentRect: { width: 800, height: 600 } } as ResizeObserverEntry],
+      this as unknown as ResizeObserver,
+    );
+  });
   unobserve = vi.fn();
   disconnect = vi.fn();
-  constructor(private callback?: ResizeObserverCallback) {}
+  constructor(callback?: ResizeObserverCallback) {
+    this.callback = callback;
+  }
   trigger(width = 800) {
     this.callback?.(
       [{ contentRect: { width, height: 600 } } as ResizeObserverEntry],
@@ -58,6 +66,10 @@ beforeEach(() => {
   setLocale("zh-CN");
   getMediaByFolder.mockReset();
   getMediaCountByFolder.mockReset();
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+    configurable: true,
+    get: () => 800,
+  });
 });
 
 describe("FolderView", () => {

@@ -536,21 +536,24 @@ impl Database {
                         created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
                  FROM media_files
                  WHERE is_deleted = 0
-                 ORDER BY created_at DESC, id DESC
+                 ORDER BY COALESCE(created_at, modified_at) DESC, id DESC
                  LIMIT ?1"
                     .to_string(),
                 vec![Box::new(limit)],
             ),
-            Some((created_at, id)) => (
+            Some((sort_timestamp, id)) => (
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
                         created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
                  FROM media_files
                  WHERE is_deleted = 0
-                   AND (created_at < ?1 OR (created_at = ?1 AND id < ?2))
-                 ORDER BY created_at DESC, id DESC
+                   AND (
+                     COALESCE(created_at, modified_at) < ?1
+                     OR (COALESCE(created_at, modified_at) = ?1 AND id < ?2)
+                   )
+                 ORDER BY COALESCE(created_at, modified_at) DESC, id DESC
                  LIMIT ?3"
                     .to_string(),
-                vec![Box::new(created_at), Box::new(id), Box::new(limit)],
+                vec![Box::new(sort_timestamp), Box::new(id), Box::new(limit)],
             ),
         };
 
