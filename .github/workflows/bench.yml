@@ -10,6 +10,9 @@ concurrency:
   group: bench-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -65,12 +68,25 @@ jobs:
                           value *= 1_000_000_000
                       results.append({'name': name, 'unit': 'ns', 'value': value})
 
+          if not results:
+              print('WARNING: No benchmark results extracted from Criterion output')
+              print('This may indicate a Criterion output format change')
+
           with open('bench-output.json', 'w') as f:
               json.dump(results, f, indent=2)
           print(f'Extracted {len(results)} benchmark results')
           "
 
+      - name: Verify benchmark output is non-empty
+        run: |
+          count=$(python3 -c "import json; print(len(json.load(open('bench-output.json'))))")
+          echo "benchmark_count=$count" >> "$GITHUB_ENV"
+          if [ "$count" -eq 0 ]; then
+            echo "::warning::No benchmark results extracted, skipping storage step"
+          fi
+
       - name: Store benchmark result
+        if: env.benchmark_count != '0'
         uses: benchmark-action/github-action-benchmark@v1
         with:
           name: LightFrame Benchmarks
