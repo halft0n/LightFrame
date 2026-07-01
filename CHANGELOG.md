@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- (nothing yet)
+
+## [0.0.20] - 2026-07-01
+
+### Added
 - Integration tests: `e2e_rebuild_cache_full_pipeline`, `e2e_rebuild_cache_persistence_across_db_reopen`, `e2e_scan_thumbnail_pipeline_all_formats`
 - Performance benchmarks: `scan_bench` for indexer (walkdir 1K/5K/10K, is_media_file, classify_extension)
 - CI: benchmark compilation check (`cargo bench --no-run`) in test-rust job
