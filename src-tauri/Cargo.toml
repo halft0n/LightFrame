@@ -23,6 +23,7 @@ tracing-subscriber = { workspace = true, features = ["env-filter", "registry"] }
 tracing-appender = "0.2"
 dirs = "6"
 http = "1"
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
 chrono = { version = "0.4", features = ["serde"] }
 lru = "0.12"
 

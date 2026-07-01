@@ -4,8 +4,10 @@ import userEvent from "@testing-library/user-event";
 import { UpdateChecker } from "./UpdateChecker";
 import { setLocale } from "@/i18n/index";
 
+const checkForUpdatesMock = vi.fn();
+
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn().mockResolvedValue("0.0.16"),
+  invoke: vi.fn(),
   convertFileSrc: vi.fn(
     (filePath: string, protocol: string = "asset") =>
       `${protocol}://localhost/${filePath}`,
@@ -15,6 +17,14 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@tauri-apps/plugin-shell", () => ({
   open: vi.fn().mockResolvedValue(undefined),
 }));
+
+vi.mock("@/lib/tauri", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/tauri")>();
+  return {
+    ...actual,
+    checkForUpdates: () => checkForUpdatesMock(),
+  };
+});
 
 beforeEach(() => {
   localStorage.clear();
@@ -28,28 +38,13 @@ describe("UpdateChecker", () => {
     expect(screen.getByText("检查更新")).toBeInTheDocument();
   });
 
-  it("shows checking state while fetching version", async () => {
-    const fetchSpy = vi
-      .spyOn(globalThis, "fetch")
-      .mockResolvedValue(
-        new Response(JSON.stringify({ tag_name: "v0.0.16" }), { status: 200 }),
-      );
-    const user = userEvent.setup();
-
-    render(<UpdateChecker />);
-    await user.click(screen.getByRole("button", { name: "检查更新" }));
-
-    await waitFor(() => {
-      expect(screen.getByText(/v0\.0\.16/)).toBeInTheDocument();
-    });
-
-    fetchSpy.mockRestore();
-  });
-
   it("shows up-to-date when versions match", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ tag_name: "v0.0.16" }), { status: 200 }),
-    );
+    checkForUpdatesMock.mockResolvedValue({
+      current_version: "0.0.17",
+      latest_version: "0.0.17",
+      update_available: false,
+      release_url: "https://github.com/halft0n/LightFrame/releases/tag/v0.0.17",
+    });
     const user = userEvent.setup();
 
     render(<UpdateChecker />);
@@ -60,22 +55,43 @@ describe("UpdateChecker", () => {
     });
   });
 
-  it("shows error state when fetch fails", async () => {
-    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("network"));
+  it("shows error state when check fails", async () => {
+    checkForUpdatesMock.mockRejectedValue(new Error("network error"));
     const user = userEvent.setup();
 
     render(<UpdateChecker />);
     await user.click(screen.getByRole("button", { name: "检查更新" }));
 
     await waitFor(() => {
-      expect(screen.getByText("检查更新失败")).toBeInTheDocument();
+      expect(screen.getByText("network error")).toBeInTheDocument();
     });
   });
 
   it("shows new version available with link", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      new Response(JSON.stringify({ tag_name: "v0.0.17" }), { status: 200 }),
-    );
+    checkForUpdatesMock.mockResolvedValue({
+      current_version: "0.0.16",
+      latest_version: "0.0.17",
+      update_available: true,
+      release_url: "https://github.com/halft0n/LightFrame/releases/tag/v0.0.17",
+    });
+    const user = userEvent.setup();
+
+    render(<UpdateChecker />);
+    await user.click(screen.getByRole("button", { name: "检查更新" }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/v0\.0\.17/)).toBeInTheDocument();
+      expect(screen.getByText("查看版本")).toBeInTheDocument();
+    });
+  });
+
+  it("shows current version after check", async () => {
+    checkForUpdatesMock.mockResolvedValue({
+      current_version: "0.0.17",
+      latest_version: "0.0.17",
+      update_available: false,
+      release_url: "https://github.com/halft0n/LightFrame/releases/tag/v0.0.17",
+    });
     const user = userEvent.setup();
 
     render(<UpdateChecker />);

@@ -24,7 +24,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' original: thumb: face: asset: data: http://original.localhost http://thumb.localhost http://face.localhost https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com; media-src 'self' original: http://original.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost http://original.localhost http://thumb.localhost http://face.localhost https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com; font-src 'self' data:"
+      "csp": "default-src 'self'; img-src 'self' original: thumb: face: asset: data: http://original.localhost https://original.localhost http://thumb.localhost https://thumb.localhost http://face.localhost https://face.localhost https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com; media-src 'self' original: http://original.localhost https://original.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost https://ipc.localhost http://original.localhost https://original.localhost http://thumb.localhost https://thumb.localhost http://face.localhost https://face.localhost https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com; font-src 'self' data:"
     }
   },
   "plugins": {},

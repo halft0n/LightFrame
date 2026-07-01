@@ -97,6 +97,51 @@ pub fn get_app_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
+#[derive(Clone, Serialize)]
+pub struct UpdateCheckResult {
+    pub current_version: String,
+    pub latest_version: String,
+    pub update_available: bool,
+    pub release_url: String,
+}
+
+#[tauri::command]
+pub async fn check_for_updates() -> Result<UpdateCheckResult, String> {
+    let current = env!("CARGO_PKG_VERSION").to_string();
+    let result = tokio::task::spawn_blocking(move || {
+        let resp = ureq::get("https://api.github.com/repos/halft0n/LightFrame/releases/latest")
+            .set("Accept", "application/vnd.github.v3+json")
+            .set("User-Agent", "LightFrame")
+            .call()
+            .map_err(|e| format!("network error: {e}"))?;
+        let body: serde_json::Value = resp
+            .into_json()
+            .map_err(|e| format!("invalid response: {e}"))?;
+        let tag = body["tag_name"]
+            .as_str()
+            .ok_or("missing tag_name")?
+            .trim_start_matches('v')
+            .to_string();
+        let url = body["html_url"]
+            .as_str()
+            .unwrap_or("https://github.com/halft0n/LightFrame/releases")
+            .to_string();
+        Ok::<(String, String), String>((tag, url))
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e: String| e)?;
+
+    let (latest, url) = result;
+    let update_available = latest != current;
+    Ok(UpdateCheckResult {
+        current_version: current,
+        latest_version: latest,
+        update_available,
+        release_url: url,
+    })
+}
+
 #[tauri::command]
 pub fn get_config(state: State<'_, AppState>) -> AppConfig {
     state.config.clone()

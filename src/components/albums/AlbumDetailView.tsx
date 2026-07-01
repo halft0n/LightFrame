@@ -47,10 +47,12 @@ export function AlbumDetailView() {
 
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [loadError, setLoadError] = useState(false);
 
   const loadAlbum = useCallback(async () => {
     if (selectedAlbumId == null) return;
     setLoading(true);
+    setLoadError(false);
     try {
       const [albums, items] = await Promise.all([
         listAlbums(),
@@ -59,6 +61,8 @@ export function AlbumDetailView() {
       setAlbum(albums.find((a) => a.id === selectedAlbumId) ?? null);
       setMedia(items);
       setHasMore(items.length >= PAGE_SIZE);
+    } catch {
+      setLoadError(true);
     } finally {
       setLoading(false);
     }
@@ -83,6 +87,8 @@ export function AlbumDetailView() {
       );
       setMedia((prev) => [...prev, ...items]);
       setHasMore(items.length >= PAGE_SIZE);
+    } catch (err) {
+      console.error("Failed to load more album media:", err);
     } finally {
       setLoadingMore(false);
     }
@@ -177,6 +183,22 @@ export function AlbumDetailView() {
 
   if (selectedAlbumId == null) {
     return null;
+  }
+
+  if (loadError) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-neutral-400">
+        <span className="text-4xl">⚠</span>
+        <p>{t("viewer.loadError")}</p>
+        <button
+          type="button"
+          onClick={() => void loadAlbum()}
+          className="rounded-lg bg-white/10 px-4 py-1.5 text-sm transition hover:bg-white/20"
+        >
+          {t("viewer.retry")}
+        </button>
+      </div>
+    );
   }
 
   if (loading) {

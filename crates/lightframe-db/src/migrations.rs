@@ -60,6 +60,10 @@ pub fn run(conn: &Connection) -> lightframe_core::Result<()> {
         v11(conn)?;
     }
 
+    if current < 12 {
+        v12(conn)?;
+    }
+
     Ok(())
 }
 
@@ -429,6 +433,23 @@ fn v11(conn: &Connection) -> lightframe_core::Result<()> {
         WHERE NOT EXISTS (SELECT 1 FROM smart_albums WHERE name = 'RAW Photos');
 
         INSERT OR IGNORE INTO schema_version (version) VALUES (11);",
+    )
+    .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+fn v12(conn: &Connection) -> lightframe_core::Result<()> {
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_media_files_geo
+            ON media_files(latitude, longitude)
+            WHERE is_deleted = 0 AND latitude IS NOT NULL AND longitude IS NOT NULL;
+
+        CREATE INDEX IF NOT EXISTS idx_media_files_created_id_desc
+            ON media_files(created_at DESC, id DESC)
+            WHERE is_deleted = 0;
+
+        INSERT OR IGNORE INTO schema_version (version) VALUES (12);",
     )
     .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
 

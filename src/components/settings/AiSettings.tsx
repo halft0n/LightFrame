@@ -49,7 +49,7 @@ interface DownloadProgressState {
   speedBps: number;
 }
 
-const CIRCLE_SIZE = 32;
+const CIRCLE_SIZE = 36;
 const STROKE_WIDTH = 3;
 const RADIUS = (CIRCLE_SIZE - STROKE_WIDTH) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
@@ -61,23 +61,23 @@ function CircularProgress({
   progress: DownloadProgressState;
   onCancel: () => void;
 }) {
-  const percent =
-    progress.total > 0
-      ? Math.min(1, progress.downloaded / progress.total)
-      : 0;
+  const isConnecting = progress.total === 0;
+  const percent = isConnecting
+    ? 0
+    : Math.min(1, progress.downloaded / progress.total);
   const offset = CIRCUMFERENCE * (1 - percent);
 
   return (
     <button
       type="button"
       onClick={onCancel}
-      className="group relative flex items-center justify-center"
+      className="group relative flex items-center justify-center rounded-full p-1 transition-colors hover:bg-neutral-100 dark:hover:bg-neutral-800"
       title="Cancel download"
     >
       <svg
         width={CIRCLE_SIZE}
         height={CIRCLE_SIZE}
-        className="-rotate-90"
+        className={isConnecting ? "animate-spin" : "-rotate-90"}
       >
         <circle
           cx={CIRCLE_SIZE / 2}
@@ -88,26 +88,40 @@ function CircularProgress({
           strokeWidth={STROKE_WIDTH}
           className="text-neutral-200 dark:text-neutral-700"
         />
-        <circle
-          cx={CIRCLE_SIZE / 2}
-          cy={CIRCLE_SIZE / 2}
-          r={RADIUS}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={STROKE_WIDTH}
-          strokeDasharray={CIRCUMFERENCE}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-          className="text-blue-500 transition-[stroke-dashoffset] duration-200"
-        />
+        {isConnecting ? (
+          <circle
+            cx={CIRCLE_SIZE / 2}
+            cy={CIRCLE_SIZE / 2}
+            r={RADIUS}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={STROKE_WIDTH}
+            strokeDasharray={`${CIRCUMFERENCE * 0.25} ${CIRCUMFERENCE * 0.75}`}
+            strokeLinecap="round"
+            className="text-blue-500"
+          />
+        ) : (
+          <circle
+            cx={CIRCLE_SIZE / 2}
+            cy={CIRCLE_SIZE / 2}
+            r={RADIUS}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={STROKE_WIDTH}
+            strokeDasharray={CIRCUMFERENCE}
+            strokeDashoffset={offset}
+            strokeLinecap="round"
+            className="text-blue-500 transition-[stroke-dashoffset] duration-200"
+          />
+        )}
       </svg>
-      <span className="absolute inset-0 flex items-center justify-center text-neutral-500 opacity-0 transition-opacity group-hover:opacity-100 dark:text-neutral-400">
+      <span className="absolute inset-0 flex items-center justify-center">
         <svg
           viewBox="0 0 16 16"
           fill="currentColor"
-          className="h-3 w-3"
+          className="h-3.5 w-3.5 text-neutral-400 transition-colors group-hover:text-neutral-600 dark:text-neutral-500 dark:group-hover:text-neutral-300"
         >
-          <rect x="4" y="4" width="8" height="8" rx="1" />
+          <rect x="4" y="4" width="8" height="8" rx="1.5" />
         </svg>
       </span>
     </button>
@@ -115,7 +129,18 @@ function CircularProgress({
 }
 
 function DownloadInfo({ progress }: { progress: DownloadProgressState }) {
+  const { t } = useTranslation();
   const { downloaded, total, speedBps } = progress;
+  const isConnecting = total === 0 && downloaded === 0;
+
+  if (isConnecting) {
+    return (
+      <p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+        {t("ai.connecting")}
+      </p>
+    );
+  }
+
   const percent = total > 0 ? Math.min(100, (downloaded / total) * 100) : null;
 
   return (

@@ -10,7 +10,6 @@ interface PhotoCardProps {
   selectedMediaIds?: number[];
   onSelect: (id: number, event: React.MouseEvent) => void;
   onOpen?: (id: number) => void;
-  /** Index within the grid for staggered fade-in animation */
   animationIndex?: number;
 }
 

@@ -1,4 +1,4 @@
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { t } from "@/i18n";
 import { localizeError } from "./errors";
@@ -236,25 +236,23 @@ export interface PersonClusterInfo {
   avg_intra_cluster_distance: number;
 }
 
+const IS_WINDOWS =
+  typeof navigator !== "undefined" && navigator.userAgent.includes("Windows");
+
 /**
- * Build a custom-protocol URL using Tauri's native platform detection.
+ * Build a custom-protocol URL for Tauri's WebView.
  * On Windows (WebView2): `http://{scheme}.localhost/{path}`
  * On macOS/Linux:        `{scheme}://localhost/{path}`
  *
- * Uses convertFileSrc with the actual path to avoid edge cases with empty
- * base URL concatenation (trailing slash inconsistency across Tauri versions).
+ * IMPORTANT: Does NOT encode the path — callers must ensure the path segment
+ * is already safe (no encoding needed for numeric IDs, or pre-encoded for
+ * file paths). This avoids the double-encoding bug that occurs when
+ * convertFileSrc internally calls encodeURIComponent.
  */
 export function protocolUrl(scheme: string, path: string): string {
-  try {
-    return convertFileSrc(path, scheme);
-  } catch {
-    const isWindows =
-      typeof navigator !== "undefined" &&
-      navigator.userAgent.includes("Windows");
-    return isWindows
-      ? `http://${scheme}.localhost/${path}`
-      : `${scheme}://localhost/${path}`;
-  }
+  return IS_WINDOWS
+    ? `http://${scheme}.localhost/${path}`
+    : `${scheme}://localhost/${path}`;
 }
 
 export function getFaceThumbnailUrl(faceId: number): string {
@@ -270,7 +268,8 @@ export function getThumbnailUrl(
 
 export function getOriginalUrl(path: string): string {
   const normalized = path.replace(/\\/g, "/");
-  return protocolUrl("original", encodeURIComponent(normalized));
+  const encoded = encodeURIComponent(normalized);
+  return protocolUrl("original", encoded);
 }
 
 export async function addWatchedFolder(path: string): Promise<WatchedFolder> {
@@ -846,6 +845,17 @@ export interface GeoCluster {
   longitude: number;
   count: number;
   media_ids: number[];
+}
+
+export interface UpdateCheckResult {
+  current_version: string;
+  latest_version: string;
+  update_available: boolean;
+  release_url: string;
+}
+
+export async function checkForUpdates(): Promise<UpdateCheckResult> {
+  return invoke<UpdateCheckResult>("check_for_updates");
 }
 
 export async function getMediaWithGeo(

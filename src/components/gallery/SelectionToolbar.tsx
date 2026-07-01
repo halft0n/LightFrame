@@ -28,7 +28,7 @@ export function SelectionToolbar({
   const [showAlbumPicker, setShowAlbumPicker] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
   const count = selectedMediaIds.length;
   const isTauri = Boolean(window.__TAURI_INTERNALS__);
@@ -58,6 +58,7 @@ export function SelectionToolbar({
       await refreshMedia();
     } catch (err) {
       console.error("Failed to delete selected media:", err);
+      setFeedbackMessage(t("batch.deleteError"));
     } finally {
       setBusy(false);
       setShowDeleteConfirm(false);
@@ -71,6 +72,7 @@ export function SelectionToolbar({
       clearMediaSelection();
     } catch (err) {
       console.error("Failed to favorite selected media:", err);
+      setFeedbackMessage(t("batch.favoriteError"));
     } finally {
       setBusy(false);
     }
@@ -84,6 +86,7 @@ export function SelectionToolbar({
       setShowAlbumPicker(false);
     } catch (err) {
       console.error("Failed to add selected media to album:", err);
+      setFeedbackMessage(t("batch.addToAlbumError"));
     } finally {
       setBusy(false);
     }
@@ -102,6 +105,7 @@ export function SelectionToolbar({
       await onAlbumChanged?.();
     } catch (err) {
       console.error("Failed to remove selected media from album:", err);
+      setFeedbackMessage(t("batch.removeFromAlbumError"));
     } finally {
       setBusy(false);
     }
@@ -124,21 +128,21 @@ export function SelectionToolbar({
     setBusy(true);
     try {
       const exported = await batchExport(selectedMediaIds, selected);
-      setExportMessage(t("batch.exportSuccess", { count: exported }));
+      setFeedbackMessage(t("batch.exportSuccess", { count: exported }));
       clearMediaSelection();
     } catch (err) {
       console.error("Failed to export selected media:", err);
-      setExportMessage(t("batch.exportError"));
+      setFeedbackMessage(t("batch.exportError"));
     } finally {
       setBusy(false);
     }
   };
 
   useEffect(() => {
-    if (!exportMessage) return;
-    const timer = setTimeout(() => setExportMessage(null), 3000);
+    if (!feedbackMessage) return;
+    const timer = setTimeout(() => setFeedbackMessage(null), 3000);
     return () => clearTimeout(timer);
-  }, [exportMessage]);
+  }, [feedbackMessage]);
 
   if (count === 0) return null;
 
@@ -300,14 +304,14 @@ export function SelectionToolbar({
         </div>
       )}
 
-      {exportMessage && (
+      {feedbackMessage && (
         <div
           role="status"
           aria-live="polite"
           className="pointer-events-none fixed inset-x-0 bottom-20 z-50 flex justify-center px-4"
         >
           <div className="pointer-events-auto rounded-lg border border-neutral-700 bg-neutral-900 px-4 py-2 text-sm text-neutral-200 shadow-xl">
-            {exportMessage}
+            {feedbackMessage}
           </div>
         </div>
       )}

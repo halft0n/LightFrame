@@ -1,13 +1,9 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
-  convertFileSrc: vi.fn(
-    (filePath: string, protocol: string = "asset") =>
-      `${protocol}://localhost/${filePath}`,
-  ),
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
@@ -119,29 +115,15 @@ beforeEach(() => {
 });
 
 describe("protocolUrl", () => {
-  afterEach(() => {
-    vi.mocked(convertFileSrc).mockImplementation(
-      (filePath: string, protocol: string = "asset") =>
-        `${protocol}://localhost/${filePath}`,
-    );
-  });
-
-  it("uses scheme://localhost/ format on non-Windows (via convertFileSrc)", () => {
+  it("uses scheme://localhost/ format on non-Windows", () => {
     expect(protocolUrl("thumb", "42/small")).toBe("thumb://localhost/42/small");
   });
 
-  it("uses http://{scheme}.localhost/ format on Windows (via convertFileSrc)", () => {
-    vi.mocked(convertFileSrc).mockImplementation(
-      (filePath: string, protocol: string = "asset") =>
-        `http://${protocol}.localhost/${filePath}`,
-    );
-    expect(protocolUrl("thumb", "42/small")).toBe(
-      "http://thumb.localhost/42/small",
-    );
+  it("preserves path separators without encoding", () => {
     expect(protocolUrl("original", "C%3A%2FUsers%2Fphoto.jpg")).toBe(
-      "http://original.localhost/C%3A%2FUsers%2Fphoto.jpg",
+      "original://localhost/C%3A%2FUsers%2Fphoto.jpg",
     );
-    expect(protocolUrl("face", "7")).toBe("http://face.localhost/7");
+    expect(protocolUrl("face", "7")).toBe("face://localhost/7");
   });
 });
 
@@ -296,18 +278,6 @@ describe("async tauri functions", () => {
 describe("getFaceThumbnailUrl", () => {
   it("generates face protocol URLs", () => {
     expect(getFaceThumbnailUrl(42)).toBe("face://localhost/42");
-  });
-
-  it("generates Windows-format face protocol URLs", () => {
-    vi.mocked(convertFileSrc).mockImplementation(
-      (filePath: string, protocol: string = "asset") =>
-        `http://${protocol}.localhost/${filePath}`,
-    );
-    expect(getFaceThumbnailUrl(42)).toBe("http://face.localhost/42");
-    vi.mocked(convertFileSrc).mockImplementation(
-      (filePath: string, protocol: string = "asset") =>
-        `${protocol}://localhost/${filePath}`,
-    );
   });
 });
 
