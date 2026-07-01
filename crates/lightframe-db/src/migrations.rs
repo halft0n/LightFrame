@@ -92,6 +92,10 @@ pub fn run(conn: &Connection) -> lightframe_core::Result<()> {
         run_migration(conn, v14)?;
     }
 
+    if current < 15 {
+        run_migration(conn, v15)?;
+    }
+
     Ok(())
 }
 
@@ -575,6 +579,40 @@ fn v14(conn: &Connection) -> lightframe_core::Result<()> {
     drop(update_stmt);
 
     conn.execute_batch("INSERT OR IGNORE INTO schema_version (version) VALUES (14);")
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+fn v15(conn: &Connection) -> lightframe_core::Result<()> {
+    // Check if face_detections table exists
+    let table_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='face_detections'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+        > 0;
+
+    if table_exists {
+        let columns: Vec<String> = conn
+            .prepare("PRAGMA table_info(face_detections)")
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        if !columns.contains(&"is_manual".to_string()) {
+            conn.execute_batch(
+                "ALTER TABLE face_detections ADD COLUMN is_manual INTEGER NOT NULL DEFAULT 0;",
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        }
+    }
+
+    conn.execute_batch("INSERT OR IGNORE INTO schema_version (version) VALUES (15);")
         .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
 
     Ok(())

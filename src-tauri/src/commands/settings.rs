@@ -194,3 +194,33 @@ pub async fn reset_database(app: AppHandle, state: State<'_, AppState>) -> Resul
 
     Ok(())
 }
+
+#[derive(Serialize)]
+pub struct MemoryBudgetInfo {
+    pub total_mb: u64,
+    pub available_mb: u64,
+    pub micro_cap: usize,
+    pub standard_cap: usize,
+    pub micro_len: usize,
+    pub standard_len: usize,
+    pub under_pressure: bool,
+}
+
+#[tauri::command]
+pub fn get_memory_budget(state: State<'_, AppState>) -> MemoryBudgetInfo {
+    let (total_mb, available_mb) = crate::memory_budget::get_system_memory().unwrap_or((0, 0));
+    let (micro_len, standard_len) = state.thumb_cache.len();
+    let (micro_cap, standard_cap) = state.thumb_cache.capacity();
+    let pressure_budget = crate::memory_budget::PRESSURE_BUDGET;
+    let under_pressure =
+        micro_cap == pressure_budget.micro_cap && standard_cap == pressure_budget.standard_cap;
+    MemoryBudgetInfo {
+        total_mb,
+        available_mb,
+        micro_cap,
+        standard_cap,
+        micro_len,
+        standard_len,
+        under_pressure,
+    }
+}

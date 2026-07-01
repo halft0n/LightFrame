@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getThumbnailUrl } from "@/lib/tauri";
 import { useTranslation } from "@/i18n/useTranslation";
+import { TrimBar } from "./TrimBar";
+import { invoke } from "@tauri-apps/api/core";
+import { open, save } from "@tauri-apps/plugin-dialog";
 
 interface VideoPlayerProps {
   src: string;
@@ -31,6 +34,89 @@ export function VideoPlayer({
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(false);
+  const [trimMode, setTrimMode] = useState(false);
+  const [trimIn, setTrimIn] = useState(0);
+  const [trimOut, setTrimOut] = useState(0);
+
+  // Load trim params on mount
+  useEffect(() => {
+    invoke<{ video_trim_in_sec?: number; video_trim_out_sec?: number } | null>(
+      "get_video_trim",
+      { mediaId }
+    ).then((params) => {
+      if (params) {
+        setTrimIn(params.video_trim_in_sec ?? 0);
+        setTrimOut(params.video_trim_out_sec ?? duration);
+      }
+    }).catch((err) => console.warn("Failed to load video trim params:", err));
+  }, [mediaId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When duration loads and no trim saved, set trimOut to duration
+  useEffect(() => {
+    if (duration > 0 && trimOut === 0) {
+      setTrimOut(duration);
+    }
+  }, [duration]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const trimActive =
+    duration > 0 && trimOut > 0 && (trimIn > 0 || trimOut < duration);
+
+  // Constrain playback to saved trim range (not only while editing)
+  useEffect(() => {
+    if (!trimActive || !videoRef.current) return;
+    const video = videoRef.current;
+    const handleTimeUpdate = () => {
+      if (video.currentTime >= trimOut) {
+        video.pause();
+        video.currentTime = trimIn;
+      } else if (video.currentTime < trimIn) {
+        video.currentTime = trimIn;
+      }
+    };
+    video.addEventListener("timeupdate", handleTimeUpdate);
+    return () => video.removeEventListener("timeupdate", handleTimeUpdate);
+  }, [trimActive, trimIn, trimOut]);
+
+  const handleApplyTrim = useCallback(() => {
+    invoke("save_video_trim", {
+      mediaId,
+      trimInSec: trimIn,
+      trimOutSec: trimOut,
+    }).catch((err) => console.warn("Failed to save video trim:", err));
+  }, [mediaId, trimIn, trimOut]);
+
+  const handleExportTrim = useCallback(async () => {
+    let outputDir: string | null = null;
+
+    try {
+      const outputPath = await save({
+        defaultPath: "trimmed_video.mp4",
+        filters: [{ name: "Video", extensions: ["mp4", "mov", "mkv", "webm"] }],
+      });
+      if (outputPath) {
+        const sep = outputPath.includes("\\") ? "\\" : "/";
+        const lastSep = outputPath.lastIndexOf(sep);
+        outputDir = lastSep >= 0 ? outputPath.slice(0, lastSep) : outputPath;
+      }
+    } catch (err) {
+      console.warn("Save dialog unavailable, falling back to folder picker:", err);
+    }
+
+    if (!outputDir) {
+      try {
+        outputDir = (await open({ directory: true, multiple: false })) ?? null;
+      } catch (err) {
+        console.warn("Folder picker unavailable:", err);
+      }
+    }
+
+    if (!outputDir) return;
+
+    invoke<string>("export_trimmed_video", {
+      mediaId,
+      outputDir,
+    }).catch((err) => console.warn("Failed to export trimmed video:", err));
+  }, [mediaId]);
 
   const togglePlay = useCallback(() => {
     const video = videoRef.current;
@@ -204,7 +290,33 @@ export function VideoPlayer({
           >
             {t("video.fullscreen")}
           </button>
+
+          <button
+            type="button"
+            onClick={() => setTrimMode((v) => !v)}
+            className={`rounded-lg px-3 py-1.5 text-sm transition ${
+              trimMode
+                ? "bg-blue-600 text-white"
+                : "text-neutral-300 hover:bg-white/10"
+            }`}
+          >
+            Trim
+          </button>
         </div>
+
+        {trimMode && (
+          <div className="mt-3">
+            <TrimBar
+              duration={duration}
+              trimIn={trimIn}
+              trimOut={trimOut}
+              onTrimInChange={setTrimIn}
+              onTrimOutChange={setTrimOut}
+              onApply={handleApplyTrim}
+              onExport={handleExportTrim}
+            />
+          </div>
+        )}
       </div>
 
       {filmstripIds.length > 0 && (

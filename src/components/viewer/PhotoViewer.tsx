@@ -28,6 +28,7 @@ import {
   useAppStore,
 } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
+import { FaceAnnotationOverlay } from "./FaceAnnotationOverlay";
 import { VideoPlayer } from "./VideoPlayer";
 import { ImageEditor } from "@/components/editor/ImageEditor";
 import { InfoPanel } from "./InfoPanel";
@@ -117,6 +118,8 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   }, [filmstrip, mediaId, dbNeighbors]);
   const [showInfo, setShowInfo] = useState(false);
   const [showSimilar, setShowSimilar] = useState(false);
+  const [faceAnnotating, setFaceAnnotating] = useState(false);
+  const [_faceDataVersion, setFaceDataVersion] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [useOriginal, setUseOriginal] = useState(false);
@@ -590,6 +593,20 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
               ⊞
             </button>
           )}
+          {!isVideo && (
+            <button
+              type="button"
+              onClick={() => setFaceAnnotating((v) => !v)}
+              className={`rounded-lg px-3 py-1.5 text-sm transition hover:bg-white/10 ${
+                faceAnnotating ? "bg-blue-600 text-white" : "text-neutral-300"
+              }`}
+              title="Annotate face"
+              aria-label="Annotate face"
+              aria-pressed={faceAnnotating}
+            >
+              👤
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
@@ -738,6 +755,7 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
                       transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                       transition: dragging ? "none" : "transform 0.1s ease-out",
                     }}
+                    className="relative"
                   >
                     <img
                       key={previewKey}
@@ -755,6 +773,15 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
                       }}
                       className="select-none"
                     />
+                    {faceAnnotating && (
+                      <FaceAnnotationOverlay
+                        mediaId={media.id}
+                        imageWidth={media.width ?? 800}
+                        imageHeight={media.height ?? 600}
+                        onClose={() => setFaceAnnotating(false)}
+                        onFaceCreated={() => setFaceDataVersion((v) => v + 1)}
+                      />
+                    )}
                   </div>
                 </>
               )}

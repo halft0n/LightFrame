@@ -3286,7 +3286,7 @@ impl Database {
     ) -> lightframe_core::Result<()> {
         let conn = self.conn()?;
         conn.execute(
-            "DELETE FROM face_detections WHERE media_id = ?1",
+            "DELETE FROM face_detections WHERE media_id = ?1 AND is_manual = 0",
             params![media_id],
         )
         .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
@@ -3295,8 +3295,8 @@ impl Database {
             let blob = f32_slice_to_blob(&face.embedding);
             conn.execute(
                 "INSERT INTO face_detections
-                 (media_id, face_embedding, bbox_x, bbox_y, bbox_w, bbox_h, confidence)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                 (media_id, face_embedding, bbox_x, bbox_y, bbox_w, bbox_h, confidence, is_manual)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0)",
                 params![
                     media_id,
                     blob,
@@ -3311,6 +3311,69 @@ impl Database {
         }
 
         Ok(())
+    }
+
+    /// Store a manually annotated face. Creates or reuses a person by name.
+    /// Returns the face_detections row id.
+    pub fn store_manual_face(
+        &self,
+        media_id: i64,
+        bbox: [f32; 4],
+        person_name: &str,
+    ) -> lightframe_core::Result<i64> {
+        let conn = self.conn()?;
+
+        // Find or create person
+        let person_id: i64 = match conn.query_row(
+            "SELECT id FROM persons WHERE name = ?1",
+            params![person_name],
+            |row| row.get(0),
+        ) {
+            Ok(id) => id,
+            Err(_) => {
+                conn.execute(
+                    "INSERT INTO persons (name, face_count) VALUES (?1, 0)",
+                    params![person_name],
+                )
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+                conn.last_insert_rowid()
+            }
+        };
+
+        let bbox_w = bbox[2] - bbox[0];
+        let bbox_h = bbox[3] - bbox[1];
+
+        conn.execute(
+            "INSERT INTO face_detections
+             (media_id, face_embedding, bbox_x, bbox_y, bbox_w, bbox_h, confidence, person_id, is_manual)
+             VALUES (?1, NULL, ?2, ?3, ?4, ?5, 1.0, ?6, 1)",
+            params![media_id, bbox[0], bbox[1], bbox_w, bbox_h, person_id],
+        )
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        let face_id = conn.last_insert_rowid();
+
+        // Update person face count
+        conn.execute(
+            "UPDATE persons SET face_count = (SELECT COUNT(*) FROM face_detections WHERE person_id = ?1) WHERE id = ?1",
+            params![person_id],
+        )
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        Ok(face_id)
+    }
+
+    /// List all distinct person names (for autocomplete).
+    pub fn list_person_names(&self) -> lightframe_core::Result<Vec<String>> {
+        let conn = self.read_conn()?;
+        let mut stmt = conn
+            .prepare("SELECT name FROM persons WHERE name IS NOT NULL ORDER BY name")
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        let names = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+            .filter_map(|r| r.ok())
+            .collect();
+        Ok(names)
     }
 
     pub fn get_faces_for_media(

@@ -2745,6 +2745,8 @@ name = "lightframe-video"
 version = "0.0.18"
 dependencies = [
  "lightframe-core",
+ "serde",
+ "serde_json",
  "tempfile",
  "tokio",
  "tracing",

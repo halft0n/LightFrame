@@ -149,7 +149,7 @@ pub struct AppState {
     /// Tracks active model downloads: filename -> cancel flag.
     pub active_downloads: Arc<std::sync::Mutex<std::collections::HashMap<String, Arc<AtomicBool>>>>,
     pub watch_manager: WatchManager,
-    pub thumb_cache: ThumbCache,
+    pub thumb_cache: Arc<ThumbCache>,
     pub ai: Arc<tokio::sync::Mutex<AiDispatcher>>,
     pub face_cache_dir: PathBuf,
 }
@@ -219,6 +219,16 @@ impl AppState {
         let concurrency = ((cpus as f64) * 0.7).ceil() as usize;
         let concurrency = concurrency.clamp(2, 16);
 
+        let budget = crate::memory_budget::get_system_memory()
+            .map(|(_total, avail)| crate::memory_budget::compute_thumb_budget(avail, cpus))
+            .unwrap_or_else(|| crate::memory_budget::compute_thumb_budget(8192, cpus));
+        crate::memory_budget::log_budget(
+            &budget,
+            crate::memory_budget::get_system_memory()
+                .map(|(_, a)| a)
+                .unwrap_or(0),
+        );
+
         Ok(Self {
             db,
             config,
@@ -230,7 +240,10 @@ impl AppState {
             thumb_regenerating: Arc::new(AtomicBool::new(false)),
             active_downloads: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             watch_manager: WatchManager::new(),
-            thumb_cache: ThumbCache::new(),
+            thumb_cache: Arc::new(ThumbCache::with_capacity(
+                budget.micro_cap,
+                budget.standard_cap,
+            )),
             ai: Arc::new(tokio::sync::Mutex::new(AiDispatcher::new())),
             face_cache_dir: lightframe_core::config::thumb_cache_dir().join("faces"),
         })

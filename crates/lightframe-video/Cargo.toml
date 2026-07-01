@@ -6,10 +6,12 @@ description = "Video processing and thumbnail extraction via FFmpeg"
 
 [dependencies]
 lightframe-core.workspace = true
+serde.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 which = "7"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt", "macros"] }
+serde_json.workspace = true
 tempfile = "3"

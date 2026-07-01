@@ -5,7 +5,7 @@ import { VideoPlayer } from "./VideoPlayer";
 import { setLocale } from "@/i18n/index";
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(),
+  invoke: vi.fn().mockResolvedValue(null),
   convertFileSrc: vi.fn(
     (filePath: string, protocol: string = "asset") =>
       `${protocol}://localhost/${filePath}`,

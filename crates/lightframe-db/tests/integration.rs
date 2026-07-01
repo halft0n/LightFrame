@@ -2796,11 +2796,11 @@ fn test_v14_migration_integer_to_hex() {
     assert_eq!(rows[3].1.as_deref(), Some("8000000000000001"));
     assert_eq!(rows[3].2, None);
 
-    // Verify schema_version is now 14
+    // Verify schema_version is current (including v15 which adds is_manual)
     let version: i64 = conn
         .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(version, 14);
+    assert!(version >= 14);
 }
 
 #[test]
@@ -2918,4 +2918,107 @@ fn test_reset_all_media_data() {
     assert_eq!(folders.len(), 1);
     assert_eq!(folders[0].path, "/photos");
     assert!(folders[0].last_scan.is_none());
+}
+
+#[test]
+fn test_store_face_detections_preserves_manual_faces() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+    let folder_id = db.add_watched_folder("/photos").unwrap().id;
+    let media_id = db
+        .upsert_media(folder_id, &sample_media("/photos/face.jpg"))
+        .unwrap();
+
+    // Store a manual face
+    db.store_manual_face(media_id, [0.1, 0.2, 0.5, 0.6], "Alice")
+        .unwrap();
+
+    // Verify manual face exists
+    let faces = db.get_faces_for_media(media_id).unwrap();
+    assert_eq!(faces.len(), 1);
+
+    // Now run auto-detection (simulates re-detect)
+    let auto_faces = vec![FaceDetectionInput {
+        bbox: [0.3, 0.3, 0.7, 0.7],
+        confidence: 0.95,
+        embedding: vec![0.1; 128],
+    }];
+    db.store_face_detections(media_id, &auto_faces).unwrap();
+
+    // Manual face should be preserved alongside auto face
+    let faces = db.get_faces_for_media(media_id).unwrap();
+    assert_eq!(
+        faces.len(),
+        2,
+        "manual face should be preserved after auto-detect"
+    );
+}
+
+#[test]
+fn test_store_manual_face_creates_person() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+    let folder_id = db.add_watched_folder("/photos").unwrap().id;
+    let media_id = db
+        .upsert_media(folder_id, &sample_media("/photos/portrait.jpg"))
+        .unwrap();
+
+    let face_id = db
+        .store_manual_face(media_id, [0.1, 0.2, 0.5, 0.6], "Bob")
+        .unwrap();
+    assert!(face_id > 0);
+
+    // Person "Bob" should exist
+    let persons = db.list_persons().unwrap();
+    assert!(persons.iter().any(|p| p.name.as_deref() == Some("Bob")));
+
+    // Face should be linked to the person
+    let faces = db.get_faces_for_media(media_id).unwrap();
+    assert_eq!(faces.len(), 1);
+    assert!(faces[0].person_id.is_some());
+}
+
+#[test]
+fn test_store_manual_face_reuses_existing_person() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+    let folder_id = db.add_watched_folder("/photos").unwrap().id;
+    let media1 = db
+        .upsert_media(folder_id, &sample_media("/photos/a.jpg"))
+        .unwrap();
+    let media2 = db
+        .upsert_media(folder_id, &sample_media("/photos/b.jpg"))
+        .unwrap();
+
+    db.store_manual_face(media1, [0.1, 0.2, 0.5, 0.6], "Charlie")
+        .unwrap();
+    db.store_manual_face(media2, [0.2, 0.3, 0.6, 0.7], "Charlie")
+        .unwrap();
+
+    // Only one person named Charlie
+    let persons = db.list_persons().unwrap();
+    let charlie_count = persons
+        .iter()
+        .filter(|p| p.name.as_deref() == Some("Charlie"))
+        .count();
+    assert_eq!(charlie_count, 1);
+}
+
+#[test]
+fn test_list_person_names_returns_all_names() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+    let folder_id = db.add_watched_folder("/photos").unwrap().id;
+    let media_id = db
+        .upsert_media(folder_id, &sample_media("/photos/group.jpg"))
+        .unwrap();
+
+    db.store_manual_face(media_id, [0.0, 0.0, 0.3, 0.3], "Diana")
+        .unwrap();
+    db.store_manual_face(media_id, [0.4, 0.4, 0.8, 0.8], "Eve")
+        .unwrap();
+
+    let names = db.list_person_names().unwrap();
+    assert!(names.contains(&"Diana".to_string()));
+    assert!(names.contains(&"Eve".to_string()));
 }

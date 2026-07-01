@@ -3,6 +3,7 @@ mod face_protocol;
 mod image_edit;
 mod logging;
 mod memory;
+mod memory_budget;
 mod original_protocol;
 mod protocol_utils;
 mod scan;
@@ -16,6 +17,7 @@ mod watcher;
 pub use image_edit::export_edited_image;
 
 use state::AppState;
+use std::sync::Arc;
 use tauri::Manager;
 
 pub fn run() {
@@ -41,6 +43,34 @@ pub fn run() {
             if let Err(e) = watcher::start(&handle, &state) {
                 tracing::warn!("failed to start folder watcher: {e}");
             }
+
+            // Spawn periodic memory budget check (every 60s)
+            let thumb_cache = Arc::clone(&state.thumb_cache);
+            tokio::spawn(async move {
+                let cpus = std::thread::available_parallelism()
+                    .map(|n| n.get())
+                    .unwrap_or(4);
+                let pressure_tracker = memory_budget::PressureTracker::new();
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                    if let Some((total, available)) = memory_budget::get_system_memory() {
+                        if memory_budget::memory_data_unavailable(available, total) {
+                            continue;
+                        }
+                        if pressure_tracker.check(available, total) {
+                            memory_budget::log_pressure(available, total);
+                            thumb_cache.resize(
+                                memory_budget::PRESSURE_BUDGET.micro_cap,
+                                memory_budget::PRESSURE_BUDGET.standard_cap,
+                            );
+                        } else {
+                            let budget = memory_budget::compute_thumb_budget(available, cpus);
+                            thumb_cache.resize(budget.micro_cap, budget.standard_cap);
+                        }
+                    }
+                }
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -126,6 +156,8 @@ pub fn run() {
             commands::cluster_faces,
             commands::merge_persons,
             commands::split_face_from_person,
+            commands::create_manual_face,
+            commands::list_person_names,
             commands::save_edit,
             commands::get_edit,
             commands::revert_edit,
@@ -141,6 +173,11 @@ pub fn run() {
             commands::get_media_with_geo,
             commands::get_geo_clusters,
             commands::reset_database,
+            commands::get_memory_budget,
+            commands::save_video_trim,
+            commands::get_video_trim,
+            commands::export_trimmed_video,
+            commands::get_video_duration,
         ])
         .register_uri_scheme_protocol("thumb", |ctx, request| {
             let state = ctx.app_handle().state::<AppState>();

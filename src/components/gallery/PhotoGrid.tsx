@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PhotoCard } from "./PhotoCard";
+import { PreviewPopup } from "./PreviewPopup";
 import { SelectionToolbar } from "./SelectionToolbar";
 import {
   batchDeleteMedia,
@@ -112,6 +113,7 @@ export function PhotoGrid({
   const [containerWidth, setContainerWidth] = useState(0);
   const [internalLoadingMore, setInternalLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState(false);
+  const [previewMediaId, setPreviewMediaId] = useState<number | null>(null);
 
   const loadingMore = loadingMoreProp ?? internalLoadingMore;
   const columnWidth = THUMBNAIL_WIDTHS[thumbnailSize];
@@ -390,6 +392,7 @@ export function PhotoGrid({
                         selectedMediaIds={selectedMediaIds}
                         onSelect={handleSelect}
                         onOpen={openViewer}
+                        onPreview={setPreviewMediaId}
                         animationIndex={colIndex}
                         thumbnailSize={thumbnailSize}
                         scrollIntent={scrollIntent}
@@ -419,6 +422,11 @@ export function PhotoGrid({
       </div>
 
       <SelectionToolbar />
+
+      <PreviewPopup
+        media={previewMediaId != null ? (mediaItems.find((m) => m.id === previewMediaId) ?? null) : null}
+        onClose={() => setPreviewMediaId(null)}
+      />
     </div>
   );
 }

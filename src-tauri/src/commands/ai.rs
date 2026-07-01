@@ -620,6 +620,56 @@ pub fn split_face_from_person(
         .split_face_from_person(face_id, new_person_name.as_deref())
         .map_err(|e| e.to_string())
 }
+
+// Manual faces are stored immediately; async crop → embedding → DB update is deferred
+// until the AI pipeline supports on-demand face embedding (InsightFace model required).
+#[tauri::command]
+pub fn create_manual_face(
+    state: State<'_, AppState>,
+    media_id: i64,
+    bbox: [f32; 4],
+    person_name: String,
+) -> Result<i64, String> {
+    if person_name.trim().is_empty() {
+        return Err("person name cannot be empty".to_string());
+    }
+
+    let Some((_, _, deleted)) = state
+        .db
+        .get_media_deletion_info(media_id)
+        .map_err(|e| e.to_string())?
+    else {
+        return Err(format!("media {media_id} not found"));
+    };
+    if deleted != 0 {
+        return Err(format!("media {media_id} is deleted"));
+    }
+
+    if !validate_bbox(&bbox) {
+        return Err("bbox values must be in [0.0, 1.0] with x1 > x0 and y1 > y0".to_string());
+    }
+
+    state
+        .db
+        .store_manual_face(media_id, bbox, person_name.trim())
+        .map_err(|e| e.to_string())
+}
+
+fn validate_bbox(bbox: &[f32; 4]) -> bool {
+    let [x0, y0, x1, y1] = *bbox;
+    (0.0..=1.0).contains(&x0)
+        && (0.0..=1.0).contains(&y0)
+        && (0.0..=1.0).contains(&x1)
+        && (0.0..=1.0).contains(&y1)
+        && x1 > x0
+        && y1 > y0
+}
+
+#[tauri::command]
+pub fn list_person_names(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    state.db.list_person_names().map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod rename_person_tests {
     use super::*;
@@ -639,7 +689,7 @@ mod rename_person_tests {
             thumb_regenerating: Arc::new(AtomicBool::new(false)),
             active_downloads: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             watch_manager: crate::watcher::WatchManager::new(),
-            thumb_cache: crate::thumb_cache::ThumbCache::new(),
+            thumb_cache: std::sync::Arc::new(crate::thumb_cache::ThumbCache::new()),
             ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
             face_cache_dir: tempfile::tempdir().unwrap().into_path(),
         }
@@ -669,6 +719,18 @@ mod rename_person_tests {
         let persons = db.list_persons().unwrap();
         assert_eq!(persons[0].name.as_deref(), Some("Alicia"));
     }
+
+    #[test]
+    fn validate_bbox_accepts_normalized_coords() {
+        assert!(super::validate_bbox(&[0.1, 0.2, 0.5, 0.6]));
+    }
+
+    #[test]
+    fn validate_bbox_rejects_inverted_or_out_of_range() {
+        assert!(!super::validate_bbox(&[0.5, 0.2, 0.1, 0.6]));
+        assert!(!super::validate_bbox(&[-0.1, 0.2, 0.5, 0.6]));
+        assert!(!super::validate_bbox(&[0.1, 0.2, 1.1, 0.6]));
+    }
 }
 
 #[cfg(test)]
@@ -695,7 +757,7 @@ mod face_detection_tests {
             thumb_regenerating: Arc::new(AtomicBool::new(false)),
             active_downloads: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             watch_manager: crate::watcher::WatchManager::new(),
-            thumb_cache: crate::thumb_cache::ThumbCache::new(),
+            thumb_cache: std::sync::Arc::new(crate::thumb_cache::ThumbCache::new()),
             ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
             face_cache_dir: tempfile::tempdir().unwrap().into_path(),
         };

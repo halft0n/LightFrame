@@ -595,6 +595,164 @@ pub fn get_geo_clusters(
         .get_geo_clusters(grid_size)
         .map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub fn save_video_trim(
+    state: State<'_, AppState>,
+    media_id: i64,
+    trim_in_sec: f64,
+    trim_out_sec: f64,
+) -> Result<(), String> {
+    if trim_in_sec < 0.0 {
+        return Err("trim_in_sec must be non-negative".to_string());
+    }
+    if trim_in_sec >= trim_out_sec {
+        return Err("trim_in_sec must be less than trim_out_sec".to_string());
+    }
+    let existing = state
+        .db
+        .get_edit_params(media_id)
+        .map_err(|e| e.to_string())?;
+    let json = merge_video_trim_into_edit_params(existing.as_deref(), trim_in_sec, trim_out_sec)?;
+    state
+        .db
+        .save_edit_params(media_id, &json)
+        .map_err(|e| e.to_string())
+}
+
+fn merge_video_trim_into_edit_params(
+    existing: Option<&str>,
+    trim_in_sec: f64,
+    trim_out_sec: f64,
+) -> Result<String, String> {
+    let mut value = match existing {
+        Some(json) => serde_json::from_str::<serde_json::Value>(json)
+            .unwrap_or_else(|_| serde_json::json!({})),
+        None => serde_json::json!({}),
+    };
+    if !value.is_object() {
+        value = serde_json::json!({});
+    }
+    let obj = value
+        .as_object_mut()
+        .expect("value is object after normalization");
+    obj.insert(
+        "video_trim_in_sec".to_string(),
+        serde_json::json!(trim_in_sec),
+    );
+    obj.insert(
+        "video_trim_out_sec".to_string(),
+        serde_json::json!(trim_out_sec),
+    );
+    serde_json::to_string(&value).map_err(|e| e.to_string())
+}
+
+fn extract_video_trim_from_params(
+    json: &str,
+) -> Result<Option<lightframe_video::VideoEditParams>, String> {
+    let value: serde_json::Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
+    let trim_in = value.get("video_trim_in_sec").and_then(|v| v.as_f64());
+    let trim_out = value.get("video_trim_out_sec").and_then(|v| v.as_f64());
+    if trim_in.is_none() && trim_out.is_none() {
+        return Ok(None);
+    }
+    let params = lightframe_video::VideoEditParams {
+        video_trim_in_sec: trim_in,
+        video_trim_out_sec: trim_out,
+    };
+    if params.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(params))
+    }
+}
+
+#[tauri::command]
+pub fn get_video_trim(
+    state: State<'_, AppState>,
+    media_id: i64,
+) -> Result<Option<lightframe_video::VideoEditParams>, String> {
+    let params_str = state
+        .db
+        .get_edit_params(media_id)
+        .map_err(|e| e.to_string())?;
+    match params_str {
+        Some(json) => extract_video_trim_from_params(&json),
+        None => Ok(None),
+    }
+}
+
+#[tauri::command]
+pub async fn export_trimmed_video(
+    state: State<'_, AppState>,
+    media_id: i64,
+    output_dir: String,
+) -> Result<String, String> {
+    let media = state
+        .db
+        .get_media_by_id(media_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("media {media_id} not found"))?;
+
+    validate_media_path(&state.db, &media.path)?;
+
+    let output = std::path::Path::new(&output_dir);
+    if crate::original_protocol::path_contains_parent_dir(output) {
+        return Err("output path contains path traversal".to_string());
+    }
+    if !output.is_dir() {
+        return Err(format!("not a directory: {output_dir}"));
+    }
+
+    let params_str = state
+        .db
+        .get_edit_params(media_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "no trim params saved".to_string())?;
+
+    let params = extract_video_trim_from_params(&params_str)?
+        .ok_or_else(|| "no trim params saved".to_string())?;
+
+    let trim_in = params.video_trim_in_sec.unwrap_or(0.0);
+    let trim_out = params
+        .video_trim_out_sec
+        .ok_or_else(|| "trim_out not set".to_string())?;
+
+    let input = std::path::Path::new(&media.path);
+    let filename = input
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "trimmed".to_string());
+    let ext = input
+        .extension()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| "mp4".to_string());
+    let base_name = format!("{filename}_trimmed.{ext}");
+    let output_path = unique_export_path(output, &base_name);
+    if !output_path.starts_with(output) {
+        return Err("invalid export path".to_string());
+    }
+
+    lightframe_video::trim_export(input, &output_path, trim_in, trim_out)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(output_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub async fn get_video_duration(state: State<'_, AppState>, media_id: i64) -> Result<f64, String> {
+    let media = state
+        .db
+        .get_media_by_id(media_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("media {media_id} not found"))?;
+
+    lightframe_video::get_duration(std::path::Path::new(&media.path))
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(test)]
 mod export_tests {
     use super::*;
@@ -705,7 +863,7 @@ mod batch_export_tests {
             thumb_regenerating: Arc::new(AtomicBool::new(false)),
             active_downloads: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             watch_manager: crate::watcher::WatchManager::new(),
-            thumb_cache: crate::thumb_cache::ThumbCache::new(),
+            thumb_cache: std::sync::Arc::new(crate::thumb_cache::ThumbCache::new()),
             ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
             face_cache_dir: tempfile::tempdir().unwrap().into_path(),
         }
@@ -899,5 +1057,30 @@ mod edit_persistence_tests {
     fn edit_save_rejects_invalid_json_via_parse() {
         let invalid = r#"{"brightness":"not-a-number"}"#;
         assert!(crate::image_edit::parse_edit_params(invalid).is_err());
+    }
+
+    #[test]
+    fn merge_video_trim_preserves_photo_edit_params() {
+        let merged = super::merge_video_trim_into_edit_params(
+            Some(r#"{"brightness":12.0,"contrast":-5.0}"#),
+            1.5,
+            10.0,
+        )
+        .unwrap();
+        let value: serde_json::Value = serde_json::from_str(&merged).unwrap();
+        assert_eq!(value["brightness"], 12.0);
+        assert_eq!(value["contrast"], -5.0);
+        assert_eq!(value["video_trim_in_sec"], 1.5);
+        assert_eq!(value["video_trim_out_sec"], 10.0);
+    }
+
+    #[test]
+    fn extract_video_trim_from_merged_params() {
+        let json = r#"{"brightness":5.0,"video_trim_in_sec":2.0,"video_trim_out_sec":8.0}"#;
+        let params = super::extract_video_trim_from_params(json)
+            .unwrap()
+            .expect("trim params");
+        assert_eq!(params.video_trim_in_sec, Some(2.0));
+        assert_eq!(params.video_trim_out_sec, Some(8.0));
     }
 }

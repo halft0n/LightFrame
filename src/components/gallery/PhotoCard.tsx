@@ -1,10 +1,11 @@
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import type { MediaItem } from "@/lib/tauri";
 import { getThumbnailUrl } from "@/lib/tauri";
 import { dragMediaIdsForItem, setDragMediaIds } from "@/lib/dragMedia";
 import { useTranslation } from "@/i18n/useTranslation";
 import type { ThumbnailSize } from "@/store/appStore";
 import type { ScrollIntent } from "@/hooks/useScrollIntent";
+import { useLongPress } from "@/hooks/useLongPress";
 
 interface PhotoCardProps {
   item: MediaItem;
@@ -12,6 +13,7 @@ interface PhotoCardProps {
   selectedMediaIds?: number[];
   onSelect: (id: number, event: React.MouseEvent) => void;
   onOpen?: (id: number) => void;
+  onPreview?: (id: number) => void;
   animationIndex?: number;
   thumbnailSize?: ThumbnailSize;
   scrollIntent?: ScrollIntent;
@@ -40,6 +42,7 @@ export const PhotoCard = memo(function PhotoCard({
   selectedMediaIds = [],
   onSelect,
   onOpen,
+  onPreview,
   animationIndex = 0,
   thumbnailSize = "small",
   scrollIntent = "idle",
@@ -49,6 +52,26 @@ export const PhotoCard = memo(function PhotoCard({
   const [microError, setMicroError] = useState(false);
   const [fullLoaded, setFullLoaded] = useState(false);
   const [error, setError] = useState(false);
+
+  const longPressFiredRef = useRef(false);
+
+  const handleLongPress = useCallback(() => {
+    longPressFiredRef.current = true;
+    onPreview?.(item.id);
+  }, [onPreview, item.id]);
+
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (longPressFiredRef.current) {
+        longPressFiredRef.current = false;
+        return;
+      }
+      onSelect(item.id, e);
+    },
+    [item.id, onSelect],
+  );
+
+  const longPressHandlers = useLongPress(handleLongPress);
 
   const skipMicro = thumbnailSize === "large";
   const deferFull = scrollIntent === "fast" || scrollIntent === "burst";
@@ -98,8 +121,12 @@ export const PhotoCard = memo(function PhotoCard({
       aria-label={item.filename}
       draggable
       onDragStart={handleDragStart}
-      onClick={(e) => onSelect(item.id, e)}
+      onClick={handleClick}
       onDoubleClick={() => onOpen?.(item.id)}
+      onPointerDown={longPressHandlers.onPointerDown}
+      onPointerUp={longPressHandlers.onPointerUp}
+      onPointerMove={longPressHandlers.onPointerMove}
+      onPointerCancel={longPressHandlers.onPointerCancel}
       style={{ "--stagger-index": animationIndex } as React.CSSProperties}
       className={`photo-card photo-card-enter relative aspect-square w-full overflow-hidden text-left ${
         selected ? "ring-2 ring-blue-500" : ""

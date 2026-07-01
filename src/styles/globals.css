@@ -596,3 +596,20 @@ input:focus:not(:focus-visible) {
     object-fit: contain;
   }
 }
+
+.trim-range {
+  pointer-events: none;
+  z-index: 1;
+}
+
+.trim-range-out {
+  z-index: 2;
+}
+
+.trim-range::-webkit-slider-thumb {
+  pointer-events: auto;
+}
+
+.trim-range::-moz-range-thumb {
+  pointer-events: auto;
+}
