@@ -701,6 +701,49 @@ fn test_find_perceptual_duplicates_via_phash() {
 }
 
 #[test]
+fn test_dhash_phash_high_bit_round_trip() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    // Values with high bit set (>= 2^63) — these previously caused
+    // "out of range integral type conversion" when stored as INTEGER.
+    let dhash_high = 0xDEAD_BEEF_CAFE_BABEu64;
+    let phash_high = 0xFFFF_FFFF_FFFF_FFFFu64;
+
+    let mut media = sample_media("/photos/high_bit.jpg");
+    media.blake3_hash = Some("highbithash".to_string());
+    media.dhash = Some(dhash_high);
+    media.phash = Some(phash_high);
+
+    let id = db.upsert_media(fid, &media).unwrap();
+
+    // Read back via get_media_by_id
+    let loaded = db.get_media_by_id(id).unwrap().unwrap();
+    assert_eq!(loaded.dhash, Some(dhash_high));
+    assert_eq!(loaded.phash, Some(phash_high));
+
+    // Also test via update_media_hashes
+    let dhash2 = 0x8000_0000_0000_0001u64;
+    let phash2 = 0xA5A5_A5A5_A5A5_A5A5u64;
+    db.update_media_hashes(id, "newhash", Some(dhash2), Some(phash2))
+        .unwrap();
+
+    let loaded2 = db.get_media_by_id(id).unwrap().unwrap();
+    assert_eq!(loaded2.dhash, Some(dhash2));
+    assert_eq!(loaded2.phash, Some(phash2));
+
+    // Verify dedup still finds matches
+    let mut media_b = sample_media("/photos/high_bit_dup.jpg");
+    media_b.blake3_hash = Some("highbithash2".to_string());
+    media_b.dhash = Some(dhash2 ^ 0x3); // 2 bits different
+    media_b.phash = Some(phash2);
+    db.upsert_media(fid, &media_b).unwrap();
+
+    let groups = db.find_perceptual_duplicates(5).unwrap();
+    assert_eq!(groups.len(), 1);
+}
+
+#[test]
 fn test_get_on_this_day_media() {
     use chrono::{Datelike, NaiveDate};
 
@@ -2645,4 +2688,234 @@ fn cross_feature_fts_delete_excludes_from_search() {
             .unwrap()
             .is_empty()
     );
+}
+
+#[test]
+fn test_v14_migration_integer_to_hex() {
+    use rusqlite::Connection;
+
+    let conn = Connection::open_in_memory().unwrap();
+
+    // Bootstrap minimal schema (v1 subset) with INTEGER dhash/phash columns
+    conn.execute_batch(
+        "CREATE TABLE schema_version (version INTEGER PRIMARY KEY);
+         INSERT INTO schema_version VALUES (13);
+         CREATE TABLE watched_folders (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             path TEXT NOT NULL UNIQUE,
+             added_at TEXT NOT NULL DEFAULT (datetime('now')),
+             last_scan_at TEXT
+         );
+         CREATE TABLE media_files (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             folder_id INTEGER NOT NULL REFERENCES watched_folders(id),
+             path TEXT NOT NULL UNIQUE,
+             filename TEXT NOT NULL,
+             media_type TEXT NOT NULL DEFAULT 'Unknown',
+             size_bytes INTEGER NOT NULL,
+             width INTEGER,
+             height INTEGER,
+             created_at TEXT,
+             modified_at TEXT NOT NULL,
+             blake3_hash TEXT,
+             dhash INTEGER,
+             phash INTEGER,
+             latitude REAL,
+             longitude REAL,
+             city TEXT,
+             country TEXT,
+             micro_thumb BLOB,
+             indexed_at TEXT NOT NULL DEFAULT (datetime('now'))
+         );",
+    )
+    .unwrap();
+
+    // Insert a folder
+    conn.execute("INSERT INTO watched_folders (path) VALUES ('/test')", [])
+        .unwrap();
+
+    // Insert rows with various hash patterns including high-bit values
+    let test_cases: &[(i64, Option<i64>, Option<i64>)] = &[
+        // Normal small values
+        (1, Some(42), Some(100)),
+        // High-bit u64 stored as negative i64
+        (2, Some(0xDEAD_BEEF_CAFE_BABEu64 as i64), Some(-1i64)),
+        // NULL hashes
+        (3, None, None),
+        // Only dhash
+        (4, Some(0x8000_0000_0000_0001u64 as i64), None),
+    ];
+
+    for (idx, dhash, phash) in test_cases {
+        conn.execute(
+            "INSERT INTO media_files (folder_id, path, filename, size_bytes, modified_at, dhash, phash)
+             VALUES (1, ?1, ?2, 1000, '2024-01-01', ?3, ?4)",
+            rusqlite::params![
+                format!("/test/img{}.jpg", idx),
+                format!("img{}.jpg", idx),
+                dhash,
+                phash,
+            ],
+        )
+        .unwrap();
+    }
+
+    // Run only v14 migration
+    lightframe_db::migrations::run(&conn).unwrap();
+
+    // Verify dhash_hex and phash_hex columns exist and contain correct values
+    let rows: Vec<(i64, Option<String>, Option<String>)> = conn
+        .prepare("SELECT id, dhash_hex, phash_hex FROM media_files ORDER BY id")
+        .unwrap()
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                row.get::<_, Option<String>>(2)?,
+            ))
+        })
+        .unwrap()
+        .filter_map(|r| r.ok())
+        .collect();
+
+    assert_eq!(rows.len(), 4);
+
+    // Row 1: dhash=42, phash=100
+    assert_eq!(rows[0].1.as_deref(), Some("000000000000002a"));
+    assert_eq!(rows[0].2.as_deref(), Some("0000000000000064"));
+
+    // Row 2: dhash=0xDEADBEEFCAFEBABE, phash=0xFFFFFFFFFFFFFFFF
+    assert_eq!(rows[1].1.as_deref(), Some("deadbeefcafebabe"));
+    assert_eq!(rows[1].2.as_deref(), Some("ffffffffffffffff"));
+
+    // Row 3: both NULL
+    assert_eq!(rows[2].1, None);
+    assert_eq!(rows[2].2, None);
+
+    // Row 4: only dhash=0x8000000000000001, phash=NULL
+    assert_eq!(rows[3].1.as_deref(), Some("8000000000000001"));
+    assert_eq!(rows[3].2, None);
+
+    // Verify schema_version is now 14
+    let version: i64 = conn
+        .query_row("SELECT MAX(version) FROM schema_version", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(version, 14);
+}
+
+#[test]
+fn test_batch_set_micro_thumbs() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let mut ids = Vec::new();
+    for i in 0..5 {
+        let mut media = sample_media(&format!("/photos/batch_thumb_{}.jpg", i));
+        media.blake3_hash = Some(format!("batchhash{}", i));
+        let id = db.upsert_media(fid, &media).unwrap();
+        ids.push(id);
+    }
+
+    let items: Vec<(i64, Vec<u8>)> = ids
+        .iter()
+        .enumerate()
+        .map(|(i, &id)| (id, vec![0xAA, 0xBB, i as u8]))
+        .collect();
+
+    db.batch_set_micro_thumbs(&items).unwrap();
+
+    // Verify each micro thumb was stored
+    for (i, &id) in ids.iter().enumerate() {
+        let thumb = db.get_micro_thumb(id).unwrap();
+        assert_eq!(thumb, Some(vec![0xAA, 0xBB, i as u8]));
+    }
+}
+
+#[test]
+fn test_batch_set_micro_thumbs_empty() {
+    let db = create_test_db();
+    // Should not error on empty input
+    db.batch_set_micro_thumbs(&[]).unwrap();
+}
+
+#[test]
+fn test_reset_all_media_data() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    // Insert media with a searchable filename (for FTS verification)
+    let mut media = sample_media("/photos/reset_test.jpg");
+    media.blake3_hash = Some("resethash".to_string());
+    media.filename = "unique_reset_search_term.jpg".to_string();
+    let media_id = db.upsert_media(fid, &media).unwrap();
+
+    // Insert a second media file for Live Photo pair
+    let mut video = sample_media("/photos/reset_test.mov");
+    video.blake3_hash = Some("resethash_mov".to_string());
+    video.filename = "reset_test.mov".to_string();
+    let video_id = db.upsert_media(fid, &video).unwrap();
+
+    // Set up Live Photo pair (self-referencing FK)
+    db.set_live_pair(media_id, video_id).unwrap();
+
+    // Set micro thumb
+    db.set_micro_thumb(media_id, &[0x01, 0x02]).unwrap();
+
+    // Create album with cover
+    let album = db.create_album("Test Album", None).unwrap();
+    let album_id = album.id;
+    db.add_to_album(album_id, &[media_id]).unwrap();
+    db.set_album_cover(album_id, media_id).unwrap();
+
+    // Create face detection + person
+    db.store_face_detections(
+        media_id,
+        &[FaceDetectionInput {
+            bbox: [0.1, 0.1, 0.3, 0.3],
+            confidence: 0.95,
+            embedding: vec![0.1; 128],
+        }],
+    )
+    .unwrap();
+    let faces = db.get_faces_for_media(media_id).unwrap();
+    let face_id = faces[0].id;
+    let person_id = db.create_person(Some("Test Person")).unwrap();
+    db.assign_face_to_person(face_id, person_id).unwrap();
+
+    // Verify data exists before reset
+    assert!(db.get_media_by_id(media_id).unwrap().is_some());
+    assert_eq!(db.get_album_media(album_id, 10, 0).unwrap().len(), 1);
+    assert_eq!(db.get_faces_for_person(person_id, 10, 0).unwrap().len(), 1);
+    assert_eq!(
+        db.search_media("unique_reset_search_term", 10, 0)
+            .unwrap()
+            .len(),
+        1
+    );
+
+    // Perform reset (must succeed even with Live Photo pair FK)
+    db.reset_all_media_data().unwrap();
+
+    // All media should be gone
+    assert!(db.get_media_by_id(media_id).unwrap().is_none());
+    assert!(db.get_media_by_id(video_id).unwrap().is_none());
+
+    // FTS should be empty after reset
+    assert!(
+        db.search_media("unique_reset_search_term", 10, 0)
+            .unwrap()
+            .is_empty()
+    );
+
+    // Faces/persons should be gone
+    assert!(db.get_faces_for_media(media_id).unwrap().is_empty());
+
+    // Album row survives but is empty
+    assert!(db.get_album_media(album_id, 10, 0).unwrap().is_empty());
+
+    // Watched folder should still exist but with cleared last_scan
+    let folders = db.list_watched_folders().unwrap();
+    assert_eq!(folders.len(), 1);
+    assert_eq!(folders[0].path, "/photos");
+    assert!(folders[0].last_scan.is_none());
 }

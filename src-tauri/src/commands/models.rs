@@ -1,5 +1,7 @@
 use crate::state::AppState;
 use serde::Serialize;
+use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Emitter, State};
 
 #[derive(Serialize)]
@@ -35,29 +37,38 @@ pub async fn download_model(
     state: State<'_, AppState>,
     filename: String,
 ) -> Result<String, String> {
-    use std::sync::atomic::Ordering;
-
-    if state
-        .downloading
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
-        return Err("model download already in progress".to_string());
-    }
-
-    struct DownloadingGuard(std::sync::Arc<std::sync::atomic::AtomicBool>);
-    impl Drop for DownloadingGuard {
-        fn drop(&mut self) {
-            self.0.store(false, Ordering::SeqCst);
-        }
-    }
-    let _guard = DownloadingGuard(std::sync::Arc::clone(&state.downloading));
-
     let model = lightframe_ai::model_by_filename(&filename)
         .ok_or_else(|| format!("unknown model: {filename}"))?;
 
-    let cancel = state.download_cancel.clone();
-    cancel.store(false, Ordering::Relaxed);
+    let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+    // Register this download; reject if same file already downloading
+    {
+        let mut downloads = state.active_downloads.lock().unwrap();
+        if downloads.contains_key(&filename) {
+            return Err(format!("already downloading: {filename}"));
+        }
+        downloads.insert(filename.clone(), Arc::clone(&cancel));
+    }
+
+    let filename_for_cleanup = filename.clone();
+    let downloads_ref = Arc::clone(&state.active_downloads);
+
+    struct DownloadGuard {
+        filename: String,
+        downloads: Arc<
+            std::sync::Mutex<std::collections::HashMap<String, Arc<std::sync::atomic::AtomicBool>>>,
+        >,
+    }
+    impl Drop for DownloadGuard {
+        fn drop(&mut self) {
+            self.downloads.lock().unwrap().remove(&self.filename);
+        }
+    }
+    let _guard = DownloadGuard {
+        filename: filename_for_cleanup,
+        downloads: downloads_ref,
+    };
 
     let emit_filename = filename.clone();
     let path = tokio::task::spawn_blocking(move || {
@@ -84,10 +95,11 @@ pub async fn download_model(
 }
 
 #[tauri::command]
-pub fn cancel_download(state: State<'_, AppState>) {
-    state
-        .download_cancel
-        .store(true, std::sync::atomic::Ordering::Relaxed);
+pub fn cancel_download(state: State<'_, AppState>, filename: String) {
+    let downloads = state.active_downloads.lock().unwrap();
+    if let Some(cancel) = downloads.get(&filename) {
+        cancel.store(true, Ordering::Relaxed);
+    }
 }
 
 #[tauri::command]

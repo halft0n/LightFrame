@@ -27,7 +27,7 @@ vi.mock("@/lib/tauri", async (importOriginal) => {
     getModelStatus: () => getModelStatus(),
     openModelsDir: () => openModelsDir(),
     downloadModel: (...args: unknown[]) => downloadModel(...args),
-    cancelDownload: () => cancelDownload(),
+    cancelDownload: (...args: unknown[]) => cancelDownload(...args),
   };
 });
 
@@ -242,13 +242,10 @@ describe("AiSettings", () => {
         }),
     );
 
+    let progressHandler: ((event: { payload: { filename: string; downloaded: number; total: number } }) => void) | null = null;
     (listen as ReturnType<typeof vi.fn>).mockImplementation(
       (_event: string, handler: (event: { payload: { filename: string; downloaded: number; total: number } }) => void) => {
-        setTimeout(() => {
-          handler({
-            payload: { filename: "scrfd_500m_bnkps.onnx", downloaded: 100_000, total: 5_000_000 },
-          });
-        }, 0);
+        progressHandler = handler;
         return Promise.resolve(() => {});
       },
     );
@@ -287,10 +284,17 @@ describe("AiSettings", () => {
       expect(downloadModel).toHaveBeenCalled();
     });
 
+    // Simulate progress event after download starts
+    act(() => {
+      progressHandler?.({
+        payload: { filename: "scrfd_500m_bnkps.onnx", downloaded: 100_000, total: 5_000_000 },
+      });
+    });
+
     const cancelBtn = await waitFor(() => screen.getByRole("button", { name: "Cancel download" }));
     await user.click(cancelBtn);
 
-    expect(cancelDownload).toHaveBeenCalled();
+    expect(cancelDownload).toHaveBeenCalledWith("scrfd_500m_bnkps.onnx");
 
     resolveDownload("/models/done.onnx");
   });

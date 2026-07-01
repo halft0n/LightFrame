@@ -88,6 +88,10 @@ pub fn run(conn: &Connection) -> lightframe_core::Result<()> {
         run_migration(conn, v13)?;
     }
 
+    if current < 14 {
+        run_migration(conn, v14)?;
+    }
+
     Ok(())
 }
 
@@ -512,6 +516,66 @@ fn v13(conn: &Connection) -> lightframe_core::Result<()> {
         INSERT OR IGNORE INTO schema_version (version) VALUES (13);",
     )
     .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+fn v14(conn: &Connection) -> lightframe_core::Result<()> {
+    let columns: Vec<String> = conn
+        .prepare("PRAGMA table_info(media_files)")
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if !columns.iter().any(|c| c == "dhash_hex") {
+        conn.execute("ALTER TABLE media_files ADD COLUMN dhash_hex TEXT", [])
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+    }
+
+    if !columns.iter().any(|c| c == "phash_hex") {
+        conn.execute("ALTER TABLE media_files ADD COLUMN phash_hex TEXT", [])
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+    }
+
+    // Migrate existing integer hashes to hex text.
+    // SQLite stores u64 values >= 2^63 as negative i64; we read as i64 and
+    // reinterpret the bits as u64 before formatting as hex.
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, dhash, phash FROM media_files WHERE dhash IS NOT NULL OR phash IS NOT NULL",
+        )
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+    let rows: Vec<(i64, Option<i64>, Option<i64>)> = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, Option<i64>>(1)?,
+                row.get::<_, Option<i64>>(2)?,
+            ))
+        })
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+        .filter_map(|r| r.ok())
+        .collect();
+    drop(stmt);
+
+    let mut update_stmt = conn
+        .prepare("UPDATE media_files SET dhash_hex = ?1, phash_hex = ?2 WHERE id = ?3")
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+    for (id, dhash_i64, phash_i64) in &rows {
+        let dhash_hex = dhash_i64.map(|v| format!("{:016x}", v as u64));
+        let phash_hex = phash_i64.map(|v| format!("{:016x}", v as u64));
+        update_stmt
+            .execute(rusqlite::params![dhash_hex, phash_hex, id])
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+    }
+    drop(update_stmt);
+
+    conn.execute_batch("INSERT OR IGNORE INTO schema_version (version) VALUES (14);")
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
 
     Ok(())
 }

@@ -20,6 +20,14 @@ const MEDIA_BATCH_SIZE: usize = 20;
 const MEDIA_BATCH_INTERVAL: Duration = Duration::from_secs(2);
 
 #[derive(Serialize, Clone)]
+struct EnrichmentProgress {
+    folder_id: i64,
+    total: i64,
+    processed: i64,
+    status: String,
+}
+
+#[derive(Serialize, Clone)]
 struct MediaBatchPayload {
     folder_id: i64,
     items: Vec<MediaFile>,
@@ -312,18 +320,146 @@ pub async fn run_scan(
             count = ids.len(),
             "starting phase 2 (enrichment)"
         );
-        let enrich_concurrency = concurrency.min(4);
+        // I/O-bound work (file reading, hashing, thumbnail gen): scale with CPU cores
+        let enrich_concurrency = concurrency;
+        let enrich_total = ids.len() as i64;
+        let enrich_processed = Arc::new(AtomicI64::new(0));
+        let enrich_last_emit = Arc::new(Mutex::new(Instant::now()));
+
+        let _ = app.emit(
+            "enrichment-progress",
+            EnrichmentProgress {
+                folder_id,
+                total: enrich_total,
+                processed: 0,
+                status: "running".to_string(),
+            },
+        );
+
+        // Channel for batch DB writes
+        let (hash_tx, mut hash_rx) =
+            tokio::sync::mpsc::channel::<(i64, String, Option<u64>, Option<u64>)>(128);
+        let (micro_tx, mut micro_rx) = tokio::sync::mpsc::channel::<(i64, Vec<u8>)>(128);
+
+        let db_batch = Arc::clone(&db);
+        let batch_writer = tokio::spawn(async move {
+            let mut hash_buf: Vec<(i64, String, Option<u64>, Option<u64>)> = Vec::with_capacity(50);
+            let mut micro_buf: Vec<(i64, Vec<u8>)> = Vec::with_capacity(50);
+            let mut hash_open = true;
+            let mut micro_open = true;
+
+            while hash_open || micro_open || !hash_buf.is_empty() || !micro_buf.is_empty() {
+                tokio::select! {
+                    msg = hash_rx.recv(), if hash_open => {
+                        match msg {
+                            Some(item) => {
+                                hash_buf.push(item);
+                                if hash_buf.len() >= 50 {
+                                    if let Err(e) = db_batch.batch_update_media_hashes(&hash_buf) {
+                                        warn!("batch hash write failed ({} items): {e}", hash_buf.len());
+                                    }
+                                    hash_buf.clear();
+                                }
+                            }
+                            None => {
+                                hash_open = false;
+                                if !hash_buf.is_empty() {
+                                    if let Err(e) = db_batch.batch_update_media_hashes(&hash_buf) {
+                                        warn!("final batch hash write failed ({} items): {e}", hash_buf.len());
+                                    }
+                                    hash_buf.clear();
+                                }
+                            }
+                        }
+                    }
+                    msg = micro_rx.recv(), if micro_open => {
+                        match msg {
+                            Some((id, blob)) => {
+                                micro_buf.push((id, blob));
+                                if micro_buf.len() >= 50 {
+                                    if let Err(e) = db_batch.batch_set_micro_thumbs(&micro_buf) {
+                                        warn!("batch micro thumb write failed ({} items): {e}", micro_buf.len());
+                                    }
+                                    micro_buf.clear();
+                                }
+                            }
+                            None => {
+                                micro_open = false;
+                                if !micro_buf.is_empty() {
+                                    if let Err(e) = db_batch.batch_set_micro_thumbs(&micro_buf) {
+                                        warn!("final batch micro thumb write failed ({} items): {e}", micro_buf.len());
+                                    }
+                                    micro_buf.clear();
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
         stream::iter(ids.into_iter().map(|media_id| {
             let db = Arc::clone(&db);
+            let processed = Arc::clone(&enrich_processed);
+            let last_emit = Arc::clone(&enrich_last_emit);
+            let app = app.clone();
+            let hash_tx = hash_tx.clone();
+            let micro_tx = micro_tx.clone();
             async move {
-                if let Err(e) = enrich_media(&db, media_id).await {
-                    warn!(media_id, "enrichment failed: {e}");
+                match enrich_media_batch(&db, media_id).await {
+                    Ok(result) => {
+                        let _ = hash_tx
+                            .send((media_id, result.blake3_hash, result.dhash, result.phash))
+                            .await;
+                        if let Some(blob) = result.micro_blob {
+                            let _ = micro_tx.send((media_id, blob)).await;
+                        }
+                    }
+                    Err(e) => {
+                        warn!(media_id, "enrichment failed: {e}");
+                    }
+                }
+                let done = processed.fetch_add(1, Ordering::Relaxed) + 1;
+                let should_emit = done == enrich_total
+                    || done % 10 == 0
+                    || last_emit
+                        .lock()
+                        .map(|last| last.elapsed() >= Duration::from_millis(500))
+                        .unwrap_or(true);
+                if should_emit {
+                    if let Ok(mut last) = last_emit.lock() {
+                        *last = Instant::now();
+                    }
+                    let _ = app.emit(
+                        "enrichment-progress",
+                        EnrichmentProgress {
+                            folder_id,
+                            total: enrich_total,
+                            processed: done,
+                            status: "running".to_string(),
+                        },
+                    );
                 }
             }
         }))
         .buffer_unordered(enrich_concurrency)
         .collect::<()>()
         .await;
+
+        // Drop senders to signal batch writer to flush
+        drop(hash_tx);
+        drop(micro_tx);
+        let _ = batch_writer.await;
+
+        let _ = app.emit(
+            "enrichment-progress",
+            EnrichmentProgress {
+                folder_id,
+                total: enrich_total,
+                processed: enrich_total,
+                status: "complete".to_string(),
+            },
+        );
         info!(folder_id, "phase 2 (enrichment) complete");
     }
 
@@ -441,9 +577,16 @@ async fn quick_index_inner(
     Ok(Some((media_id, stored)))
 }
 
-/// Phase 2: Background enrichment — blake3 hash, thumbnails, dhash/phash,
-/// screenshot detection. Runs after the main index loop reports "indexed".
-async fn enrich_media(db: &Database, media_id: i64) -> lightframe_core::Result<()> {
+struct EnrichResult {
+    blake3_hash: String,
+    dhash: Option<u64>,
+    phash: Option<u64>,
+    micro_blob: Option<Vec<u8>>,
+}
+
+/// Phase 2 enrichment that returns results without writing to DB.
+/// DB writes are batched by the caller.
+async fn enrich_media_batch(db: &Database, media_id: i64) -> lightframe_core::Result<EnrichResult> {
     let media = db
         .get_media_by_id(media_id)?
         .ok_or_else(|| lightframe_core::Error::Other(format!("media {media_id} not found")))?;
@@ -536,8 +679,6 @@ async fn enrich_media(db: &Database, media_id: i64) -> lightframe_core::Result<(
         }
     }
 
-    db.update_media_hashes(media_id, &blake3_hash, dhash, phash)?;
-
     let micro_blob = if matches!(media_type, MediaType::Video) {
         let hash = blake3_hash.clone();
         tokio::task::spawn_blocking(move || {
@@ -554,10 +695,7 @@ async fn enrich_media(db: &Database, media_id: i64) -> lightframe_core::Result<(
         micro_blob
     };
 
-    if let Some(blob) = micro_blob {
-        let _ = db.set_micro_thumb(media_id, &blob);
-    }
-
+    // Screenshot detection still writes directly (infrequent)
     if matches!(media_type, MediaType::Screenshot) || matches!(media_type, MediaType::Photo) {
         let mt = media_type;
         if matches!(mt, MediaType::Photo) {
@@ -576,7 +714,12 @@ async fn enrich_media(db: &Database, media_id: i64) -> lightframe_core::Result<(
         }
     }
 
-    Ok(())
+    Ok(EnrichResult {
+        blake3_hash,
+        dhash,
+        phash,
+        micro_blob,
+    })
 }
 
 fn pair_live_photos(db: &Database, folder_id: i64) -> lightframe_core::Result<()> {

@@ -6,6 +6,7 @@ import {
   listWatchedFolders,
   onFolderChanged,
   onMediaBatchReady,
+  onEnrichmentProgress,
   onScanProgress,
   scanFolder,
 } from "@/lib/tauri";
@@ -16,6 +17,7 @@ import {
   getSnapshot,
   loadMedia,
   mergeNewMedia,
+  setEnrichmentProgress,
   setScanning,
   setSearchQuery,
   setSearchMode,
@@ -162,6 +164,21 @@ export default function App() {
       }
     });
 
+    let unlistenEnrichment: (() => void) | undefined;
+    void onEnrichmentProgress((progress) => {
+      if (progress.status === "complete") {
+        setEnrichmentProgress(null);
+      } else {
+        setEnrichmentProgress(progress);
+      }
+    }).then((fn) => {
+      if (mounted) {
+        unlistenEnrichment = fn;
+      } else {
+        fn();
+      }
+    });
+
     void onFolderChanged((folderId) => {
       updateFolder(folderId, { scan_status: "scanning" });
       void scanFolder(folderId).catch((err) => {
@@ -183,6 +200,7 @@ export default function App() {
       unlistenProgress?.();
       unlistenFolder?.();
       unlistenBatch?.();
+      unlistenEnrichment?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

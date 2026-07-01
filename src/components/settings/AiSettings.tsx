@@ -187,9 +187,24 @@ function ModelRow({
             {!model.installed && <> · ~{model.size_mb} MB</>}
           </p>
           {downloading && progress && <DownloadInfo progress={progress} />}
+          {!model.installed && !downloading && (
+            <p className="mt-1 break-all text-[10px] text-neutral-400 dark:text-neutral-500">
+              URL: <a href={model.url} target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-500">{model.url}</a>
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <StatusBadge available={model.installed} />
+          {model.installed && model.sha256_verified === true && (
+            <span className="text-[10px] font-medium text-green-600 dark:text-green-400">
+              ✓ SHA-256
+            </span>
+          )}
+          {model.installed && model.sha256_verified === false && (
+            <span className="text-[10px] font-medium text-red-600 dark:text-red-400">
+              ✗ SHA-256
+            </span>
+          )}
           {!model.installed &&
             (downloading && progress ? (
               <CircularProgress progress={progress} onCancel={onCancel} />
@@ -214,13 +229,15 @@ export function AiSettings() {
   const [status, setStatus] = useState<ModelStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [opening, setOpening] = useState(false);
-  const [downloadingFile, setDownloadingFile] = useState<string | null>(null);
-  const [downloadProgress, setDownloadProgress] =
-    useState<DownloadProgressState | null>(null);
-  const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [downloads, setDownloads] = useState<
+    Map<string, DownloadProgressState>
+  >(new Map());
+  const [downloadErrors, setDownloadErrors] = useState<Map<string, string>>(
+    new Map(),
+  );
   const [statusError, setStatusError] = useState<string | null>(null);
-  const speedSampleRef = useRef<{ downloaded: number; at: number } | null>(
-    null,
+  const speedSamplesRef = useRef<Map<string, { downloaded: number; at: number }>>(
+    new Map(),
   );
 
   const loadStatus = useCallback(async () => {
@@ -248,10 +265,10 @@ export function AiSettings() {
     let unlisten: UnlistenFn | undefined;
     void listen<ModelDownloadProgress>("model-download-progress", (event) => {
       const { filename, downloaded, total } = event.payload;
-      if (filename !== downloadingFile) return;
+      if (!mounted) return;
 
       const now = Date.now();
-      const prev = speedSampleRef.current;
+      const prev = speedSamplesRef.current.get(filename);
       let speedBps = 0;
       if (prev && now > prev.at) {
         const deltaBytes = downloaded - prev.downloaded;
@@ -260,8 +277,12 @@ export function AiSettings() {
           speedBps = deltaBytes / deltaSec;
         }
       }
-      speedSampleRef.current = { downloaded, at: now };
-      setDownloadProgress({ downloaded, total, speedBps });
+      speedSamplesRef.current.set(filename, { downloaded, at: now });
+      setDownloads((prev) => {
+        const next = new Map(prev);
+        next.set(filename, { downloaded, total, speedBps });
+        return next;
+      });
     }).then((fn) => {
       if (mounted) {
         unlisten = fn;
@@ -274,7 +295,7 @@ export function AiSettings() {
       mounted = false;
       void unlisten?.();
     };
-  }, [downloadingFile]);
+  }, []);
 
   const handleOpenModelsDir = async () => {
     if (!window.__TAURI_INTERNALS__) {
@@ -298,28 +319,43 @@ export function AiSettings() {
       return;
     }
 
-    setDownloadingFile(filename);
-    setDownloadProgress({ downloaded: 0, total: 0, speedBps: 0 });
-    setDownloadError(null);
-    speedSampleRef.current = null;
+    setDownloads((prev) => {
+      const next = new Map(prev);
+      next.set(filename, { downloaded: 0, total: 0, speedBps: 0 });
+      return next;
+    });
+    setDownloadErrors((prev) => {
+      const next = new Map(prev);
+      next.delete(filename);
+      return next;
+    });
+    speedSamplesRef.current.delete(filename);
+
     try {
       await downloadModel(filename);
       await loadStatus();
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
       if (!raw.includes("cancelled")) {
-        setDownloadError(localizeError(err, t));
+        setDownloadErrors((prev) => {
+          const next = new Map(prev);
+          next.set(filename, localizeError(err, t));
+          return next;
+        });
       }
     } finally {
-      setDownloadingFile(null);
-      setDownloadProgress(null);
-      speedSampleRef.current = null;
+      setDownloads((prev) => {
+        const next = new Map(prev);
+        next.delete(filename);
+        return next;
+      });
+      speedSamplesRef.current.delete(filename);
     }
   };
 
-  const handleCancel = async () => {
+  const handleCancel = async (filename: string) => {
     try {
-      await cancelDownload();
+      await cancelDownload(filename);
     } catch {
       // best-effort
     }
@@ -343,21 +379,22 @@ export function AiSettings() {
               <ModelRow
                 key={model.filename}
                 model={model}
-                downloading={downloadingFile === model.filename}
-                progress={
-                  downloadingFile === model.filename ? downloadProgress : null
-                }
+                downloading={downloads.has(model.filename)}
+                progress={downloads.get(model.filename) ?? null}
                 onDownload={(name) => void handleDownload(name)}
-                onCancel={() => void handleCancel()}
+                onCancel={() => void handleCancel(model.filename)}
               />
             ))}
           </ul>
 
-          {downloadError && (
-            <p className="text-sm text-red-600 dark:text-red-400">
-              {downloadError}
+          {[...downloadErrors.entries()].map(([filename, error]) => (
+            <p
+              key={filename}
+              className="text-sm text-red-600 dark:text-red-400"
+            >
+              {filename}: {error}
             </p>
-          )}
+          ))}
 
           <div className="rounded-lg bg-neutral-100 px-3 py-2 dark:bg-neutral-800/80">
             <p className="text-xs font-medium text-neutral-500 dark:text-neutral-400">

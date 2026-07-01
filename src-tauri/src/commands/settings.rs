@@ -162,3 +162,35 @@ pub fn remove_watched_folder(
 pub fn list_watched_folders(state: State<'_, AppState>) -> Result<Vec<WatchedFolder>, String> {
     state.db.list_watched_folders().map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn reset_database(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    // Wait for any active scan to finish before wiping data
+    let mut attempts = 0;
+    while state.scan_queue.is_running() && attempts < 60 {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        attempts += 1;
+    }
+    if state.scan_queue.is_running() {
+        return Err(
+            "Cannot reset: a scan is still in progress. Please wait for it to finish.".to_string(),
+        );
+    }
+
+    state.db.reset_all_media_data().map_err(|e| e.to_string())?;
+
+    // Delete thumbnail cache directory
+    let thumb_dir = lightframe_core::config::thumb_cache_dir();
+    if thumb_dir.exists() {
+        let _ = std::fs::remove_dir_all(&thumb_dir);
+        let _ = std::fs::create_dir_all(&thumb_dir);
+    }
+
+    // Re-scan all watched folders
+    let folders = state.db.list_watched_folders().map_err(|e| e.to_string())?;
+    for folder in folders {
+        scan::spawn_scan(app.clone(), &state, folder.id);
+    }
+
+    Ok(())
+}

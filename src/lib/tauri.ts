@@ -404,6 +404,21 @@ export async function onScanProgress(
   });
 }
 
+export interface EnrichmentProgress {
+  folder_id: number;
+  total: number;
+  processed: number;
+  status: string;
+}
+
+export async function onEnrichmentProgress(
+  callback: (progress: EnrichmentProgress) => void,
+): Promise<() => void> {
+  return listen<EnrichmentProgress>("enrichment-progress", (event) => {
+    callback(event.payload);
+  });
+}
+
 export async function onFolderChanged(
   callback: (folderId: number) => void,
 ): Promise<() => void> {
@@ -680,8 +695,8 @@ export async function downloadModel(filename: string): Promise<string> {
   return invoke<string>("download_model", { filename });
 }
 
-export async function cancelDownload(): Promise<void> {
-  return invoke("cancel_download");
+export async function cancelDownload(filename: string): Promise<void> {
+  return invoke("cancel_download", { filename });
 }
 
 export async function openModelsDir(): Promise<void> {
@@ -832,6 +847,10 @@ export interface ThumbnailRegenResult {
 
 export async function regenerateThumbnails(): Promise<ThumbnailRegenResult> {
   return invoke<ThumbnailRegenResult>("regenerate_thumbnails");
+}
+
+export async function resetDatabase(): Promise<void> {
+  return invoke("reset_database");
 }
 
 export async function regenerateThumbnailSingle(

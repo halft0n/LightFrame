@@ -5,6 +5,20 @@ use serde::{Deserialize, Serialize};
 
 type PerceptualCandidate = (i64, Option<u64>, Option<u64>);
 
+fn hash_to_hex(h: Option<u64>) -> Option<String> {
+    h.map(|v| format!("{:016x}", v))
+}
+
+fn hex_to_hash(s: Option<String>) -> Option<u64> {
+    s.and_then(|v| {
+        if v.len() != 16 {
+            tracing::warn!(value = %v, "invalid dhash/phash hex length (expected 16)");
+            return None;
+        }
+        u64::from_str_radix(&v.to_lowercase(), 16).ok()
+    })
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WatchedFolder {
     pub id: i64,
@@ -363,7 +377,7 @@ impl Database {
         let media_type_str = format!("{:?}", media.media_type);
 
         conn.execute(
-            "INSERT INTO media_files (folder_id, path, filename, media_type, size_bytes, width, height, created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude)
+            "INSERT INTO media_files (folder_id, path, filename, media_type, size_bytes, width, height, created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
              ON CONFLICT(path) DO UPDATE SET
                 media_type = excluded.media_type,
@@ -376,14 +390,14 @@ impl Database {
                     WHEN excluded.size_bytes != size_bytes OR excluded.modified_at != modified_at
                     THEN excluded.blake3_hash
                     ELSE COALESCE(excluded.blake3_hash, blake3_hash) END,
-                dhash = CASE
+                dhash_hex = CASE
                     WHEN excluded.size_bytes != size_bytes OR excluded.modified_at != modified_at
-                    THEN excluded.dhash
-                    ELSE COALESCE(excluded.dhash, dhash) END,
-                phash = CASE
+                    THEN excluded.dhash_hex
+                    ELSE COALESCE(excluded.dhash_hex, dhash_hex) END,
+                phash_hex = CASE
                     WHEN excluded.size_bytes != size_bytes OR excluded.modified_at != modified_at
-                    THEN excluded.phash
-                    ELSE COALESCE(excluded.phash, phash) END,
+                    THEN excluded.phash_hex
+                    ELSE COALESCE(excluded.phash_hex, phash_hex) END,
                 latitude = COALESCE(excluded.latitude, latitude),
                 longitude = COALESCE(excluded.longitude, longitude)",
             params![
@@ -397,8 +411,8 @@ impl Database {
                 media.created_at.map(|d| d.to_string()),
                 media.modified_at.format("%Y-%m-%dT%H:%M:%S").to_string(),
                 media.blake3_hash,
-                media.dhash,
-                media.phash,
+                hash_to_hex(media.dhash),
+                hash_to_hex(media.phash),
                 media.latitude,
                 media.longitude,
             ],
@@ -425,10 +439,56 @@ impl Database {
     ) -> lightframe_core::Result<()> {
         let conn = self.conn()?;
         conn.execute(
-            "UPDATE media_files SET blake3_hash = ?1, dhash = ?2, phash = ?3 WHERE id = ?4",
-            params![blake3_hash, dhash, phash, media_id],
+            "UPDATE media_files SET blake3_hash = ?1, dhash_hex = ?2, phash_hex = ?3 WHERE id = ?4",
+            params![
+                blake3_hash,
+                hash_to_hex(dhash),
+                hash_to_hex(phash),
+                media_id
+            ],
         )
         .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn batch_update_media_hashes(
+        &self,
+        updates: &[(i64, String, Option<u64>, Option<u64>)],
+    ) -> lightframe_core::Result<()> {
+        if updates.is_empty() {
+            return Ok(());
+        }
+        let conn = self.conn()?;
+        conn.execute_batch("BEGIN")
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        let result = (|| -> lightframe_core::Result<()> {
+            let mut stmt = conn
+                .prepare_cached(
+                    "UPDATE media_files SET blake3_hash = ?1, dhash_hex = ?2, phash_hex = ?3 WHERE id = ?4",
+                )
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+            for (media_id, blake3_hash, dhash, phash) in updates {
+                stmt.execute(params![
+                    blake3_hash,
+                    hash_to_hex(*dhash),
+                    hash_to_hex(*phash),
+                    media_id
+                ])
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+            }
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => conn
+                .execute_batch("COMMIT")
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?,
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(e);
+            }
+        }
         Ok(())
     }
 
@@ -449,6 +509,37 @@ impl Database {
             params![blob, media_id],
         )
         .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn batch_set_micro_thumbs(&self, items: &[(i64, Vec<u8>)]) -> lightframe_core::Result<()> {
+        if items.is_empty() {
+            return Ok(());
+        }
+        let conn = self.conn()?;
+        conn.execute_batch("BEGIN")
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        let result = (|| -> lightframe_core::Result<()> {
+            let mut stmt = conn
+                .prepare_cached("UPDATE media_files SET micro_thumb = ?1 WHERE id = ?2")
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+            for (media_id, blob) in items {
+                stmt.execute(params![blob, media_id])
+                    .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+            }
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => conn
+                .execute_batch("COMMIT")
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?,
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(e);
+            }
+        }
         Ok(())
     }
 
@@ -525,7 +616,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude
                  FROM media_files
                  WHERE is_deleted = 0 AND is_live_mov = 0
                  ORDER BY created_at DESC
@@ -558,8 +649,8 @@ impl Database {
                         .and_then(|s| s.parse().ok()),
                     modified_at: row.get::<_, String>(8)?.parse().unwrap_or_default(),
                     blake3_hash: row.get(9)?,
-                    dhash: row.get(10)?,
-                    phash: row.get(11)?,
+                    dhash: hex_to_hash(row.get(10)?),
+                    phash: hex_to_hash(row.get(11)?),
                     latitude: row.get(12)?,
                     longitude: row.get(13)?,
                 })
@@ -582,7 +673,7 @@ impl Database {
         let (sql, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match cursor {
             None => (
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude
                  FROM media_files
                  WHERE is_deleted = 0 AND is_live_mov = 0
                  ORDER BY COALESCE(created_at, modified_at) DESC, id DESC
@@ -592,7 +683,7 @@ impl Database {
             ),
             Some((sort_timestamp, id)) => (
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude
                  FROM media_files
                  WHERE is_deleted = 0 AND is_live_mov = 0
                    AND (
@@ -639,7 +730,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude
                  FROM media_files
                  WHERE folder_id = ?1 AND is_deleted = 0
                  ORDER BY COALESCE(created_at, modified_at) DESC
@@ -693,7 +784,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude
                  FROM media_files
                  WHERE media_type = ?1 AND is_deleted = 0
                  ORDER BY COALESCE(created_at, modified_at) DESC
@@ -743,7 +834,7 @@ impl Database {
         let (sql, params): (&str, Vec<Box<dyn rusqlite::ToSql>>) = match screenshot_type {
             Some(st) => (
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude
                  FROM media_files
                  WHERE media_type = 'Screenshot' AND is_deleted = 0 AND screenshot_type = ?1
                  ORDER BY COALESCE(created_at, modified_at) DESC
@@ -756,7 +847,7 @@ impl Database {
             ),
             None => (
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude
                  FROM media_files
                  WHERE media_type = 'Screenshot' AND is_deleted = 0
                  ORDER BY COALESCE(created_at, modified_at) DESC
@@ -910,8 +1001,8 @@ impl Database {
                 .and_then(|s| s.parse().ok()),
             modified_at: row.get::<_, String>(8)?.parse().unwrap_or_default(),
             blake3_hash: row.get(9)?,
-            dhash: row.get(10)?,
-            phash: row.get(11)?,
+            dhash: hex_to_hash(row.get(10)?),
+            phash: hex_to_hash(row.get(11)?),
             latitude: row.get(12)?,
             longitude: row.get(13)?,
         })
@@ -927,7 +1018,7 @@ impl Database {
         let (sql, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match cursor {
             None => (
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude,
+                        created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude,
                         date(COALESCE(created_at, modified_at)) AS group_date
                  FROM media_files
                  WHERE is_deleted = 0
@@ -938,7 +1029,7 @@ impl Database {
             ),
             Some((timestamp, id)) => (
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude,
+                        created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude,
                         date(COALESCE(created_at, modified_at)) AS group_date
                  FROM media_files
                  WHERE is_deleted = 0
@@ -1037,7 +1128,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude
                  FROM media_files
                  WHERE is_deleted = 0
                    AND COALESCE(created_at, modified_at) > (
@@ -1061,7 +1152,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude
                  FROM media_files
                  WHERE is_deleted = 0
                    AND COALESCE(created_at, modified_at) < (
@@ -1091,7 +1182,7 @@ impl Database {
         let conn = self.read_conn()?;
         conn.query_row(
             "SELECT id, path, filename, media_type, size_bytes, width, height,
-                    created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                    created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude
              FROM media_files WHERE id = ?1 AND is_deleted = 0",
             params![id],
             Self::map_media_row,
@@ -1116,7 +1207,7 @@ impl Database {
             .collect();
         let sql = format!(
             "SELECT id, path, filename, media_type, size_bytes, width, height,
-                    created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                    created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude
              FROM media_files
              WHERE is_deleted = 0 AND id IN ({})",
             placeholders.join(", ")
@@ -1143,7 +1234,7 @@ impl Database {
         let conn = self.read_conn()?;
         conn.query_row(
             "SELECT id, path, filename, media_type, size_bytes, width, height,
-                    created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                    created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude
              FROM media_files WHERE path = ?1 AND is_deleted = 0",
             params![path],
             Self::map_media_row,
@@ -1482,8 +1573,8 @@ impl Database {
         let conn = self.read_conn()?;
         let mut stmt = conn
             .prepare(
-                "SELECT id, dhash, phash FROM media_files
-                 WHERE (dhash IS NOT NULL OR phash IS NOT NULL) AND is_deleted = 0",
+                "SELECT id, dhash_hex, phash_hex FROM media_files
+                 WHERE (dhash_hex IS NOT NULL OR phash_hex IS NOT NULL) AND is_deleted = 0",
             )
             .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
 
@@ -1491,18 +1582,18 @@ impl Database {
             .query_map([], |row| {
                 Ok((
                     row.get::<_, i64>(0)?,
-                    row.get::<_, Option<u64>>(1)?,
-                    row.get::<_, Option<u64>>(2)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
                 ))
             })
             .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
 
         let mut candidates = Vec::new();
         for row in rows {
-            let (id, dhash, phash) =
+            let (id, dhash_str, phash_str) =
                 row.map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
             if !exclude_ids.contains(&id) {
-                candidates.push((id, dhash, phash));
+                candidates.push((id, hex_to_hash(dhash_str), hex_to_hash(phash_str)));
             }
         }
         Ok(candidates)
@@ -1751,7 +1842,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude
                  FROM media_files
                  WHERE is_deleted = 1
                  ORDER BY deleted_at DESC",
@@ -1960,7 +2051,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude
                  FROM media_files
                  WHERE country = ?1 AND is_deleted = 0
                    AND ((?2 IS NULL AND city IS NULL) OR city = ?2)
@@ -2143,7 +2234,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT m.id, m.path, m.filename, m.media_type, m.size_bytes, m.width, m.height,
-                        m.created_at, m.modified_at, m.blake3_hash, m.dhash, m.phash, m.latitude, m.longitude
+                        m.created_at, m.modified_at, m.blake3_hash, m.dhash_hex, m.phash_hex, m.latitude, m.longitude
                  FROM album_items ai
                  JOIN media_files m ON m.id = ai.media_id
                  WHERE ai.album_id = ?1 AND m.is_deleted = 0
@@ -2282,7 +2373,7 @@ impl Database {
         let (where_clause, filter_params) = build_smart_album_filter(&rule);
         let sql = format!(
             "SELECT id, path, filename, media_type, size_bytes, width, height,
-                    created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                    created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude
              FROM media_files
              WHERE {where_clause}
              ORDER BY COALESCE(created_at, modified_at) DESC
@@ -2328,7 +2419,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude
                  FROM media_files
                  WHERE is_deleted = 0
                    AND media_type = 'Photo'
@@ -2490,7 +2581,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT mf.id, mf.path, mf.filename, mf.media_type, mf.size_bytes, mf.width, mf.height,
-                        mf.created_at, mf.modified_at, mf.blake3_hash, mf.dhash, mf.phash, mf.latitude, mf.longitude
+                        mf.created_at, mf.modified_at, mf.blake3_hash, mf.dhash_hex, mf.phash_hex, mf.latitude, mf.longitude
                  FROM memory_items mi
                  JOIN media_files mf ON mf.id = mi.media_id
                  WHERE mi.memory_id = ?1 AND mf.is_deleted = 0
@@ -2516,7 +2607,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude
                  FROM media_files
                  WHERE is_favorite = 1 AND is_deleted = 0
                  ORDER BY created_at DESC
@@ -2571,7 +2662,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT m.id, m.path, m.filename, m.media_type, m.size_bytes, m.width, m.height,
-                        m.created_at, m.modified_at, m.blake3_hash, m.dhash, m.phash, m.latitude, m.longitude
+                        m.created_at, m.modified_at, m.blake3_hash, m.dhash_hex, m.phash_hex, m.latitude, m.longitude
                  FROM media_fts f
                  JOIN media_files m ON m.id = f.rowid
                  WHERE media_fts MATCH ?1 AND m.is_deleted = 0
@@ -2654,7 +2745,7 @@ impl Database {
         let mut stmt = conn
             .prepare(
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
-                        created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
+                        created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude
                  FROM media_files
                  WHERE is_deleted = 0
                    AND latitude IS NOT NULL
@@ -2784,7 +2875,7 @@ impl Database {
             .prepare(
                 "SELECT DISTINCT mf.id, mf.path, mf.filename, mf.media_type, mf.size_bytes,
                         mf.width, mf.height, mf.created_at, mf.modified_at, mf.blake3_hash,
-                        mf.dhash, mf.phash, mf.latitude, mf.longitude
+                        mf.dhash_hex, mf.phash_hex, mf.latitude, mf.longitude
                  FROM face_detections fd
                  JOIN media_files mf ON mf.id = fd.media_id
                  WHERE fd.person_id = ?1 AND mf.is_deleted = 0
@@ -3549,6 +3640,40 @@ impl Database {
             .flatten()
             .as_ref()
             .is_some_and(|s| !s.trim().is_empty()))
+    }
+
+    pub fn reset_all_media_data(&self) -> lightframe_core::Result<()> {
+        let conn = self.conn()?;
+        conn.execute_batch("BEGIN IMMEDIATE")
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        let result = conn.execute_batch(
+            "DELETE FROM face_detections;
+             DELETE FROM persons;
+             DELETE FROM media_embeddings;
+             DELETE FROM duplicate_members;
+             DELETE FROM duplicate_groups;
+             DELETE FROM album_items;
+             DELETE FROM memory_items;
+             UPDATE albums SET cover_media_id = NULL;
+             UPDATE memories SET cover_media_id = NULL;
+             UPDATE media_files SET live_pair_id = NULL;
+             DELETE FROM media_files;
+             DELETE FROM memories;
+             DELETE FROM smart_albums;
+             UPDATE watched_folders SET last_scan_at = NULL;",
+        );
+
+        match result {
+            Ok(()) => conn
+                .execute_batch("COMMIT")
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?,
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(lightframe_core::Error::Database(e.to_string()));
+            }
+        }
+        Ok(())
     }
 }
 

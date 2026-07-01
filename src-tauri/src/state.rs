@@ -146,9 +146,8 @@ pub struct AppState {
     pub face_detecting: Arc<AtomicBool>,
     pub dedup_scanning: Arc<AtomicBool>,
     pub thumb_regenerating: Arc<AtomicBool>,
-    /// Set while a model download is in progress; only one download runs at a time.
-    pub downloading: Arc<AtomicBool>,
-    pub download_cancel: Arc<AtomicBool>,
+    /// Tracks active model downloads: filename -> cancel flag.
+    pub active_downloads: Arc<std::sync::Mutex<std::collections::HashMap<String, Arc<AtomicBool>>>>,
     pub watch_manager: WatchManager,
     pub thumb_cache: ThumbCache,
     pub ai: Arc<tokio::sync::Mutex<AiDispatcher>>,
@@ -229,8 +228,7 @@ impl AppState {
             face_detecting: Arc::new(AtomicBool::new(false)),
             dedup_scanning: Arc::new(AtomicBool::new(false)),
             thumb_regenerating: Arc::new(AtomicBool::new(false)),
-            downloading: Arc::new(AtomicBool::new(false)),
-            download_cancel: Arc::new(AtomicBool::new(false)),
+            active_downloads: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
             watch_manager: WatchManager::new(),
             thumb_cache: ThumbCache::new(),
             ai: Arc::new(tokio::sync::Mutex::new(AiDispatcher::new())),

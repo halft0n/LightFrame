@@ -1,5 +1,5 @@
 import { useSyncExternalStore, useRef, useCallback } from "react";
-import type { MediaItem, ScanProgress, WatchedFolder } from "@/lib/tauri";
+import type { MediaItem, ScanProgress, WatchedFolder, EnrichmentProgress } from "@/lib/tauri";
 import { getMediaCount, getMediaPage } from "@/lib/tauri";
 
 export type MediaCursor = [string, number] | null;
@@ -59,6 +59,7 @@ export interface AppState {
   mediaScrollIndex: number;
   isScanning: boolean;
   scanProgress: ScanProgress | null;
+  enrichmentProgress: EnrichmentProgress | null;
   viewingMediaId: number | null;
   searchQuery: string;
   searchMode: SearchMode;
@@ -88,6 +89,7 @@ const initialState: AppState = {
   mediaScrollIndex: 0,
   isScanning: false,
   scanProgress: null,
+  enrichmentProgress: null,
   viewingMediaId: null,
   searchQuery: "",
   searchMode: "text",
@@ -347,6 +349,10 @@ export function setScanning(
   progress: ScanProgress | null = null,
 ) {
   setState({ isScanning, scanProgress: progress });
+}
+
+export function setEnrichmentProgress(progress: EnrichmentProgress | null) {
+  setState({ enrichmentProgress: progress });
 }
 
 export function toggleMediaSelection(id: number) {

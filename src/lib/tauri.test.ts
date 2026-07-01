@@ -837,8 +837,10 @@ describe("AI and models", () => {
 
   it("cancelDownload invokes cancel_download", async () => {
     mockInvoke.mockResolvedValue(undefined);
-    await cancelDownload();
-    expect(mockInvoke).toHaveBeenCalledWith("cancel_download");
+    await cancelDownload("test-model.onnx");
+    expect(mockInvoke).toHaveBeenCalledWith("cancel_download", {
+      filename: "test-model.onnx",
+    });
   });
 });
 

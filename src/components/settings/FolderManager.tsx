@@ -6,6 +6,8 @@ import {
   scanFolder,
   regenerateThumbnails,
   onThumbnailRegenProgress,
+  resetDatabase,
+  listWatchedFolders,
   type ScanStatus,
   type ThumbnailRegenProgress,
 } from "@/lib/tauri";
@@ -15,6 +17,8 @@ import {
   updateFolder,
   useAppStore,
   loadMedia,
+  setWatchedFolders,
+  setEnrichmentProgress,
   type Theme,
 } from "@/store/appStore";
 import { changeTheme } from "@/hooks/useTheme";
@@ -31,9 +35,11 @@ function ScanIndicator({
   folderId: number;
 }) {
   const { t } = useTranslation();
-  const { scanProgress } = useAppStore();
+  const { scanProgress, enrichmentProgress } = useAppStore();
   const progress =
     scanProgress?.folder_id === folderId ? scanProgress : null;
+  const enrichment =
+    enrichmentProgress?.folder_id === folderId ? enrichmentProgress : null;
 
   if (status === "scanning") {
     const isDiscovering = !progress || progress.total === 0;
@@ -63,6 +69,30 @@ function ScanIndicator({
             />
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (status === "indexed" && enrichment) {
+    const pct =
+      enrichment.total > 0
+        ? Math.round((enrichment.processed / enrichment.total) * 100)
+        : 0;
+    return (
+      <div className="flex flex-col gap-1">
+        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-amber-500" />
+          {t("settings.enrichmentProgress", {
+            processed: enrichment.processed,
+            total: enrichment.total,
+          })}
+        </span>
+        <div className="h-1 w-full overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-amber-500 to-orange-500 transition-all duration-300"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
       </div>
     );
   }
@@ -142,6 +172,7 @@ export function FolderManager() {
   const [regeneratingThumbs, setRegeneratingThumbs] = useState(false);
   const [thumbRegenProgress, setThumbRegenProgress] =
     useState<ThumbnailRegenProgress | null>(null);
+  const [resetting, setResetting] = useState(false);
 
   const themeOptions: { value: Theme; labelKey: string }[] = [
     { value: "light", labelKey: "theme.light" },
@@ -232,6 +263,24 @@ export function FolderManager() {
     } finally {
       unlisten?.();
       setRegeneratingThumbs(false);
+    }
+  };
+
+  const handleResetDatabase = async () => {
+    if (!isTauri) return;
+    const confirmed = window.confirm(t("settings.resetDatabaseConfirm"));
+    if (!confirmed) return;
+    setResetting(true);
+    try {
+      await resetDatabase();
+      setEnrichmentProgress(null);
+      const folders = await listWatchedFolders();
+      setWatchedFolders(folders);
+      await loadMedia();
+    } catch (err) {
+      console.error("reset failed:", err);
+    } finally {
+      setResetting(false);
     }
   };
 
@@ -421,6 +470,23 @@ export function FolderManager() {
       <UpdateChecker />
 
       <AiSettings />
+
+      <section className="settings-section px-6 py-5">
+        <h2 className="text-base font-semibold text-red-600 dark:text-red-400">
+          {t("settings.dangerZone")}
+        </h2>
+        <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+          {t("settings.resetDatabaseHint")}
+        </p>
+        <button
+          type="button"
+          onClick={() => void handleResetDatabase()}
+          disabled={resetting}
+          className="mt-3 rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:opacity-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/40"
+        >
+          {resetting ? t("settings.resetting") : t("settings.resetDatabase")}
+        </button>
+      </section>
     </div>
   );
 }

@@ -209,9 +209,26 @@ where
     let dest = model_path_for(info);
     let tmp = dest.with_extension("onnx.part");
 
-    let response = ureq::get(info.url)
-        .call()
-        .map_err(|e| Error::Ai(format!("download failed for {}: {e}", info.name)))?;
+    let agent = ureq::AgentBuilder::new()
+        .timeout_connect(std::time::Duration::from_secs(30))
+        .timeout_read(std::time::Duration::from_secs(60))
+        .build();
+
+    let response = agent.get(info.url).call().map_err(|e| {
+        let detail = match &e {
+            ureq::Error::Transport(t) => {
+                format!(
+                    "network error ({}): {}. Check your internet connection or proxy settings.",
+                    t.kind(),
+                    t.message().unwrap_or("unknown")
+                )
+            }
+            ureq::Error::Status(code, _) => {
+                format!("HTTP {code} from server")
+            }
+        };
+        Error::Ai(format!("download failed for {}: {detail}", info.name))
+    })?;
 
     let total_bytes = response
         .header("Content-Length")

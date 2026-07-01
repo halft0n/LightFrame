@@ -140,6 +140,7 @@ pub fn run() {
             commands::regenerate_thumbnail_single,
             commands::get_media_with_geo,
             commands::get_geo_clusters,
+            commands::reset_database,
         ])
         .register_uri_scheme_protocol("thumb", |ctx, request| {
             let state = ctx.app_handle().state::<AppState>();
