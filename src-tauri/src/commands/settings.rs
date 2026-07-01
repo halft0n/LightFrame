@@ -211,9 +211,7 @@ pub fn get_memory_budget(state: State<'_, AppState>) -> MemoryBudgetInfo {
     let (total_mb, available_mb) = crate::memory_budget::get_system_memory().unwrap_or((0, 0));
     let (micro_len, standard_len) = state.thumb_cache.len();
     let (micro_cap, standard_cap) = state.thumb_cache.capacity();
-    let pressure_budget = crate::memory_budget::PRESSURE_BUDGET;
-    let under_pressure =
-        micro_cap == pressure_budget.micro_cap && standard_cap == pressure_budget.standard_cap;
+    let under_pressure = crate::memory_budget::is_under_pressure(available_mb, total_mb);
     MemoryBudgetInfo {
         total_mb,
         available_mb,
