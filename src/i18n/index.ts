@@ -1,13 +1,19 @@
 import zhCN from "./locales/zh-CN.json";
 import en from "./locales/en.json";
+import de from "./locales/de.json";
 
-export type Locale = "zh-CN" | "en";
+export type Locale = "zh-CN" | "en" | "de";
 export type TranslationKey = keyof typeof zhCN;
 
 const translations: Record<Locale, Record<string, string>> = {
   "zh-CN": zhCN,
   en,
+  de,
 };
+
+export function getAvailableLocales(): Locale[] {
+  return ["zh-CN", "en", "de"];
+}
 
 function detectLocale(): Locale {
   const stored = localStorage.getItem("lightframe-locale");
@@ -15,6 +21,7 @@ function detectLocale(): Locale {
 
   const browserLang = navigator.language;
   if (browserLang.startsWith("zh")) return "zh-CN";
+  if (browserLang.startsWith("de")) return "de";
   return "en";
 }
 

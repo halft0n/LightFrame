@@ -12,6 +12,9 @@ import {
 import { DRAG_MEDIA_MIME } from "@/lib/dragMedia";
 
 const listAlbums = vi.fn();
+const getPinnedItems = vi.fn();
+const listPersons = vi.fn();
+const listSmartAlbums = vi.fn();
 const addToAlbum = vi.fn();
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -29,6 +32,9 @@ vi.mock("@/lib/tauri", async (importOriginal) => {
   return {
     ...actual,
     listAlbums: () => listAlbums(),
+    getPinnedItems: () => getPinnedItems(),
+    listPersons: () => listPersons(),
+    listSmartAlbums: () => listSmartAlbums(),
     addToAlbum: (...args: Parameters<typeof actual.addToAlbum>) =>
       addToAlbum(...args),
   };
@@ -41,8 +47,14 @@ beforeEach(() => {
   navigate("all");
   setWatchedFolders([]);
   listAlbums.mockReset();
+  getPinnedItems.mockReset();
+  listPersons.mockReset();
+  listSmartAlbums.mockReset();
   addToAlbum.mockReset();
   listAlbums.mockResolvedValue([]);
+  getPinnedItems.mockResolvedValue([]);
+  listPersons.mockResolvedValue([]);
+  listSmartAlbums.mockResolvedValue([]);
 });
 
 describe("Sidebar", () => {

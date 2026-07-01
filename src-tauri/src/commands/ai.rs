@@ -774,3 +774,106 @@ mod face_detection_tests {
         );
     }
 }
+
+// =============================================================================
+// Person Groups commands
+// =============================================================================
+
+#[tauri::command]
+pub fn create_person_group(state: State<'_, AppState>, name: String) -> Result<i64, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("group name cannot be empty".to_string());
+    }
+    state
+        .db
+        .create_person_group(trimmed)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn rename_person_group(
+    state: State<'_, AppState>,
+    group_id: i64,
+    name: String,
+) -> Result<(), String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("group name cannot be empty".to_string());
+    }
+    state
+        .db
+        .rename_person_group(group_id, trimmed)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_person_group(state: State<'_, AppState>, group_id: i64) -> Result<(), String> {
+    state
+        .db
+        .delete_person_group(group_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_group_cover(
+    state: State<'_, AppState>,
+    group_id: i64,
+    person_id: i64,
+) -> Result<(), String> {
+    // Verify person belongs to this group
+    let members = state
+        .db
+        .get_group_members(group_id)
+        .map_err(|e| e.to_string())?;
+    if !members.iter().any(|m| m.id == person_id) {
+        return Err("person is not a member of this group".to_string());
+    }
+    state
+        .db
+        .set_group_cover(group_id, person_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn add_person_to_group(
+    state: State<'_, AppState>,
+    person_id: i64,
+    group_id: i64,
+) -> Result<(), String> {
+    // Verify group exists
+    let groups = state.db.list_person_groups().map_err(|e| e.to_string())?;
+    if !groups.iter().any(|g| g.id == group_id) {
+        return Err("group not found".to_string());
+    }
+    state
+        .db
+        .add_person_to_group(person_id, group_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn remove_person_from_group(state: State<'_, AppState>, person_id: i64) -> Result<(), String> {
+    state
+        .db
+        .remove_person_from_group(person_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_person_groups(
+    state: State<'_, AppState>,
+) -> Result<Vec<lightframe_db::PersonGroup>, String> {
+    state.db.list_person_groups().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_group_members(
+    state: State<'_, AppState>,
+    group_id: i64,
+) -> Result<Vec<lightframe_db::Person>, String> {
+    state
+        .db
+        .get_group_members(group_id)
+        .map_err(|e| e.to_string())
+}

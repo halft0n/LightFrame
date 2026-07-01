@@ -68,7 +68,16 @@ vi.mock("@/lib/tauri", async (importOriginal) => {
 });
 
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn().mockResolvedValue(null),
+  invoke: vi.fn().mockImplementation((cmd: string) => {
+    if (cmd === "get_media_page") return Promise.resolve([]);
+    if (cmd === "get_media_count") return Promise.resolve(0);
+    if (cmd === "list_albums") return Promise.resolve([]);
+    if (cmd === "get_pinned_items") return Promise.resolve([]);
+    if (cmd === "list_persons") return Promise.resolve([]);
+    if (cmd === "list_smart_albums") return Promise.resolve([]);
+    if (cmd === "list_person_groups") return Promise.resolve([]);
+    return Promise.resolve(null);
+  }),
   convertFileSrc: vi.fn(
     (filePath: string, protocol: string = "asset") =>
       `${protocol}://localhost/${filePath}`,

@@ -1,10 +1,24 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "@/i18n/useTranslation";
-import { addToAlbum, listAlbums, type Album } from "@/lib/tauri";
+import {
+  addToAlbum,
+  getPinnedItems,
+  listAlbums,
+  listPersons,
+  listSmartAlbums,
+  pinItem,
+  unpinItem,
+  type Album,
+  type Person,
+  type PinnedItem,
+  type SmartAlbum,
+} from "@/lib/tauri";
 import { parseDragMediaIds } from "@/lib/dragMedia";
 import {
   navigate,
   openAlbumDetail,
+  openPersonDetail,
+  openSmartAlbumDetail,
   useAppStore,
   type AppView,
 } from "@/store/appStore";
@@ -68,6 +82,73 @@ function isNavActive(currentView: AppView, itemView: AppView): boolean {
     return true;
   if (itemView === "people" && currentView === "person-detail") return true;
   return false;
+}
+
+interface SidebarContextMenu {
+  x: number;
+  y: number;
+  kind: "pinned" | "album";
+  itemType: string;
+  itemId: number;
+}
+
+function pinnedItemIcon(itemType: string): NavIconName {
+  if (itemType === "person") return "people";
+  if (itemType === "smart_album") return "smart-albums";
+  return "albums";
+}
+
+function pinnedItemLabel(
+  item: PinnedItem,
+  albums: Album[],
+  persons: Person[],
+  smartAlbums: SmartAlbum[],
+  t: (key: string) => string,
+): string {
+  if (item.item_type === "person") {
+    const person = persons.find((p) => p.id === item.item_id);
+    return person?.name ?? t("people.unnamed");
+  }
+  if (item.item_type === "smart_album") {
+    const album = smartAlbums.find((a) => a.id === item.item_id);
+    return album?.name ?? t("sidebar.unknownItem");
+  }
+  const album = albums.find((a) => a.id === item.item_id);
+  return album?.name ?? t("sidebar.unknownItem");
+}
+
+function isPinnedItemActive(
+  item: PinnedItem,
+  currentView: AppView,
+  selectedAlbumId: number | null,
+  selectedPersonId: number | null,
+  selectedSmartAlbumId: number | null,
+): boolean {
+  if (item.item_type === "album") {
+    return currentView === "album-detail" && selectedAlbumId === item.item_id;
+  }
+  if (item.item_type === "person") {
+    return currentView === "person-detail" && selectedPersonId === item.item_id;
+  }
+  if (item.item_type === "smart_album") {
+    return (
+      currentView === "smart-album-detail" &&
+      selectedSmartAlbumId === item.item_id
+    );
+  }
+  return false;
+}
+
+function openPinnedItem(item: PinnedItem) {
+  if (item.item_type === "person") {
+    openPersonDetail(item.item_id);
+    return;
+  }
+  if (item.item_type === "smart_album") {
+    openSmartAlbumDetail(item.item_id);
+    return;
+  }
+  openAlbumDetail(item.item_id);
 }
 
 function navItemClass(isActive: boolean): string {
@@ -168,6 +249,7 @@ function AlbumDropItem({
   onDragOver,
   onDragLeave,
   onDrop,
+  onContextMenu,
 }: {
   album: Album;
   currentView: AppView;
@@ -176,6 +258,7 @@ function AlbumDropItem({
   onDragOver: (albumId: number, e: React.DragEvent) => void;
   onDragLeave: () => void;
   onDrop: (albumId: number, e: React.DragEvent) => void;
+  onContextMenu: (album: Album, e: React.MouseEvent) => void;
 }) {
   const active = currentView === "album-detail" && selectedAlbumId === album.id;
   const isDragOver = dragOverAlbumId === album.id;
@@ -185,6 +268,7 @@ function AlbumDropItem({
       <button
         type="button"
         onClick={() => openAlbumDetail(album.id)}
+        onContextMenu={(e) => onContextMenu(album, e)}
         onDragOver={(e) => onDragOver(album.id, e)}
         onDragLeave={onDragLeave}
         onDrop={(e) => onDrop(album.id, e)}
@@ -211,20 +295,61 @@ export function Sidebar({
   onMobileClose,
 }: SidebarProps) {
   const { t } = useTranslation();
-  const { currentView, watchedFolders, selectedFolderId, selectedAlbumId } =
-    useAppStore();
+  const {
+    currentView,
+    watchedFolders,
+    selectedFolderId,
+    selectedAlbumId,
+    selectedPersonId,
+    selectedSmartAlbumId,
+  } = useAppStore();
   const [libraryExpanded, setLibraryExpanded] = useState(true);
+  const [pinnedExpanded, setPinnedExpanded] = useState(true);
   const [foldersExpanded, setFoldersExpanded] = useState(true);
   const [albumsExpanded, setAlbumsExpanded] = useState(true);
   const [albums, setAlbums] = useState<Album[]>([]);
+  const [persons, setPersons] = useState<Person[]>([]);
+  const [smartAlbums, setSmartAlbums] = useState<SmartAlbum[]>([]);
+  const [pinnedItems, setPinnedItems] = useState<PinnedItem[]>([]);
   const [dragOverAlbumId, setDragOverAlbumId] = useState<number | null>(null);
+  const [contextMenu, setContextMenu] = useState<SidebarContextMenu | null>(
+    null,
+  );
   const [closing, setClosing] = useState(false);
 
-  useEffect(() => {
-    void listAlbums()
-      .then(setAlbums)
-      .catch(() => setAlbums([]));
+  const refreshPinned = useCallback(() => {
+    void getPinnedItems()
+      .then((items) => setPinnedItems(items ?? []))
+      .catch(() => setPinnedItems([]));
   }, []);
+
+  useEffect(() => {
+    void Promise.all([
+      listAlbums()
+        .then((items) => setAlbums(items ?? []))
+        .catch(() => setAlbums([])),
+      listPersons()
+        .then((items) => setPersons(items ?? []))
+        .catch(() => setPersons([])),
+      listSmartAlbums()
+        .then((items) => setSmartAlbums(items ?? []))
+        .catch(() => setSmartAlbums([])),
+      getPinnedItems()
+        .then((items) => setPinnedItems(items ?? []))
+        .catch(() => setPinnedItems([])),
+    ]);
+  }, []);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [contextMenu]);
 
   useEffect(() => {
     if (mobileOpen) setClosing(false);
@@ -279,6 +404,63 @@ export function Sidebar({
     [],
   );
 
+  const handleAlbumContextMenu = useCallback(
+    (album: Album, e: React.MouseEvent) => {
+      e.preventDefault();
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        kind: "album",
+        itemType: "album",
+        itemId: album.id,
+      });
+    },
+    [],
+  );
+
+  const handlePinnedContextMenu = useCallback(
+    (item: PinnedItem, e: React.MouseEvent) => {
+      e.preventDefault();
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        kind: "pinned",
+        itemType: item.item_type,
+        itemId: item.item_id,
+      });
+    },
+    [],
+  );
+
+  const handlePinItem = useCallback(async () => {
+    if (!contextMenu) return;
+    try {
+      await pinItem(contextMenu.itemType, contextMenu.itemId);
+      refreshPinned();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("maximum")) {
+        window.alert(t("sidebar.pinLimitReached"));
+      } else {
+        console.warn("Failed to pin item:", err);
+      }
+    } finally {
+      setContextMenu(null);
+    }
+  }, [contextMenu, refreshPinned, t]);
+
+  const handleUnpinItem = useCallback(async () => {
+    if (!contextMenu) return;
+    try {
+      await unpinItem(contextMenu.itemType, contextMenu.itemId);
+      refreshPinned();
+    } catch (err) {
+      console.warn("Failed to unpin item:", err);
+    } finally {
+      setContextMenu(null);
+    }
+  }, [contextMenu, refreshPinned]);
+
   if (isMobile && !mobileOpen) {
     return null;
   }
@@ -329,6 +511,65 @@ export function Sidebar({
         aria-label={t("sidebar.navigation")}
         className="flex-1 space-y-1 overflow-y-auto px-1.5 pb-2 pt-1"
       >
+        {pinnedItems.length > 0 && (
+          <CollapsibleSection
+            id="sidebar-pinned"
+            label={t("sidebar.pinned")}
+            icon={
+              <svg
+                viewBox="0 0 24 24"
+                className="h-4 w-4 shrink-0 text-amber-500"
+                fill="currentColor"
+                aria-hidden="true"
+              >
+                <path d="M16 3H5a2 2 0 0 0-2 2v14l7-3 7 3V5a2 2 0 0 0-2-2z" />
+              </svg>
+            }
+            expanded={pinnedExpanded}
+            onToggle={() => setPinnedExpanded((v) => !v)}
+          >
+            <ul className="space-y-px pt-px">
+              {pinnedItems.map((item) => {
+                const active = isPinnedItemActive(
+                  item,
+                  currentView,
+                  selectedAlbumId,
+                  selectedPersonId,
+                  selectedSmartAlbumId,
+                );
+                const label = pinnedItemLabel(
+                  item,
+                  albums,
+                  persons,
+                  smartAlbums,
+                  t,
+                );
+                return (
+                  <li key={`${item.item_type}-${item.item_id}`}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        openPinnedItem(item);
+                        onMobileClose?.();
+                      }}
+                      onContextMenu={(e) => handlePinnedContextMenu(item, e)}
+                      className={navItemClass(active)}
+                      title={label}
+                      aria-current={active ? "page" : undefined}
+                    >
+                      <NavIcon
+                        name={pinnedItemIcon(item.item_type)}
+                        className={active ? "opacity-100" : "opacity-60"}
+                      />
+                      <span className="truncate">{label}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </CollapsibleSection>
+        )}
+
         <CollapsibleSection
           id="sidebar-library"
           label={t("sidebar.basicLibrary")}
@@ -445,6 +686,7 @@ export function Sidebar({
                     onDragOver={handleAlbumDragOver}
                     onDragLeave={handleAlbumDragLeave}
                     onDrop={handleAlbumDrop}
+                    onContextMenu={handleAlbumContextMenu}
                   />
                 ))}
               </>
@@ -485,6 +727,35 @@ export function Sidebar({
           <span>{t("sidebar.settings")}</span>
         </button>
       </div>
+
+      {contextMenu && (
+        <>
+          <div className="fixed inset-0 z-40" aria-hidden="true" />
+          <div
+            className="fixed z-50 min-w-[160px] rounded-md border border-neutral-700 bg-neutral-900 py-1 shadow-lg"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {contextMenu.kind === "pinned" ? (
+              <button
+                type="button"
+                className="block w-full px-3 py-1.5 text-left text-sm text-neutral-200 hover:bg-neutral-800"
+                onClick={() => void handleUnpinItem()}
+              >
+                {t("sidebar.unpinFromSidebar")}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="block w-full px-3 py-1.5 text-left text-sm text-neutral-200 hover:bg-neutral-800"
+                onClick={() => void handlePinItem()}
+              >
+                {t("sidebar.pinToSidebar")}
+              </button>
+            )}
+          </div>
+        </>
+      )}
     </aside>
   );
 }

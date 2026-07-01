@@ -1,0 +1,20 @@
+[package]
+name = "lightframe-cli"
+version.workspace = true
+edition.workspace = true
+description = "Command-line interface for LightFrame photo management"
+
+[[bin]]
+name = "lightframe-cli"
+path = "src/main.rs"
+
+[dependencies]
+lightframe-core.workspace = true
+lightframe-db.workspace = true
+clap = { version = "4", features = ["derive"] }
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+tempfile = "3"

@@ -189,6 +189,19 @@ export interface Person {
   created_at: string;
 }
 
+export interface PersonGroup {
+  id: number;
+  name: string;
+  cover_person_id: number | null;
+  member_count: number;
+  created_at: string;
+}
+
+export interface PinnedItem {
+  item_type: string;
+  item_id: number;
+}
+
 export interface SimilarPhoto {
   media_id: number;
   similarity: number;
@@ -767,6 +780,69 @@ export async function getPersonFaces(
 
 export async function listPersons(): Promise<Person[]> {
   return invoke<Person[]>("list_persons");
+}
+
+export async function listPersonGroups(): Promise<PersonGroup[]> {
+  return invoke<PersonGroup[]>("list_person_groups");
+}
+
+export async function createPersonGroup(name: string): Promise<number> {
+  return invoke<number>("create_person_group", { name });
+}
+
+export async function renamePersonGroup(
+  groupId: number,
+  name: string,
+): Promise<void> {
+  return invoke("rename_person_group", { groupId, name });
+}
+
+export async function deletePersonGroup(groupId: number): Promise<void> {
+  return invoke("delete_person_group", { groupId });
+}
+
+export async function setGroupCover(
+  groupId: number,
+  personId: number,
+): Promise<void> {
+  return invoke("set_group_cover", { groupId, personId });
+}
+
+export async function addPersonToGroup(
+  personId: number,
+  groupId: number,
+): Promise<void> {
+  return invoke("add_person_to_group", { personId, groupId });
+}
+
+export async function removePersonFromGroup(personId: number): Promise<void> {
+  return invoke("remove_person_from_group", { personId });
+}
+
+export async function getGroupMembers(groupId: number): Promise<Person[]> {
+  return invoke<Person[]>("get_group_members", { groupId });
+}
+
+export async function getPinnedItems(): Promise<PinnedItem[]> {
+  return invoke<PinnedItem[]>("get_pinned_items");
+}
+
+export async function pinItem(
+  itemType: string,
+  itemId: number,
+): Promise<void> {
+  return invoke("pin_item", { itemType, itemId });
+}
+
+export async function unpinItem(
+  itemType: string,
+  itemId: number,
+): Promise<void> {
+  return invoke("unpin_item", { itemType, itemId });
+}
+
+export async function rebuildCache(): Promise<string> {
+  return invoke<string>("rebuild_cache");
 }
 
 export async function getPersonMedia(

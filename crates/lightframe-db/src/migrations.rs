@@ -96,6 +96,10 @@ pub fn run(conn: &Connection) -> lightframe_core::Result<()> {
         run_migration(conn, v15)?;
     }
 
+    if current < 16 {
+        run_migration(conn, v16)?;
+    }
+
     Ok(())
 }
 
@@ -613,6 +617,61 @@ fn v15(conn: &Connection) -> lightframe_core::Result<()> {
     }
 
     conn.execute_batch("INSERT OR IGNORE INTO schema_version (version) VALUES (15);")
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+fn v16(conn: &Connection) -> lightframe_core::Result<()> {
+    // Check if persons table exists (may be missing in older partial schemas)
+    let persons_exists: bool = conn
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='persons'",
+            [],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+        > 0;
+
+    if persons_exists {
+        // -- CHOICE table: person_groups
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS person_groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                cover_person_id INTEGER REFERENCES persons(id),
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );",
+        )
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        // Add group_id to persons
+        let columns: Vec<String> = conn
+            .prepare("PRAGMA table_info(persons)")
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        if !columns.contains(&"group_id".to_string()) {
+            conn.execute_batch(
+                "ALTER TABLE persons ADD COLUMN group_id INTEGER REFERENCES person_groups(id);",
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        }
+    }
+
+    // -- CHOICE table: settings (key-value store)
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );",
+    )
+    .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+    conn.execute_batch("INSERT OR IGNORE INTO schema_version (version) VALUES (16);")
         .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
 
     Ok(())

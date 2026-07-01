@@ -1,22 +1,41 @@
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
+  addPersonToGroup,
   clusterFaces,
+  createPersonGroup,
+  deletePersonGroup,
   detectFacesBatch,
   getAiStatus,
+  getGroupMembers,
   getThumbnailUrl,
+  listPersonGroups,
   listPersons,
   mergePersons,
   onFaceDetectionProgress,
   renamePerson,
+  renamePersonGroup,
   type AiStatus,
   type FaceDetectionProgress,
   type Person,
+  type PersonGroup,
 } from "@/lib/tauri";
+import {
+  parseDragPersonId,
+  setDragPersonId,
+  DRAG_PERSON_MIME,
+} from "@/lib/dragMedia";
 import { openPersonDetail } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
 import { localizeError } from "@/lib/errors";
 
 const CARD_PAGE_SIZE = 20;
+
+interface ContextMenuState {
+  x: number;
+  y: number;
+  groupId: number;
+  groupName: string;
+}
 
 function personCoverMediaId(person: Person): number | null {
   return person.sample_media_ids[0] ?? null;
@@ -30,6 +49,7 @@ interface PersonCardProps {
   onOpen: (personId: number) => void;
   onToggleSelect: (personId: number) => void;
   onRename: (personId: number, name: string) => void;
+  onDragStart: (personId: number, e: React.DragEvent) => void;
 }
 
 const PersonCard = memo(function PersonCard({
@@ -40,6 +60,7 @@ const PersonCard = memo(function PersonCard({
   onOpen,
   onToggleSelect,
   onRename,
+  onDragStart,
 }: PersonCardProps) {
   const { t } = useTranslation();
   const coverId = personCoverMediaId(person);
@@ -56,6 +77,8 @@ const PersonCard = memo(function PersonCard({
 
   return (
     <div
+      draggable
+      onDragStart={(e) => onDragStart(person.id, e)}
       className={`card-list-item group relative flex flex-col items-center gap-2 rounded-lg border p-4 text-center transition ${
         selected
           ? "border-blue-500/60 bg-blue-500/10"
@@ -127,6 +150,12 @@ const PersonCard = memo(function PersonCard({
 export function PeopleView() {
   const { t } = useTranslation();
   const [persons, setPersons] = useState<Person[]>([]);
+  const [groups, setGroups] = useState<PersonGroup[]>([]);
+  const [groupCovers, setGroupCovers] = useState<Map<number, number | null>>(
+    new Map(),
+  );
+  const [dragOverGroupId, setDragOverGroupId] = useState<number | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [aiStatus, setAiStatus] = useState<AiStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [clustering, setClustering] = useState(false);
@@ -139,6 +168,21 @@ export function PeopleView() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [visibleCount, setVisibleCount] = useState(CARD_PAGE_SIZE);
 
+  const loadGroups = useCallback(async () => {
+    const groupList = await listPersonGroups();
+    setGroups(groupList ?? []);
+    const coverEntries = await Promise.all(
+      (groupList ?? []).map(async (group) => {
+        if (group.member_count === 0) {
+          return [group.id, null] as const;
+        }
+        const members = await getGroupMembers(group.id);
+        return [group.id, personCoverMediaId(members[0]!)] as const;
+      }),
+    );
+    setGroupCovers(new Map(coverEntries));
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -150,12 +194,13 @@ export function PeopleView() {
       setPersons(people);
       setAiStatus(status);
       setVisibleCount(CARD_PAGE_SIZE);
+      await loadGroups();
     } catch (e) {
       setError(localizeError(e, t));
     } finally {
       setLoading(false);
     }
-  }, [t]);
+  }, [loadGroups, t]);
 
   useEffect(() => {
     void load();
@@ -260,6 +305,107 @@ export function PeopleView() {
     }
   }, [load, selectedIds, t]);
 
+  const handleCreateGroup = useCallback(async () => {
+    const name = window.prompt(t("people.createGroupPrompt"));
+    if (!name?.trim()) return;
+    try {
+      await createPersonGroup(name.trim());
+      await loadGroups();
+    } catch (e) {
+      setError(localizeError(e, t));
+    }
+  }, [loadGroups, t]);
+
+  const handleRenameGroup = useCallback(
+    async (groupId: number, currentName: string) => {
+      const name = window.prompt(t("people.renameGroupPrompt"), currentName);
+      if (!name?.trim() || name.trim() === currentName) return;
+      try {
+        await renamePersonGroup(groupId, name.trim());
+        await loadGroups();
+      } catch (e) {
+        setError(localizeError(e, t));
+      }
+    },
+    [loadGroups, t],
+  );
+
+  const handleDeleteGroup = useCallback(
+    async (groupId: number) => {
+      if (!window.confirm(t("people.deleteGroupConfirm"))) return;
+      try {
+        await deletePersonGroup(groupId);
+        await loadGroups();
+        await load();
+      } catch (e) {
+        setError(localizeError(e, t));
+      }
+    },
+    [load, loadGroups, t],
+  );
+
+  const handlePersonDragStart = useCallback(
+    (personId: number, e: React.DragEvent) => {
+      setDragPersonId(e.dataTransfer, personId);
+    },
+    [],
+  );
+
+  const handleGroupDragOver = useCallback(
+    (groupId: number, e: React.DragEvent) => {
+      if (![...e.dataTransfer.types].includes(DRAG_PERSON_MIME)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+      setDragOverGroupId(groupId);
+    },
+    [],
+  );
+
+  const handleGroupDragLeave = useCallback(() => {
+    setDragOverGroupId(null);
+  }, []);
+
+  const handleGroupDrop = useCallback(
+    async (groupId: number, e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOverGroupId(null);
+      const personId = parseDragPersonId(e.dataTransfer);
+      if (personId == null) return;
+      try {
+        await addPersonToGroup(personId, groupId);
+        await loadGroups();
+        await load();
+      } catch (err) {
+        setError(localizeError(err, t));
+      }
+    },
+    [load, loadGroups, t],
+  );
+
+  const handleGroupContextMenu = useCallback(
+    (group: PersonGroup, e: React.MouseEvent) => {
+      e.preventDefault();
+      setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        groupId: group.id,
+        groupName: group.name,
+      });
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [contextMenu]);
+
   const visiblePersons = useMemo(
     () => persons.slice(0, visibleCount),
     [persons, visibleCount],
@@ -339,7 +485,7 @@ export function PeopleView() {
         </div>
       )}
 
-      {persons.length === 0 ? (
+      {persons.length === 0 && groups.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-neutral-500">
           <div className="text-5xl">👤</div>
           <p className="text-lg">{t("people.empty")}</p>
@@ -365,6 +511,70 @@ export function PeopleView() {
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto px-1 py-1">
+          <div className="mb-4 px-3">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                {t("people.groups")}
+              </h3>
+              <button
+                type="button"
+                onClick={() => void handleCreateGroup()}
+                className="rounded-lg border border-neutral-600 px-3 py-1 text-xs text-neutral-300 transition hover:bg-neutral-800"
+              >
+                {t("people.createGroup")}
+              </button>
+            </div>
+            {groups.length === 0 ? (
+              <p className="text-xs text-neutral-600">{t("people.noGroups")}</p>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                {groups.map((group) => {
+                  const coverId = groupCovers.get(group.id) ?? null;
+                  const isDragOver = dragOverGroupId === group.id;
+                  return (
+                    <div
+                      key={group.id}
+                      onContextMenu={(e) => handleGroupContextMenu(group, e)}
+                      onDragOver={(e) => handleGroupDragOver(group.id, e)}
+                      onDragLeave={handleGroupDragLeave}
+                      onDrop={(e) => void handleGroupDrop(group.id, e)}
+                      className={`flex items-center gap-3 rounded-lg border p-3 transition ${
+                        isDragOver
+                          ? "border-blue-500/60 bg-blue-500/10 ring-1 ring-blue-500"
+                          : "border-neutral-200/80 bg-neutral-100 dark:border-neutral-800 dark:bg-neutral-900/50"
+                      }`}
+                    >
+                      <div className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-neutral-800 ring-2 ring-neutral-700">
+                        {coverId != null ? (
+                          <img
+                            src={getThumbnailUrl(coverId, "small")}
+                            alt=""
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                            decoding="async"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center text-lg text-neutral-600">
+                            👥
+                          </div>
+                        )}
+                      </div>
+                      <div className="min-w-0 text-left">
+                        <p className="truncate text-sm font-medium text-neutral-100">
+                          {group.name}
+                        </p>
+                        <p className="text-xs text-neutral-500">
+                          {t("people.memberCount", { count: group.member_count })}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {persons.length > 0 && (
           <div className="grid gap-[3px] sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {visiblePersons.map((person) => (
               <PersonCard
@@ -378,9 +588,11 @@ export function PeopleView() {
                 onOpen={handleOpenPerson}
                 onToggleSelect={handleToggleSelect}
                 onRename={handleRename}
+                onDragStart={handlePersonDragStart}
               />
             ))}
           </div>
+          )}
           {hasMoreCards && (
             <div className="flex justify-center py-6">
               <button
@@ -393,6 +605,38 @@ export function PeopleView() {
             </div>
           )}
         </div>
+      )}
+
+      {contextMenu && (
+        <>
+          <div className="fixed inset-0 z-40" aria-hidden="true" />
+          <div
+            className="fixed z-50 min-w-[140px] rounded-md border border-neutral-700 bg-neutral-900 py-1 shadow-lg"
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="block w-full px-3 py-1.5 text-left text-sm text-neutral-200 hover:bg-neutral-800"
+              onClick={() => {
+                void handleRenameGroup(contextMenu.groupId, contextMenu.groupName);
+                setContextMenu(null);
+              }}
+            >
+              {t("people.renameGroup")}
+            </button>
+            <button
+              type="button"
+              className="block w-full px-3 py-1.5 text-left text-sm text-red-400 hover:bg-neutral-800"
+              onClick={() => {
+                void handleDeleteGroup(contextMenu.groupId);
+                setContextMenu(null);
+              }}
+            >
+              {t("people.deleteGroup")}
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

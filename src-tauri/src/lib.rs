@@ -44,6 +44,35 @@ pub fn run() {
                 tracing::warn!("failed to start folder watcher: {e}");
             }
 
+            // Recover interrupted rebuild if staging tables exist from a crash
+            if state.db.has_pending_rebuild().unwrap_or(false) {
+                tracing::info!("pending rebuild detected — scheduling choice restoration");
+                let db_for_recovery = Arc::clone(&state.db);
+                let scan_running = state.scan_queue.running_flag();
+                tokio::spawn(async move {
+                    // Wait for any initial/watcher-triggered scans
+                    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                    let mut wait_ms = 5000u64;
+                    while scan_running
+                        .load(std::sync::atomic::Ordering::SeqCst)
+                        && wait_ms < 1_800_000
+                    {
+                        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                        wait_ms += 2000;
+                    }
+                    match db_for_recovery.restore_rebuild_choices() {
+                        Ok((fav, edits, albums, faces)) => {
+                            tracing::info!(
+                                "startup recovery: restored {fav} favorites, {edits} edits, {albums} album items, {faces} faces"
+                            );
+                        }
+                        Err(e) => {
+                            tracing::error!("startup recovery: restore failed: {e}");
+                        }
+                    }
+                });
+            }
+
             // Spawn periodic memory budget check (every 60s)
             let thumb_cache = Arc::clone(&state.thumb_cache);
             tokio::spawn(async move {
@@ -178,6 +207,18 @@ pub fn run() {
             commands::get_video_trim,
             commands::export_trimmed_video,
             commands::get_video_duration,
+            commands::rebuild_cache,
+            commands::get_pinned_items,
+            commands::pin_item,
+            commands::unpin_item,
+            commands::create_person_group,
+            commands::rename_person_group,
+            commands::delete_person_group,
+            commands::set_group_cover,
+            commands::add_person_to_group,
+            commands::remove_person_from_group,
+            commands::list_person_groups,
+            commands::get_group_members,
         ])
         .register_uri_scheme_protocol("thumb", |ctx, request| {
             let state = ctx.app_handle().state::<AppState>();

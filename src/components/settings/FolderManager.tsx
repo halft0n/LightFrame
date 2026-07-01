@@ -6,6 +6,7 @@ import {
   scanFolder,
   regenerateThumbnails,
   onThumbnailRegenProgress,
+  rebuildCache,
   resetDatabase,
   listWatchedFolders,
   type ScanStatus,
@@ -23,6 +24,7 @@ import {
 } from "@/store/appStore";
 import { changeTheme } from "@/hooks/useTheme";
 import { useTranslation } from "@/i18n/useTranslation";
+import type { Locale } from "@/i18n";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { UpdateChecker } from "@/components/settings/UpdateChecker";
 import { AiSettings } from "@/components/settings/AiSettings";
@@ -165,7 +167,7 @@ function ThumbnailRegenProgressBar({
 }
 
 export function FolderManager() {
-  const { t } = useTranslation();
+  const { t, locale, setLocale } = useTranslation();
   const { watchedFolders, theme } = useAppStore();
   const [adding, setAdding] = useState(false);
   const [rescanningAll, setRescanningAll] = useState(false);
@@ -173,11 +175,18 @@ export function FolderManager() {
   const [thumbRegenProgress, setThumbRegenProgress] =
     useState<ThumbnailRegenProgress | null>(null);
   const [resetting, setResetting] = useState(false);
+  const [rebuildingCache, setRebuildingCache] = useState(false);
 
   const themeOptions: { value: Theme; labelKey: string }[] = [
     { value: "light", labelKey: "theme.light" },
     { value: "dark", labelKey: "theme.dark" },
     { value: "system", labelKey: "theme.system" },
+  ];
+
+  const localeOptions: { value: Locale; label: string }[] = [
+    { value: "zh-CN", label: "简体中文" },
+    { value: "en", label: "English" },
+    { value: "de", label: "Deutsch" },
   ];
 
   const isTauri = Boolean(window.__TAURI_INTERNALS__);
@@ -281,6 +290,26 @@ export function FolderManager() {
       console.error("reset failed:", err);
     } finally {
       setResetting(false);
+    }
+  };
+
+  const handleRebuildCache = async () => {
+    if (!isTauri) return;
+    const confirmed = window.confirm(t("settings.rebuildCacheConfirm"));
+    if (!confirmed) return;
+    setRebuildingCache(true);
+    try {
+      await rebuildCache();
+      setEnrichmentProgress(null);
+      const folders = await listWatchedFolders();
+      setWatchedFolders(folders);
+      await loadMedia();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      window.alert(t("settings.rebuildCacheError") + "\n" + msg);
+      console.warn("rebuild cache failed:", err);
+    } finally {
+      setRebuildingCache(false);
     }
   };
 
@@ -439,6 +468,26 @@ export function FolderManager() {
       </section>
 
       <section className="settings-section px-6 py-5">
+        <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
+          Language / 语言
+        </h2>
+        <div className="mt-4">
+          <select
+            value={locale}
+            onChange={(e) => setLocale(e.target.value as Locale)}
+            className="rounded-lg border border-neutral-200 bg-white px-4 py-2 text-sm font-medium text-neutral-700 transition-colors hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            aria-label="Language / 语言"
+          >
+            {localeOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </section>
+
+      <section className="settings-section px-6 py-5">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>
             <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">
@@ -476,6 +525,19 @@ export function FolderManager() {
           {t("settings.dangerZone")}
         </h2>
         <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
+          {t("settings.rebuildCacheHint")}
+        </p>
+        <button
+          type="button"
+          onClick={() => void handleRebuildCache()}
+          disabled={rebuildingCache}
+          className="mt-3 rounded-lg border border-amber-300 px-4 py-2 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 disabled:opacity-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950/40"
+        >
+          {rebuildingCache
+            ? t("settings.rebuildingCache")
+            : t("settings.rebuildCache")}
+        </button>
+        <p className="mt-4 text-sm text-neutral-500 dark:text-neutral-400">
           {t("settings.resetDatabaseHint")}
         </p>
         <button

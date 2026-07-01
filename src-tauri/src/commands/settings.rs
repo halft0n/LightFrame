@@ -222,3 +222,97 @@ pub fn get_memory_budget(state: State<'_, AppState>) -> MemoryBudgetInfo {
         under_pressure,
     }
 }
+
+#[tauri::command]
+pub async fn rebuild_cache(app: AppHandle, state: State<'_, AppState>) -> Result<String, String> {
+    // Wait for any active scan to finish
+    let mut attempts = 0;
+    while state.scan_queue.is_running() && attempts < 60 {
+        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        attempts += 1;
+    }
+    if state.scan_queue.is_running() {
+        return Err(
+            "Cannot rebuild: a scan is still in progress. Please wait for it to finish."
+                .to_string(),
+        );
+    }
+
+    state.db.rebuild_cache().map_err(|e| e.to_string())?;
+
+    // Delete thumbnail cache directory (stale thumbs)
+    let thumb_dir = lightframe_core::config::thumb_cache_dir();
+    if thumb_dir.exists() {
+        let _ = std::fs::remove_dir_all(&thumb_dir);
+        let _ = std::fs::create_dir_all(&thumb_dir);
+    }
+
+    // Trigger rescan for all watched folders
+    let folders = state.db.list_watched_folders().map_err(|e| e.to_string())?;
+    let folder_count = folders.len();
+    for folder in &folders {
+        scan::spawn_scan(app.clone(), &state, folder.id);
+    }
+
+    // Spawn background task to restore choices after all scans finish
+    let db = std::sync::Arc::clone(&state.db);
+    let scan_queue_running = state.scan_queue.running_flag();
+    tokio::spawn(async move {
+        // Wait for scans to complete (max 30 minutes)
+        let mut wait_ms = 0u64;
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            wait_ms += 2000;
+            if !scan_queue_running.load(std::sync::atomic::Ordering::SeqCst) {
+                break;
+            }
+            if wait_ms > 1_800_000 {
+                tracing::error!("rebuild_cache: timed out waiting for rescan to complete");
+                break;
+            }
+        }
+        // Restore user choices
+        match db.restore_rebuild_choices() {
+            Ok((fav, edits, albums, faces)) => {
+                tracing::info!(
+                    "rebuild_cache: restored {fav} favorites, {edits} edit params, {albums} album items, {faces} manual faces"
+                );
+            }
+            Err(e) => {
+                tracing::error!("rebuild_cache: failed to restore choices: {e}");
+            }
+        }
+    });
+
+    Ok(format!(
+        "Rebuild started. {} folder(s) queued for rescan. User data will be restored after scan completes.",
+        folder_count
+    ))
+}
+
+#[tauri::command]
+pub fn get_pinned_items(
+    state: State<'_, AppState>,
+) -> Result<Vec<lightframe_db::PinnedItem>, String> {
+    state.db.get_pinned_items().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn pin_item(state: State<'_, AppState>, item_type: String, item_id: i64) -> Result<(), String> {
+    state
+        .db
+        .pin_item(&item_type, item_id)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn unpin_item(
+    state: State<'_, AppState>,
+    item_type: String,
+    item_id: i64,
+) -> Result<(), String> {
+    state
+        .db
+        .unpin_item(&item_type, item_id)
+        .map_err(|e| e.to_string())
+}

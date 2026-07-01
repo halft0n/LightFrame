@@ -1,6 +1,6 @@
 use chrono::NaiveDateTime;
 use lightframe_core::media::{MediaFile, MediaType};
-use lightframe_db::{Database, FaceDetectionInput};
+use lightframe_db::{Database, FaceDetectionInput, PersonGroup, PinnedItem, SmartAlbumRule};
 use std::path::Path;
 
 fn create_test_db() -> Database {
@@ -3021,4 +3021,496 @@ fn test_list_person_names_returns_all_names() {
     let names = db.list_person_names().unwrap();
     assert!(names.contains(&"Diana".to_string()));
     assert!(names.contains(&"Eve".to_string()));
+}
+
+// =============================================================================
+// Phase 5d-5: rebuild_cache tests
+// =============================================================================
+
+#[test]
+fn test_rebuild_cache_preserves_favorites() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+    let folder_id = db.add_watched_folder("/photos").unwrap().id;
+
+    let mut media1 = sample_media("/photos/fav1.jpg");
+    media1.blake3_hash = Some("hash_fav1".to_string());
+    let id1 = db.upsert_media(folder_id, &media1).unwrap();
+
+    let mut media2 = sample_media("/photos/normal.jpg");
+    media2.blake3_hash = Some("hash_normal".to_string());
+    let _id2 = db.upsert_media(folder_id, &media2).unwrap();
+
+    // Mark media1 as favorite
+    let is_fav = db.toggle_favorite(id1).unwrap();
+    assert!(is_fav);
+
+    // Rebuild cache
+    db.rebuild_cache().unwrap();
+
+    // Media rows should be gone (cleared for rescan)
+    assert!(db.get_media_by_id(id1).unwrap().is_none());
+
+    // Watched folder still exists with cleared last_scan
+    let folders = db.list_watched_folders().unwrap();
+    assert_eq!(folders.len(), 1);
+    assert!(folders[0].last_scan.is_none());
+
+    // Re-insert the same media (simulating rescan)
+    let new_id1 = db.upsert_media(folder_id, &media1).unwrap();
+
+    // Restore choices (called after rescan completes)
+    db.restore_rebuild_choices().unwrap();
+
+    // Favorite should be restored (matched by path)
+    let all = db.get_favorites(100, 0).unwrap();
+    assert!(
+        all.iter().any(|m| m.id == new_id1),
+        "favorite should be restored after rebuild + rescan"
+    );
+}
+
+#[test]
+fn test_rebuild_cache_preserves_albums() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+    let folder_id = db.add_watched_folder("/photos").unwrap().id;
+
+    let mut media = sample_media("/photos/album_pic.jpg");
+    media.blake3_hash = Some("hash_album_pic".to_string());
+    let media_id = db.upsert_media(folder_id, &media).unwrap();
+
+    // Create album and add media
+    let album = db.create_album("Vacation", None).unwrap();
+    db.add_to_album(album.id, &[media_id]).unwrap();
+
+    // Rebuild cache
+    db.rebuild_cache().unwrap();
+
+    // Album should still exist
+    let albums = db.list_albums().unwrap();
+    assert_eq!(albums.len(), 1);
+    assert_eq!(albums[0].name, "Vacation");
+
+    // Re-insert media (simulating rescan)
+    let new_id = db.upsert_media(folder_id, &media).unwrap();
+
+    // Restore choices
+    db.restore_rebuild_choices().unwrap();
+
+    // Album membership should be restored
+    let items = db.get_album_media(album.id, 100, 0).unwrap();
+    assert!(
+        items.iter().any(|m| m.id == new_id),
+        "album membership should be restored after rebuild + rescan"
+    );
+}
+
+#[test]
+fn test_rebuild_cache_preserves_manual_faces() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+    let folder_id = db.add_watched_folder("/photos").unwrap().id;
+
+    let mut media = sample_media("/photos/portrait.jpg");
+    media.blake3_hash = Some("hash_portrait".to_string());
+    let media_id = db.upsert_media(folder_id, &media).unwrap();
+
+    // Create manual face annotation
+    db.store_manual_face(media_id, [0.1, 0.2, 0.5, 0.6], "Alice")
+        .unwrap();
+
+    // Also create an auto-detected face
+    db.store_face_detections(
+        media_id,
+        &[FaceDetectionInput {
+            bbox: [0.5, 0.5, 0.9, 0.9],
+            confidence: 0.92,
+            embedding: vec![0.1; 128],
+        }],
+    )
+    .unwrap();
+
+    // Rebuild cache
+    db.rebuild_cache().unwrap();
+
+    // Person "Alice" should be preserved
+    let persons = db.list_persons().unwrap();
+    assert!(
+        persons.iter().any(|p| p.name.as_deref() == Some("Alice")),
+        "person created from manual face should survive rebuild"
+    );
+
+    // Re-insert media
+    let new_id = db.upsert_media(folder_id, &media).unwrap();
+
+    // Restore choices
+    db.restore_rebuild_choices().unwrap();
+
+    // Manual face should be restored (linked to new media ID)
+    let faces = db.get_faces_for_media(new_id).unwrap();
+    assert_eq!(
+        faces.len(),
+        1,
+        "only manual face should be restored (auto-face cleared)"
+    );
+}
+
+#[test]
+fn test_rebuild_cache_clears_facts() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+    let folder_id = db.add_watched_folder("/photos").unwrap().id;
+
+    let mut media = sample_media("/photos/fact_test.jpg");
+    media.blake3_hash = Some("hash_fact".to_string());
+    let media_id = db.upsert_media(folder_id, &media).unwrap();
+
+    // Create embeddings
+    db.store_clip_embedding(media_id, &vec![0.5; 512]).unwrap();
+
+    // Create duplicate group
+    db.create_duplicate_group("blake3", &[media_id], &[1.0])
+        .unwrap();
+
+    // Create auto-detected faces
+    db.store_face_detections(
+        media_id,
+        &[FaceDetectionInput {
+            bbox: [0.1, 0.1, 0.4, 0.4],
+            confidence: 0.9,
+            embedding: vec![0.2; 128],
+        }],
+    )
+    .unwrap();
+
+    // Rebuild cache
+    db.rebuild_cache().unwrap();
+
+    // Media should be gone
+    assert!(db.get_media_by_id(media_id).unwrap().is_none());
+
+    // Duplicate groups should be empty
+    let groups = db.list_duplicate_groups().unwrap();
+    assert!(groups.is_empty(), "duplicate groups should be cleared");
+
+    // Smart albums survive
+    // (No smart albums created in this test, but they should not be deleted)
+}
+
+#[test]
+fn test_rebuild_cache_preserves_smart_albums() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+    let _folder_id = db.add_watched_folder("/photos").unwrap().id;
+
+    // Record pre-existing smart albums (from migrations)
+    let before_count = db.list_smart_albums().unwrap().len();
+
+    // Create a smart album
+    let rule = SmartAlbumRule {
+        media_type: Some("Photo".to_string()),
+        date_from: None,
+        date_to: None,
+        country: None,
+        city: None,
+        is_favorite: None,
+        min_size: None,
+        has_gps: None,
+    };
+    db.create_smart_album("Custom Filter", Some("camera"), &rule)
+        .unwrap();
+    assert_eq!(db.list_smart_albums().unwrap().len(), before_count + 1);
+
+    // Rebuild cache
+    db.rebuild_cache().unwrap();
+
+    // All smart albums (including ours) should survive
+    let smart_albums = db.list_smart_albums().unwrap();
+    assert_eq!(smart_albums.len(), before_count + 1);
+    assert!(smart_albums.iter().any(|sa| sa.name == "Custom Filter"));
+}
+
+#[test]
+fn test_rebuild_cache_preserves_edit_params() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+    let folder_id = db.add_watched_folder("/photos").unwrap().id;
+
+    let mut media = sample_media("/photos/edited.jpg");
+    media.blake3_hash = Some("hash_edited".to_string());
+    let media_id = db.upsert_media(folder_id, &media).unwrap();
+
+    // Set edit params
+    let edit_json = r#"{"brightness":50,"contrast":20}"#;
+    db.save_edit_params(media_id, edit_json).unwrap();
+
+    // Rebuild cache
+    db.rebuild_cache().unwrap();
+
+    // Re-insert media
+    let new_id = db.upsert_media(folder_id, &media).unwrap();
+
+    // Restore choices
+    db.restore_rebuild_choices().unwrap();
+
+    // Edit params should be restored
+    let params = db.get_edit_params(new_id).unwrap();
+    assert_eq!(
+        params.as_deref(),
+        Some(edit_json),
+        "edit_params should be restored after rebuild"
+    );
+}
+
+// =============================================================================
+// Phase 5d-1: person_groups tests
+// =============================================================================
+
+#[test]
+fn test_create_person_group() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+
+    let group_id = db.create_person_group("Family").unwrap();
+    assert!(group_id > 0);
+
+    let groups = db.list_person_groups().unwrap();
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].name, "Family");
+    assert_eq!(groups[0].id, group_id);
+    assert_eq!(groups[0].member_count, 0);
+}
+
+#[test]
+fn test_add_remove_person_from_group() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+
+    let group_id = db.create_person_group("Friends").unwrap();
+    let person_id = db.create_person(Some("Alice")).unwrap();
+
+    // Add to group
+    db.add_person_to_group(person_id, group_id).unwrap();
+    let members = db.get_group_members(group_id).unwrap();
+    assert_eq!(members.len(), 1);
+    assert_eq!(members[0].id, person_id);
+
+    // Remove from group
+    db.remove_person_from_group(person_id).unwrap();
+    let members = db.get_group_members(group_id).unwrap();
+    assert!(members.is_empty());
+}
+
+#[test]
+fn test_delete_group_unassigns_members() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+
+    let group_id = db.create_person_group("Coworkers").unwrap();
+    let p1 = db.create_person(Some("Bob")).unwrap();
+    let p2 = db.create_person(Some("Carol")).unwrap();
+
+    db.add_person_to_group(p1, group_id).unwrap();
+    db.add_person_to_group(p2, group_id).unwrap();
+
+    // Delete the group
+    db.delete_person_group(group_id).unwrap();
+
+    // Persons should still exist but without group
+    let persons = db.list_persons().unwrap();
+    assert_eq!(persons.len(), 2);
+
+    // Groups list empty
+    let groups = db.list_person_groups().unwrap();
+    assert!(groups.is_empty());
+}
+
+#[test]
+fn test_rename_person_group() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+
+    let group_id = db.create_person_group("Old Name").unwrap();
+    db.rename_person_group(group_id, "New Name").unwrap();
+
+    let groups = db.list_person_groups().unwrap();
+    assert_eq!(groups[0].name, "New Name");
+}
+
+#[test]
+fn test_set_group_cover() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+
+    let group_id = db.create_person_group("Team").unwrap();
+    let person_id = db.create_person(Some("Dave")).unwrap();
+    db.add_person_to_group(person_id, group_id).unwrap();
+
+    db.set_group_cover(group_id, person_id).unwrap();
+
+    let groups = db.list_person_groups().unwrap();
+    assert_eq!(groups[0].cover_person_id, Some(person_id));
+}
+
+#[test]
+fn test_list_person_groups_with_member_count() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+
+    let g1 = db.create_person_group("Group A").unwrap();
+    let g2 = db.create_person_group("Group B").unwrap();
+
+    let p1 = db.create_person(Some("P1")).unwrap();
+    let p2 = db.create_person(Some("P2")).unwrap();
+    let p3 = db.create_person(Some("P3")).unwrap();
+
+    db.add_person_to_group(p1, g1).unwrap();
+    db.add_person_to_group(p2, g1).unwrap();
+    db.add_person_to_group(p3, g2).unwrap();
+
+    let groups = db.list_person_groups().unwrap();
+    let ga = groups.iter().find(|g| g.name == "Group A").unwrap();
+    let gb = groups.iter().find(|g| g.name == "Group B").unwrap();
+    assert_eq!(ga.member_count, 2);
+    assert_eq!(gb.member_count, 1);
+}
+
+#[test]
+fn test_person_group_full_lifecycle() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+
+    // Create group
+    let group_id = db.create_person_group("Lifecycle Test").unwrap();
+
+    // Add persons
+    let p1 = db.create_person(Some("Eve")).unwrap();
+    let p2 = db.create_person(Some("Frank")).unwrap();
+    db.add_person_to_group(p1, group_id).unwrap();
+    db.add_person_to_group(p2, group_id).unwrap();
+
+    // Verify members
+    let members = db.get_group_members(group_id).unwrap();
+    assert_eq!(members.len(), 2);
+
+    // Rename
+    db.rename_person_group(group_id, "Renamed Group").unwrap();
+
+    // Set cover
+    db.set_group_cover(group_id, p1).unwrap();
+
+    // Remove one member
+    db.remove_person_from_group(p2).unwrap();
+    let members = db.get_group_members(group_id).unwrap();
+    assert_eq!(members.len(), 1);
+
+    // Delete group
+    db.delete_person_group(group_id).unwrap();
+    let groups = db.list_person_groups().unwrap();
+    assert!(groups.is_empty());
+
+    // Persons still exist
+    let persons = db.list_persons().unwrap();
+    assert_eq!(persons.len(), 2);
+}
+
+// =============================================================================
+// Phase 5d-2: settings / pinned items tests
+// =============================================================================
+
+#[test]
+fn test_set_get_setting() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+
+    // Initially empty
+    let val = db.get_setting("some_key").unwrap();
+    assert!(val.is_none());
+
+    // Set value
+    db.set_setting("some_key", "some_value").unwrap();
+    let val = db.get_setting("some_key").unwrap();
+    assert_eq!(val.as_deref(), Some("some_value"));
+
+    // Overwrite
+    db.set_setting("some_key", "new_value").unwrap();
+    let val = db.get_setting("some_key").unwrap();
+    assert_eq!(val.as_deref(), Some("new_value"));
+}
+
+#[test]
+fn test_pinned_items_serialization() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+
+    // Initially empty
+    let items = db.get_pinned_items().unwrap();
+    assert!(items.is_empty());
+
+    // Pin an album
+    db.pin_item("album", 1).unwrap();
+    let items = db.get_pinned_items().unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].item_type, "album");
+    assert_eq!(items[0].item_id, 1);
+}
+
+#[test]
+fn test_pin_unpin_item() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+
+    db.pin_item("album", 1).unwrap();
+    db.pin_item("person", 5).unwrap();
+    db.pin_item("smart_album", 3).unwrap();
+
+    let items = db.get_pinned_items().unwrap();
+    assert_eq!(items.len(), 3);
+
+    // Unpin the person
+    db.unpin_item("person", 5).unwrap();
+    let items = db.get_pinned_items().unwrap();
+    assert_eq!(items.len(), 2);
+    assert!(
+        !items
+            .iter()
+            .any(|i| i.item_type == "person" && i.item_id == 5)
+    );
+
+    // Unpin non-existent item is a no-op
+    db.unpin_item("album", 999).unwrap();
+    assert_eq!(db.get_pinned_items().unwrap().len(), 2);
+}
+
+#[test]
+fn test_max_pinned_items() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+
+    // Pin 10 items
+    for i in 1..=10 {
+        db.pin_item("album", i).unwrap();
+    }
+    assert_eq!(db.get_pinned_items().unwrap().len(), 10);
+
+    // 11th should fail
+    let result = db.pin_item("album", 11);
+    assert!(result.is_err(), "should reject > 10 pinned items");
+}
+
+#[test]
+fn test_pin_duplicate_is_noop() {
+    let dir = tempfile::tempdir().unwrap();
+    let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+
+    db.pin_item("album", 1).unwrap();
+    db.pin_item("album", 1).unwrap(); // duplicate
+
+    let items = db.get_pinned_items().unwrap();
+    assert_eq!(
+        items.len(),
+        1,
+        "duplicate pin should not add a second entry"
+    );
 }

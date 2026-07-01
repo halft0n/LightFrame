@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import zhCN from "./locales/zh-CN.json";
 import en from "./locales/en.json";
-import { t, getLocale, setLocale, subscribe } from "./index";
+import de from "./locales/de.json";
+import { t, getLocale, setLocale, subscribe, getAvailableLocales } from "./index";
 
 beforeEach(() => {
   localStorage.clear();
@@ -23,6 +24,18 @@ describe("i18n", () => {
     expect(getLocale()).toBe("en");
     expect(t("app.title")).toBe("LightFrame");
     expect(t("sidebar.allPhotos")).toBe("All Photos");
+  });
+
+  it("switches to German", () => {
+    setLocale("de");
+    expect(getLocale()).toBe("de");
+    expect(t("app.title")).toBe("LightFrame");
+    expect(t("sidebar.allPhotos")).toBe("Alle Fotos");
+    expect(t("settings.folders")).toBe("Überwachte Ordner");
+  });
+
+  it("returns all available locales", () => {
+    expect(getAvailableLocales()).toEqual(["zh-CN", "en", "de"]);
   });
 
   it("returns key for unknown translations", () => {
@@ -91,6 +104,19 @@ describe("i18n", () => {
       expect(enVal).not.toBe(key);
       expect(typeof zh).toBe("string");
       expect(typeof enVal).toBe("string");
+    }
+  });
+
+  it("all locale keys match between zh-CN and de", () => {
+    const zhKeys = Object.keys(zhCN).sort();
+    const deKeys = Object.keys(de).sort();
+    expect(zhKeys).toEqual(deKeys);
+
+    for (const key of zhKeys) {
+      setLocale("de");
+      const deVal = t(key);
+      expect(deVal).not.toBe(key);
+      expect(typeof deVal).toBe("string");
     }
   });
 

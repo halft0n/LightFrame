@@ -168,6 +168,21 @@ pub struct FaceDetectionInput {
     pub embedding: Vec<f32>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersonGroup {
+    pub id: i64,
+    pub name: String,
+    pub cover_person_id: Option<i64>,
+    pub member_count: i64,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PinnedItem {
+    pub item_type: String,
+    pub item_id: i64,
+}
+
 fn map_smart_album_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SmartAlbum> {
     Ok(SmartAlbum {
         id: row.get(0)?,
@@ -3734,6 +3749,499 @@ impl Database {
             Err(e) => {
                 let _ = conn.execute_batch("ROLLBACK");
                 return Err(lightframe_core::Error::Database(e.to_string()));
+            }
+        }
+        Ok(())
+    }
+
+    // =========================================================================
+    // rebuild_cache — selective reset preserving user choices
+    // =========================================================================
+
+    pub fn rebuild_cache(&self) -> lightframe_core::Result<()> {
+        let conn = self.conn()?;
+        conn.execute_batch("BEGIN IMMEDIATE")
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        let result = (|| -> lightframe_core::Result<()> {
+            // Drop old staging tables if they exist (from a previous interrupted rebuild)
+            conn.execute_batch(
+                "DROP TABLE IF EXISTS _rebuild_favorites;
+                 DROP TABLE IF EXISTS _rebuild_edit_params;
+                 DROP TABLE IF EXISTS _rebuild_album_items;
+                 DROP TABLE IF EXISTS _rebuild_album_covers;
+                 DROP TABLE IF EXISTS _rebuild_manual_faces;",
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+            // Save CHOICE data to persistent staging tables (survive crash/restart)
+            conn.execute_batch(
+                "CREATE TABLE _rebuild_favorites (path TEXT PRIMARY KEY);
+                 INSERT INTO _rebuild_favorites (path)
+                   SELECT path FROM media_files WHERE is_favorite = 1;
+
+                 CREATE TABLE _rebuild_edit_params (path TEXT PRIMARY KEY, edit_params TEXT);
+                 INSERT INTO _rebuild_edit_params (path, edit_params)
+                   SELECT path, edit_params FROM media_files WHERE edit_params IS NOT NULL;
+
+                 CREATE TABLE _rebuild_album_items (album_id INTEGER, path TEXT);
+                 INSERT INTO _rebuild_album_items (album_id, path)
+                   SELECT ai.album_id, mf.path
+                   FROM album_items ai JOIN media_files mf ON mf.id = ai.media_id;
+
+                 CREATE TABLE _rebuild_album_covers (album_id INTEGER PRIMARY KEY, path TEXT);
+                 INSERT INTO _rebuild_album_covers (album_id, path)
+                   SELECT a.id, mf.path
+                   FROM albums a JOIN media_files mf ON mf.id = a.cover_media_id
+                   WHERE a.cover_media_id IS NOT NULL;
+
+                 CREATE TABLE _rebuild_manual_faces (
+                   path TEXT, bbox_x REAL, bbox_y REAL, bbox_w REAL, bbox_h REAL,
+                   person_id INTEGER
+                 );
+                 INSERT INTO _rebuild_manual_faces (path, bbox_x, bbox_y, bbox_w, bbox_h, person_id)
+                   SELECT mf.path, fd.bbox_x, fd.bbox_y, fd.bbox_w, fd.bbox_h, fd.person_id
+                   FROM face_detections fd JOIN media_files mf ON mf.id = fd.media_id
+                   WHERE fd.is_manual = 1;",
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+            // Clear FACT data
+            conn.execute_batch(
+                "DELETE FROM face_detections WHERE is_manual = 0;
+                 DELETE FROM media_embeddings;
+                 DELETE FROM duplicate_members;
+                 DELETE FROM duplicate_groups;
+                 DELETE FROM memory_items;
+                 DELETE FROM memories;
+                 DELETE FROM album_items;
+                 UPDATE albums SET cover_media_id = NULL;
+                 UPDATE media_files SET live_pair_id = NULL;
+                 DELETE FROM media_files;
+                 UPDATE watched_folders SET last_scan_at = NULL;
+                 DELETE FROM face_detections;",
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => conn
+                .execute_batch("COMMIT")
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?,
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(e);
+            }
+        }
+        Ok(())
+    }
+
+    /// Returns true if a rebuild is pending (staging tables exist).
+    pub fn has_pending_rebuild(&self) -> lightframe_core::Result<bool> {
+        let conn = self.read_conn()?;
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_rebuild_favorites'",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        Ok(count > 0)
+    }
+
+    /// Called after rescan to restore choices saved by rebuild_cache.
+    /// Returns the number of restored items for each category.
+    pub fn restore_rebuild_choices(&self) -> lightframe_core::Result<(i64, i64, i64, i64)> {
+        let conn = self.conn()?;
+
+        // Check if staging tables exist
+        let staging_exists: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='_rebuild_favorites'",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+            > 0;
+
+        if !staging_exists {
+            return Ok((0, 0, 0, 0));
+        }
+
+        conn.execute_batch("BEGIN IMMEDIATE")
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        let result = (|| -> lightframe_core::Result<(i64, i64, i64, i64)> {
+            // Restore favorites
+            let favorites_restored = conn
+                .execute(
+                    "UPDATE media_files SET is_favorite = 1
+                     WHERE path IN (SELECT path FROM _rebuild_favorites)",
+                    [],
+                )
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+                as i64;
+
+            // Restore edit_params
+            let edits_restored = conn
+                .execute(
+                    "UPDATE media_files SET edit_params = (
+                       SELECT rp.edit_params FROM _rebuild_edit_params rp WHERE rp.path = media_files.path
+                     ) WHERE path IN (SELECT path FROM _rebuild_edit_params)",
+                    [],
+                )
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+                as i64;
+
+            // Restore album memberships
+            let albums_restored = conn
+                .execute(
+                    "INSERT OR IGNORE INTO album_items (album_id, media_id)
+                     SELECT ra.album_id, mf.id
+                     FROM _rebuild_album_items ra
+                     JOIN media_files mf ON mf.path = ra.path",
+                    [],
+                )
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+                as i64;
+
+            // Restore album covers
+            conn.execute(
+                "UPDATE albums SET cover_media_id = (
+                   SELECT mf.id FROM _rebuild_album_covers rc
+                   JOIN media_files mf ON mf.path = rc.path
+                   WHERE rc.album_id = albums.id
+                 ) WHERE id IN (SELECT album_id FROM _rebuild_album_covers)",
+                [],
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+            // Restore manual faces
+            let faces_restored = conn
+                .execute(
+                    "INSERT OR IGNORE INTO face_detections (media_id, bbox_x, bbox_y, bbox_w, bbox_h, confidence, person_id, is_manual)
+                     SELECT mf.id, rf.bbox_x, rf.bbox_y, rf.bbox_w, rf.bbox_h, 1.0, rf.person_id, 1
+                     FROM _rebuild_manual_faces rf
+                     JOIN media_files mf ON mf.path = rf.path",
+                    [],
+                )
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+                as i64;
+
+            // Clean up staging tables
+            conn.execute_batch(
+                "DROP TABLE IF EXISTS _rebuild_favorites;
+                 DROP TABLE IF EXISTS _rebuild_edit_params;
+                 DROP TABLE IF EXISTS _rebuild_album_items;
+                 DROP TABLE IF EXISTS _rebuild_album_covers;
+                 DROP TABLE IF EXISTS _rebuild_manual_faces;",
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+            Ok((
+                favorites_restored,
+                edits_restored,
+                albums_restored,
+                faces_restored,
+            ))
+        })();
+
+        match result {
+            Ok(counts) => {
+                conn.execute_batch("COMMIT")
+                    .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+                Ok(counts)
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                Err(e)
+            }
+        }
+    }
+
+    // =========================================================================
+    // Person Groups
+    // =========================================================================
+
+    pub fn create_person_group(&self, name: &str) -> lightframe_core::Result<i64> {
+        let conn = self.conn()?;
+        conn.execute(
+            "INSERT INTO person_groups (name) VALUES (?1)",
+            params![name.trim()],
+        )
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn rename_person_group(&self, group_id: i64, name: &str) -> lightframe_core::Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "UPDATE person_groups SET name = ?1 WHERE id = ?2",
+            params![name.trim(), group_id],
+        )
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn delete_person_group(&self, group_id: i64) -> lightframe_core::Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "UPDATE persons SET group_id = NULL WHERE group_id = ?1",
+            params![group_id],
+        )
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        conn.execute("DELETE FROM person_groups WHERE id = ?1", params![group_id])
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn set_group_cover(&self, group_id: i64, person_id: i64) -> lightframe_core::Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "UPDATE person_groups SET cover_person_id = ?1 WHERE id = ?2",
+            params![person_id, group_id],
+        )
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn add_person_to_group(
+        &self,
+        person_id: i64,
+        group_id: i64,
+    ) -> lightframe_core::Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "UPDATE persons SET group_id = ?1 WHERE id = ?2",
+            params![group_id, person_id],
+        )
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn remove_person_from_group(&self, person_id: i64) -> lightframe_core::Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "UPDATE persons SET group_id = NULL WHERE id = ?1",
+            params![person_id],
+        )
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn list_person_groups(&self) -> lightframe_core::Result<Vec<PersonGroup>> {
+        let conn = self.read_conn()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT pg.id, pg.name, pg.cover_person_id, pg.created_at,
+                        (SELECT COUNT(*) FROM persons p WHERE p.group_id = pg.id) AS member_count
+                 FROM person_groups pg
+                 ORDER BY pg.name ASC",
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        let groups = stmt
+            .query_map([], |row| {
+                Ok(PersonGroup {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    cover_person_id: row.get(2)?,
+                    created_at: row.get(3)?,
+                    member_count: row.get(4)?,
+                })
+            })
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+            .filter_map(|r| r.ok())
+            .collect();
+
+        Ok(groups)
+    }
+
+    pub fn get_group_members(&self, group_id: i64) -> lightframe_core::Result<Vec<Person>> {
+        let conn = self.read_conn()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, face_count, cover_face_id, created_at
+                 FROM persons
+                 WHERE group_id = ?1
+                 ORDER BY face_count DESC, created_at DESC",
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        let members = stmt
+            .query_map(params![group_id], |row| {
+                let id: i64 = row.get(0)?;
+                Ok((id, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?))
+            })
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+            .filter_map(|r| r.ok())
+            .map(
+                |(id, name, face_count, cover_face_id, created_at): (
+                    i64,
+                    Option<String>,
+                    i64,
+                    Option<i64>,
+                    String,
+                )| {
+                    let sample_media_ids =
+                        Self::person_sample_media_ids(&conn, id).unwrap_or_default();
+                    Person {
+                        id,
+                        name,
+                        face_count,
+                        cover_face_id,
+                        sample_media_ids,
+                        created_at,
+                    }
+                },
+            )
+            .collect();
+
+        Ok(members)
+    }
+
+    // =========================================================================
+    // Settings (key-value store)
+    // =========================================================================
+
+    pub fn get_setting(&self, key: &str) -> lightframe_core::Result<Option<String>> {
+        let conn = self.read_conn()?;
+        conn.query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))
+    }
+
+    pub fn set_setting(&self, key: &str, value: &str) -> lightframe_core::Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        Ok(())
+    }
+
+    pub fn get_pinned_items(&self) -> lightframe_core::Result<Vec<PinnedItem>> {
+        let json = self.get_setting("pinned_items")?;
+        match json {
+            Some(s) => serde_json::from_str(&s)
+                .map_err(|e| lightframe_core::Error::Other(format!("pinned_items JSON: {e}"))),
+            None => Ok(Vec::new()),
+        }
+    }
+
+    pub fn set_pinned_items(&self, items: &[PinnedItem]) -> lightframe_core::Result<()> {
+        let json = serde_json::to_string(items)
+            .map_err(|e| lightframe_core::Error::Other(format!("serialize pinned: {e}")))?;
+        self.set_setting("pinned_items", &json)
+    }
+
+    pub fn pin_item(&self, item_type: &str, item_id: i64) -> lightframe_core::Result<()> {
+        let conn = self.conn()?;
+        conn.execute_batch("BEGIN IMMEDIATE")
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        let result = (|| -> lightframe_core::Result<()> {
+            let json: Option<String> = conn
+                .query_row(
+                    "SELECT value FROM settings WHERE key = 'pinned_items'",
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+            let mut items: Vec<PinnedItem> = match json {
+                Some(s) => serde_json::from_str(&s)
+                    .map_err(|e| lightframe_core::Error::Other(format!("pinned JSON: {e}")))?,
+                None => Vec::new(),
+            };
+
+            if items
+                .iter()
+                .any(|i| i.item_type == item_type && i.item_id == item_id)
+            {
+                return Ok(());
+            }
+            if items.len() >= 10 {
+                return Err(lightframe_core::Error::Other(
+                    "maximum 10 pinned items allowed".to_string(),
+                ));
+            }
+            items.push(PinnedItem {
+                item_type: item_type.to_string(),
+                item_id,
+            });
+            let new_json = serde_json::to_string(&items)
+                .map_err(|e| lightframe_core::Error::Other(format!("serialize: {e}")))?;
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES ('pinned_items', ?1)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![new_json],
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => conn
+                .execute_batch("COMMIT")
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?,
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(e);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn unpin_item(&self, item_type: &str, item_id: i64) -> lightframe_core::Result<()> {
+        let conn = self.conn()?;
+        conn.execute_batch("BEGIN IMMEDIATE")
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        let result = (|| -> lightframe_core::Result<()> {
+            let json: Option<String> = conn
+                .query_row(
+                    "SELECT value FROM settings WHERE key = 'pinned_items'",
+                    [],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+            let mut items: Vec<PinnedItem> = match json {
+                Some(s) => serde_json::from_str(&s)
+                    .map_err(|e| lightframe_core::Error::Other(format!("pinned JSON: {e}")))?,
+                None => return Ok(()),
+            };
+
+            items.retain(|i| !(i.item_type == item_type && i.item_id == item_id));
+            let new_json = serde_json::to_string(&items)
+                .map_err(|e| lightframe_core::Error::Other(format!("serialize: {e}")))?;
+            conn.execute(
+                "INSERT INTO settings (key, value) VALUES ('pinned_items', ?1)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![new_json],
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => conn
+                .execute_batch("COMMIT")
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?,
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(e);
             }
         }
         Ok(())

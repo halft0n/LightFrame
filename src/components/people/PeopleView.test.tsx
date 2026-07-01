@@ -5,6 +5,8 @@ import { PeopleView } from "./PeopleView";
 import { setLocale } from "@/i18n/index";
 
 const listPersons = vi.fn();
+const listPersonGroups = vi.fn();
+const getGroupMembers = vi.fn();
 const getAiStatus = vi.fn();
 const clusterFaces = vi.fn();
 const renamePerson = vi.fn();
@@ -17,6 +19,8 @@ vi.mock("@/lib/tauri", async (importOriginal) => {
   return {
     ...actual,
     listPersons: (...args: unknown[]) => listPersons(...args),
+    listPersonGroups: (...args: unknown[]) => listPersonGroups(...args),
+    getGroupMembers: (...args: unknown[]) => getGroupMembers(...args),
     getAiStatus: (...args: unknown[]) => getAiStatus(...args),
     clusterFaces: (...args: unknown[]) => clusterFaces(...args),
     renamePerson: (...args: unknown[]) => renamePerson(...args),
@@ -39,6 +43,8 @@ beforeEach(() => {
   localStorage.clear();
   setLocale("zh-CN");
   listPersons.mockReset();
+  listPersonGroups.mockReset();
+  getGroupMembers.mockReset();
   getAiStatus.mockReset();
   clusterFaces.mockReset();
   renamePerson.mockReset();
@@ -47,6 +53,8 @@ beforeEach(() => {
   onFaceDetectionProgress.mockResolvedValue(() => {});
   detectFacesBatch.mockResolvedValue({ faces_found: 3 });
   mergePersons.mockResolvedValue(undefined);
+  listPersonGroups.mockResolvedValue([]);
+  getGroupMembers.mockResolvedValue([]);
 });
 
 describe("PeopleView", () => {
