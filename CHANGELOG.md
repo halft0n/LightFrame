@@ -10,6 +10,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - (nothing yet)
 
+## [0.0.17] - 2026-07-01
+
+### Fixed
+- Windows image display: fix double URL encoding in custom protocol URLs
+- Face protocol cache bypass: move security validation before cache lookup
+- PhotoGrid first-render layout: defer grid rendering until container width is measured
+- Folder removal: immediately refresh media list after removing a watched folder
+- AiSettings: fix cancelled-download error suppression checking localized string
+- Placeholder thumbnail caching: use `no-cache` header to prevent permanent caching
+
+### Added
+- Face cache invalidation on media delete, re-detect, and thumbnail regeneration
+- `face_cache_dir` field in AppState for configurable face cache location
+- Comprehensive model download tests (cancellation, cleanup, error paths, unknown filename)
+- PhotoGrid layout tests (zero-width prevention, measured-width rendering)
+- FolderManager test for media refresh after folder removal
+- AiSettings tests (cancel button, error display, cancelled-error suppression)
+- `cancelDownload` frontend wrapper test
+
+### Security
+- Face protocol: validate source path **before** serving cached face crops (prevents symlink bypass)
+
+### Tests
+- Rust: 643 tests (up from 630)
+- Frontend: 561 tests (up from 554)
+- Total: 1204
+
+## [0.0.16] - 2026-06-30
+
+### Fixed
+- Clear stale hashes on reindex to prevent phantom duplicates
+- Re-enrich skipped files on full rescan
+- Normalize Windows `\\?\` extended path prefix in all DB operations
+
+## [0.0.15] - 2026-06-30
+
+### Fixed
+- Code review fixes: macOS Intel compatibility
+- Development workflow improvements
+
+## [0.0.14] - 2026-06-29
+
+### Added
+- Producer-consumer event queue for scan workflow (replaces polling)
+- Two-phase scan progress (indexed → complete)
+- Sidebar navigation closes viewer on scan start
+- Incremental media refresh during scan
+
+### Fixed
+- Windows image display in WebView2 (platform-aware protocol URL construction)
+- Windows path short-name mismatch in path validation
+
+## [0.0.13] - 2026-06-29
+
+### Added
+- RAW image format support (CR2, NEF, ARW, DNG) with embedded preview extraction
+- Settings page scroll and section ordering improvements
+
+### Removed
+- Tauri updater plugin (replaced with manual GitHub Releases check)
+
+### Security
+- Additional symlink escape prevention in file serving protocols
+
+## [0.0.12] - 2026-06-29
+
+### Fixed
+- CI build failures on multiple platforms
+- Windows portable build configuration
+- Extended path prefix handling in path validation
+
+### Added
+- Windows portable executable in release artifacts
+
+## [0.0.11] - 2026-06-28
+
+### Added
+- Comprehensive test coverage for DB, protocols, frontend views
+- Edge-case tests for P1/P2 fixes and cross-feature scenarios
+- Batch insert optimization for scan performance
+- Protocol utility functions for shared logic
+
+### Fixed
+- P0/P1 code quality issues from code review
+- `eq_ignore_ascii_case` in original_protocol path comparison
+- Eliminated dead code and suppressed warnings
+- Applied `cargo fmt` formatting consistently
+
 ## [0.0.10] - 2026-06-28
 
 ### Fixed

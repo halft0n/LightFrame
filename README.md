@@ -33,10 +33,10 @@ LightFrame 是一款跨平台（Windows + Linux + macOS）、本地优先的照�
 - **Map view** — Leaflet map with GPS photo pins and clustering
 - **Slideshow mode** — fullscreen auto-advance (3 / 5 / 10 s)
 - **Print & share** — browser print and Web Share API from the viewer
-- **Auto-updater** — signed in-app updates via Tauri updater plugin
+- **Update checker** — periodic check against GitHub Releases with in-app notification
 - **Thumbnail regeneration** — rebuild corrupt or missing thumbnails from settings
 - **Memories & On This Day** — timeline grouping and anniversary highlights
-- **Batch operations** — delete, favorite, export, add to album (up to 1000 items)
+- **Batch operations** — delete, favorite, export, add to album (up to 900 items)
 - **Cross-platform** — Windows 10/11, Linux (Ubuntu 22.04+, Fedora 38+), macOS
 - **Multi-language** — 简体中文, English
 - **Privacy-first** — all local processing, no cloud uploads ([Privacy Policy](docs/PRIVACY.md))
@@ -77,6 +77,10 @@ See [User Guide](docs/USER_GUIDE.md) for the complete shortcut reference.
 ```
 LightFrame/
 ├── src/                    # React frontend
+│   ├── components/         # UI components (gallery, viewer, editor, settings, …)
+│   ├── store/              # Zustand state management
+│   ├── lib/                # Tauri IPC wrappers, utilities
+│   └── i18n/locales/       # i18n translation files (en.json, zh-CN.json)
 ├── src-tauri/              # Tauri main crate
 ├── crates/                 # Rust domain crates
 │   ├── lightframe-core/
@@ -88,8 +92,7 @@ LightFrame/
 │   ├── lightframe-ai/
 │   ├── lightframe-geo/
 │   └── lightframe-video/
-├── python/                 # Optional AI sidecar
-├── locales/                # i18n translation files
+├── python/                 # Optional AI sidecar (CLIP/face JSON-RPC)
 └── docs/                   # Design documents
 ```
 
@@ -119,14 +122,14 @@ pnpm tauri build
 ### Running Tests
 
 ```bash
-pnpm test                    # frontend — 314 tests (Vitest)
-cargo test --workspace       # Rust — 385 tests
+pnpm test                    # frontend — 561 tests (Vitest)
+cargo test --workspace       # Rust — 643 tests
 cargo fmt --check            # formatting
 cargo clippy --workspace -- -D warnings
 npx tsc --noEmit             # TypeScript type check
 ```
 
-**Total:** 699 automated tests as of v0.0.11 (CI runs Rust on Ubuntu + Windows, frontend on Ubuntu).
+**Total:** 1204 automated tests as of v0.0.17 (CI runs Rust on Ubuntu + Windows, frontend on Ubuntu).
 
 ## Documentation
 
