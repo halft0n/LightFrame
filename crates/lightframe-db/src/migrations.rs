@@ -84,6 +84,10 @@ pub fn run(conn: &Connection) -> lightframe_core::Result<()> {
         run_migration(conn, v12)?;
     }
 
+    if current < 13 {
+        run_migration(conn, v13)?;
+    }
+
     Ok(())
 }
 
@@ -470,6 +474,42 @@ fn v12(conn: &Connection) -> lightframe_core::Result<()> {
             WHERE is_deleted = 0;
 
         INSERT OR IGNORE INTO schema_version (version) VALUES (12);",
+    )
+    .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+fn v13(conn: &Connection) -> lightframe_core::Result<()> {
+    let columns: Vec<String> = conn
+        .prepare("PRAGMA table_info(media_files)")
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    if !columns.iter().any(|c| c == "live_pair_id") {
+        conn.execute(
+            "ALTER TABLE media_files ADD COLUMN live_pair_id INTEGER REFERENCES media_files(id)",
+            [],
+        )
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+    }
+
+    if !columns.iter().any(|c| c == "is_live_mov") {
+        conn.execute(
+            "ALTER TABLE media_files ADD COLUMN is_live_mov INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+    }
+
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_media_live_pair
+            ON media_files(live_pair_id) WHERE live_pair_id IS NOT NULL;
+
+        INSERT OR IGNORE INTO schema_version (version) VALUES (13);",
     )
     .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
 

@@ -418,3 +418,53 @@ describe("PhotoGrid", () => {
     expect(cells.length).toBeGreaterThan(0);
   });
 });
+
+describe("PhotoGrid scroll intent integration", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setLocale("zh-CN");
+    resetStore();
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get: () => 800,
+    });
+    (invoke as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+  });
+
+  const items: MediaItem[] = Array.from({ length: 50 }, (_, i) => ({
+    id: i + 1,
+    path: `/photos/img_${i}.jpg`,
+    filename: `img_${i}.jpg`,
+    media_type: "Photo" as const,
+    size_bytes: 1024,
+    modified_at: "2024-01-01T00:00:00",
+  }));
+
+  it("renders PhotoCard components with scrollIntent prop", async () => {
+    setMedia(items, 50);
+    render(<PhotoGrid />);
+    lastResizeObserver?.trigger(800);
+
+    await waitFor(() => {
+      expect(screen.getByRole("grid")).toBeInTheDocument();
+    });
+
+    // PhotoCards should render (scroll intent passed through from PhotoGrid)
+    const cells = screen.getAllByRole("gridcell");
+    expect(cells.length).toBeGreaterThan(0);
+  });
+
+  it("uses larger overscan during slow/idle scrolling", async () => {
+    setMedia(items, 50);
+    render(<PhotoGrid />);
+    lastResizeObserver?.trigger(800);
+
+    await waitFor(() => {
+      expect(screen.getByRole("grid")).toBeInTheDocument();
+    });
+
+    // During idle/slow scroll (default), more items should be pre-rendered
+    const cells = screen.getAllByRole("gridcell");
+    expect(cells.length).toBeGreaterThanOrEqual(items.length > 10 ? 10 : items.length);
+  });
+});

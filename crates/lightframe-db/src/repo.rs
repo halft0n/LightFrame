@@ -466,6 +466,55 @@ impl Database {
         Ok(result.flatten())
     }
 
+    pub fn set_live_pair(
+        &self,
+        still_media_id: i64,
+        video_media_id: i64,
+    ) -> lightframe_core::Result<()> {
+        let conn = self.conn()?;
+        conn.execute_batch("BEGIN")
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        let result = (|| {
+            conn.execute(
+                "UPDATE media_files SET live_pair_id = ?1 WHERE id = ?2",
+                params![video_media_id, still_media_id],
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+            conn.execute(
+                "UPDATE media_files SET is_live_mov = 1 WHERE id = ?1",
+                params![video_media_id],
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+            conn.execute(
+                "UPDATE media_files SET media_type = 'LivePhoto' WHERE id = ?1",
+                params![still_media_id],
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+            Ok(())
+        })();
+
+        match &result {
+            Ok(()) => conn
+                .execute_batch("COMMIT")
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?,
+            Err(_) => {
+                let _ = conn.execute_batch("ROLLBACK");
+            }
+        }
+        result
+    }
+
+    pub fn get_live_pair(&self, still_media_id: i64) -> lightframe_core::Result<Option<i64>> {
+        let conn = self.read_conn()?;
+        conn.query_row(
+            "SELECT live_pair_id FROM media_files WHERE id = ?1",
+            params![still_media_id],
+            |row| row.get::<_, Option<i64>>(0),
+        )
+        .map_err(|e| lightframe_core::Error::Database(e.to_string()))
+    }
+
     pub fn get_all_media(
         &self,
         limit: i64,
@@ -478,7 +527,7 @@ impl Database {
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
                         created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
                  FROM media_files
-                 WHERE is_deleted = 0
+                 WHERE is_deleted = 0 AND is_live_mov = 0
                  ORDER BY created_at DESC
                  LIMIT ?1 OFFSET ?2",
             )
@@ -535,7 +584,7 @@ impl Database {
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
                         created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
                  FROM media_files
-                 WHERE is_deleted = 0
+                 WHERE is_deleted = 0 AND is_live_mov = 0
                  ORDER BY COALESCE(created_at, modified_at) DESC, id DESC
                  LIMIT ?1"
                     .to_string(),
@@ -545,7 +594,7 @@ impl Database {
                 "SELECT id, path, filename, media_type, size_bytes, width, height,
                         created_at, modified_at, blake3_hash, dhash, phash, latitude, longitude
                  FROM media_files
-                 WHERE is_deleted = 0
+                 WHERE is_deleted = 0 AND is_live_mov = 0
                    AND (
                      COALESCE(created_at, modified_at) < ?1
                      OR (COALESCE(created_at, modified_at) = ?1 AND id < ?2)
@@ -3687,5 +3736,59 @@ mod tests {
 
         db.store_face_detections(media_id, &[]).unwrap();
         assert!(db.get_faces_for_media(media_id).unwrap().is_empty());
+    }
+
+    #[test]
+    fn set_live_pair_links_still_and_video() {
+        let db = test_db();
+        let folder_id = db.add_watched_folder("/photos").unwrap().id;
+
+        let mut still = sample_media("/photos/IMG_001.HEIC");
+        still.media_type = MediaType::Photo;
+        let still_id = db.upsert_media(folder_id, &still).unwrap();
+
+        let mut video = sample_media("/photos/IMG_001.MOV");
+        video.media_type = MediaType::Video;
+        let video_id = db.upsert_media(folder_id, &video).unwrap();
+
+        db.set_live_pair(still_id, video_id).unwrap();
+
+        // Still should have live_pair_id pointing to video
+        let pair = db.get_live_pair(still_id).unwrap();
+        assert_eq!(pair, Some(video_id));
+
+        // get_media_page should exclude the MOV companion
+        let page = db.get_media_page(100, None).unwrap();
+        let ids: Vec<i64> = page.iter().map(|m| m.id).collect();
+        assert!(ids.contains(&still_id));
+        assert!(!ids.contains(&video_id));
+
+        // Still should now be LivePhoto type
+        let page_still = page.iter().find(|m| m.id == still_id).unwrap();
+        assert_eq!(page_still.media_type, MediaType::LivePhoto);
+    }
+
+    #[test]
+    fn set_live_pair_is_atomic_rollback_on_fk_violation() {
+        let db = test_db();
+        let folder_id = db.add_watched_folder("/photos2").unwrap().id;
+
+        let still = sample_media("/photos2/IMG_002.HEIC");
+        let still_id = db.upsert_media(folder_id, &still).unwrap();
+
+        // non-existent video_id violates FK → should fail and rollback
+        let result = db.set_live_pair(still_id, 99999);
+        assert!(result.is_err());
+
+        // After rollback, media_type should remain Photo (not LivePhoto)
+        let conn = db.read_conn().unwrap();
+        let media_type: String = conn
+            .query_row(
+                "SELECT media_type FROM media_files WHERE id = ?1",
+                params![still_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(media_type, "Photo");
     }
 }

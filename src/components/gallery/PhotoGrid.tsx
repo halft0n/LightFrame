@@ -28,6 +28,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 import { ErrorBanner } from "@/components/ui/ErrorBanner";
 import { useTranslation } from "@/i18n/useTranslation";
+import { useScrollIntent, type ScrollIntent } from "@/hooks/useScrollIntent";
 
 const GAP = 3;
 const SCROLL_LISTENER_OPTIONS: AddEventListenerOptions = { passive: true };
@@ -160,11 +161,24 @@ export function PhotoGrid({
     }
   }, [hasMore, loadingMore, onLoadMore]);
 
+  const scrollIntent = useScrollIntent(parentRef);
+
+  const overscanCount = useMemo(() => {
+    const map: Record<ScrollIntent, number> = {
+      idle: 5,
+      slow: 5,
+      medium: 3,
+      fast: 1,
+      burst: 0,
+    };
+    return map[scrollIntent];
+  }, [scrollIntent]);
+
   const rowVirtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => parentRef.current,
     estimateSize: () => rowHeight,
-    overscan: 3,
+    overscan: overscanCount,
   });
 
   const prevLayoutRef = useRef({ columnCount: 0, rowHeight: 0 });
@@ -378,6 +392,7 @@ export function PhotoGrid({
                         onOpen={openViewer}
                         animationIndex={colIndex}
                         thumbnailSize={thumbnailSize}
+                        scrollIntent={scrollIntent}
                       />
                     );
                   })}

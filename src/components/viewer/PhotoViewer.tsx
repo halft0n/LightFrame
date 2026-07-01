@@ -32,6 +32,7 @@ import { VideoPlayer } from "./VideoPlayer";
 import { ImageEditor } from "@/components/editor/ImageEditor";
 import { InfoPanel } from "./InfoPanel";
 import { SimilarPhotosPanel } from "./SimilarPhotosPanel";
+import { Filmstrip } from "./Filmstrip";
 import { useImagePreloader } from "@/hooks/useImagePreloader";
 import { LoadingIndicator } from "@/components/ui/LoadingIndicator";
 
@@ -132,7 +133,6 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
   const [retryKey, setRetryKey] = useState(0);
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null);
   const dragStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
-  const filmstripRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const printTargetRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -251,17 +251,6 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
     dialog.addEventListener("keydown", handleTabKey);
     return () => dialog.removeEventListener("keydown", handleTabKey);
   }, []);
-
-  useEffect(() => {
-    const el = filmstripRef.current;
-    if (!el) return;
-    const active = el.querySelector(`[data-id="${mediaId}"]`);
-    active?.scrollIntoView({
-      inline: "center",
-      block: "nearest",
-      behavior: "smooth",
-    });
-  }, [mediaId, filmstrip]);
 
   const navigate = useCallback((id: number | null) => {
     if (id != null) openViewer(id);
@@ -789,35 +778,11 @@ export function PhotoViewer({ mediaId }: PhotoViewerProps) {
       )}
 
       {!isVideo && (
-        <div
-          ref={filmstripRef}
-          className="flex shrink-0 gap-2 overflow-x-auto border-t border-white/10 px-4 py-3"
-          role="tablist"
-          aria-label={t("viewer.title")}
-        >
-          {filmstrip.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={item.id === mediaId}
-              data-id={item.id}
-              onClick={() => openViewer(item.id)}
-              className={`h-16 w-16 shrink-0 overflow-hidden rounded-md transition ${
-                item.id === mediaId
-                  ? "ring-2 ring-blue-500"
-                  : "opacity-70 hover:opacity-100"
-              }`}
-              aria-label={item.filename}
-            >
-              <img
-                src={getThumbnailUrl(item.id, "small")}
-                alt=""
-                className="h-full w-full object-cover"
-              />
-            </button>
-          ))}
-        </div>
+        <Filmstrip
+          items={filmstrip}
+          currentId={mediaId}
+          onNavigate={(id) => openViewer(id)}
+        />
       )}
 
       <div className="shrink-0 border-t border-white/10 px-4 py-1.5 text-center text-xs text-neutral-400">

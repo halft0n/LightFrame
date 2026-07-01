@@ -162,4 +162,125 @@ describe("PhotoCard", () => {
     fireEvent.click(screen.getByRole("gridcell"));
     expect(onSelect).toHaveBeenCalledWith(1, expect.any(Object));
   });
+
+  describe("micro-first two-stage loading", () => {
+    it("initially renders with micro thumbnail URL", () => {
+      render(
+        <PhotoCard
+          item={photoItem}
+          selected={false}
+          selectedMediaIds={[]}
+          onSelect={vi.fn()}
+          thumbnailSize="small"
+        />,
+      );
+
+      const img = screen.getByRole("img", { hidden: true }) as HTMLImageElement;
+      expect(img.src).toContain("/1/micro");
+    });
+
+    it("loads full-size thumbnail after micro loads", () => {
+      render(
+        <PhotoCard
+          item={photoItem}
+          selected={false}
+          selectedMediaIds={[]}
+          onSelect={vi.fn()}
+          thumbnailSize="small"
+        />,
+      );
+
+      const microImg = screen.getByRole("img", {
+        hidden: true,
+      }) as HTMLImageElement;
+      expect(microImg.src).toContain("/micro");
+
+      // Simulate micro loaded
+      fireEvent.load(microImg);
+
+      // After micro loads, a full-size image should be present
+      const images = screen
+        .getAllByRole("img", { hidden: true })
+        .filter(
+          (el) => !(el as HTMLImageElement).src.includes("/micro"),
+        ) as HTMLImageElement[];
+      expect(images.length).toBeGreaterThan(0);
+      expect(images[0].src).toContain("/small");
+    });
+
+    it("falls back to small on micro load error", () => {
+      render(
+        <PhotoCard
+          item={photoItem}
+          selected={false}
+          selectedMediaIds={[]}
+          onSelect={vi.fn()}
+          thumbnailSize="small"
+        />,
+      );
+
+      const microImg = screen.getByRole("img", {
+        hidden: true,
+      }) as HTMLImageElement;
+      expect(microImg.src).toContain("/micro");
+
+      // Simulate micro error - should trigger full image load
+      fireEvent.error(microImg);
+
+      // After error, full-size image should be present
+      const images = screen.getAllByRole("img", {
+        hidden: true,
+      }) as HTMLImageElement[];
+      const fullImg = images.find((img) => img.src.includes("/small"));
+      expect(fullImg).toBeDefined();
+    });
+
+    it("skips micro for thumbnailSize=large", () => {
+      render(
+        <PhotoCard
+          item={photoItem}
+          selected={false}
+          selectedMediaIds={[]}
+          onSelect={vi.fn()}
+          thumbnailSize="large"
+        />,
+      );
+
+      const img = screen.getByRole("img", { hidden: true }) as HTMLImageElement;
+      expect(img.src).toContain("/large");
+      expect(img.src).not.toContain("/micro");
+    });
+
+    it("shows LIVE badge for LivePhoto media type", () => {
+      const liveItem: MediaItem = {
+        ...photoItem,
+        id: 10,
+        media_type: "LivePhoto",
+        filename: "IMG_001.heic",
+      };
+      render(
+        <PhotoCard
+          item={liveItem}
+          selected={false}
+          selectedMediaIds={[]}
+          onSelect={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByText("LIVE")).toBeInTheDocument();
+    });
+
+    it("does not show LIVE badge for regular photos", () => {
+      render(
+        <PhotoCard
+          item={photoItem}
+          selected={false}
+          selectedMediaIds={[]}
+          onSelect={vi.fn()}
+        />,
+      );
+
+      expect(screen.queryByText("LIVE")).not.toBeInTheDocument();
+    });
+  });
 });

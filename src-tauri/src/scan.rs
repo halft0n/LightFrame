@@ -280,6 +280,11 @@ pub async fn run_scan(
         "phase 1 (index) complete"
     );
 
+    // Phase 1.5: Live Photo pairing
+    if let Err(e) = pair_live_photos(&db, folder_id) {
+        warn!(folder_id, "live photo pairing failed: {e}");
+    }
+
     // Phase 2: Background enrichment (thumbnails, hashes, etc.)
     let mut ids = std::mem::take(
         &mut *media_ids_to_enrich
@@ -571,6 +576,49 @@ async fn enrich_media(db: &Database, media_id: i64) -> lightframe_core::Result<(
         }
     }
 
+    Ok(())
+}
+
+fn pair_live_photos(db: &Database, folder_id: i64) -> lightframe_core::Result<()> {
+    use lightframe_indexer::detect_live_photo_pairs;
+
+    let all_media = db.get_media_by_folder(folder_id, 100_000, 0)?;
+    if all_media.is_empty() {
+        return Ok(());
+    }
+
+    let paths: Vec<PathBuf> = all_media.iter().map(|m| PathBuf::from(&m.path)).collect();
+    let pairs = detect_live_photo_pairs(&paths);
+
+    if pairs.is_empty() {
+        return Ok(());
+    }
+
+    // Build path -> media_id lookup
+    let path_to_id: std::collections::HashMap<&str, i64> =
+        all_media.iter().map(|m| (m.path.as_str(), m.id)).collect();
+
+    for pair in &pairs {
+        let still_path = pair.still_path.to_string_lossy();
+        let video_path = pair.video_path.to_string_lossy();
+
+        let Some(&sid) = path_to_id.get(still_path.as_ref()) else {
+            continue;
+        };
+        let Some(&vid) = path_to_id.get(video_path.as_ref()) else {
+            continue;
+        };
+
+        if let Err(e) = db.set_live_pair(sid, vid) {
+            warn!(
+                still_id = sid,
+                video_id = vid,
+                "failed to set live pair: {e}"
+            );
+        }
+    }
+
+    info!(folder_id, count = pairs.len(), "live photo pairs detected");
     Ok(())
 }
 

@@ -1,9 +1,11 @@
+pub mod live_photo;
 pub mod scanner;
 pub mod watcher;
 
 #[cfg(target_os = "windows")]
 mod mft;
 
+pub use live_photo::{LivePhotoPair, detect_live_photo_pairs};
 pub use watcher::{
     FolderWatcher, is_media_change_event, is_media_remove_event, is_media_rename_event,
 };

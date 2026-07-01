@@ -4,6 +4,7 @@ import { getThumbnailUrl } from "@/lib/tauri";
 import { dragMediaIdsForItem, setDragMediaIds } from "@/lib/dragMedia";
 import { useTranslation } from "@/i18n/useTranslation";
 import type { ThumbnailSize } from "@/store/appStore";
+import type { ScrollIntent } from "@/hooks/useScrollIntent";
 
 interface PhotoCardProps {
   item: MediaItem;
@@ -13,6 +14,7 @@ interface PhotoCardProps {
   onOpen?: (id: number) => void;
   animationIndex?: number;
   thumbnailSize?: ThumbnailSize;
+  scrollIntent?: ScrollIntent;
 }
 
 function thumbnailProtocolSize(
@@ -40,14 +42,40 @@ export const PhotoCard = memo(function PhotoCard({
   onOpen,
   animationIndex = 0,
   thumbnailSize = "small",
+  scrollIntent = "idle",
 }: PhotoCardProps) {
   const { t } = useTranslation();
-  const [loaded, setLoaded] = useState(false);
+  const [microLoaded, setMicroLoaded] = useState(false);
+  const [microError, setMicroError] = useState(false);
+  const [fullLoaded, setFullLoaded] = useState(false);
   const [error, setError] = useState(false);
 
+  const skipMicro = thumbnailSize === "large";
+  const deferFull = scrollIntent === "fast" || scrollIntent === "burst";
   const isVideo = item.media_type === "Video";
   const isRaw = item.media_type === "Raw";
+  const isLivePhoto = item.media_type === "LivePhoto";
   const isHeic = item.media_type === "Photo" && isHeicFilename(item.filename);
+
+  const microUrl = getThumbnailUrl(item.id, "micro");
+  const fullUrl = getThumbnailUrl(item.id, thumbnailProtocolSize(thumbnailSize));
+
+  const handleMicroLoad = useCallback(() => {
+    setMicroLoaded(true);
+  }, []);
+
+  const handleMicroError = useCallback(() => {
+    setMicroLoaded(true);
+    setMicroError(true);
+  }, []);
+
+  const handleFullLoad = useCallback(() => {
+    setFullLoaded(true);
+  }, []);
+
+  const handleFullError = useCallback(() => {
+    setError(true);
+  }, []);
 
   const handleDragStart = useCallback(
     (e: React.DragEvent) => {
@@ -58,6 +86,9 @@ export const PhotoCard = memo(function PhotoCard({
     },
     [item.id, selectedMediaIds],
   );
+
+  const showSkeleton = !microLoaded && !fullLoaded && !error && !skipMicro;
+  const shouldLoadFull = microLoaded && !deferFull;
 
   return (
     <button
@@ -74,7 +105,7 @@ export const PhotoCard = memo(function PhotoCard({
         selected ? "ring-2 ring-blue-500" : ""
       }`}
     >
-      {!loaded && !error && (
+      {showSkeleton && (
         <div className="photo-card-skeleton shimmer" aria-hidden="true" />
       )}
 
@@ -105,16 +136,40 @@ export const PhotoCard = memo(function PhotoCard({
             />
           </svg>
         </div>
-      ) : (
+      ) : skipMicro ? (
         <img
-          src={getThumbnailUrl(item.id, thumbnailProtocolSize(thumbnailSize))}
+          src={fullUrl}
           alt={item.filename}
           loading="lazy"
           decoding="async"
-          onLoad={() => setLoaded(true)}
-          onError={() => setError(true)}
-          className={`h-full w-full object-cover ${loaded ? "photo-card-image-loaded opacity-100" : "opacity-0"}`}
+          onLoad={handleFullLoad}
+          onError={handleFullError}
+          className={`h-full w-full object-cover ${fullLoaded ? "photo-card-image-loaded opacity-100" : "opacity-0"}`}
         />
+      ) : (
+        <>
+          <img
+            src={microUrl}
+            alt={item.filename}
+            loading="lazy"
+            decoding="async"
+            onLoad={handleMicroLoad}
+            onError={handleMicroError}
+            className={`h-full w-full object-cover ${microError || fullLoaded ? "opacity-0 absolute inset-0" : "opacity-100"}`}
+            style={{ imageRendering: "pixelated" }}
+          />
+          {shouldLoadFull && (
+            <img
+              src={fullUrl}
+              alt={item.filename}
+              loading="lazy"
+              decoding="async"
+              onLoad={handleFullLoad}
+              onError={handleFullError}
+              className={`absolute inset-0 h-full w-full object-cover ${fullLoaded ? "photo-card-image-loaded opacity-100" : "opacity-0"}`}
+            />
+          )}
+        </>
       )}
 
       {isVideo && item.duration_sec != null && (
@@ -123,13 +178,19 @@ export const PhotoCard = memo(function PhotoCard({
         </span>
       )}
 
-      {isRaw && (
+      {isLivePhoto && (
+        <span className="absolute left-1 top-1 rounded bg-green-600 px-1 text-xs font-medium text-white">
+          {t("gallery.liveBadge")}
+        </span>
+      )}
+
+      {isRaw && !isLivePhoto && (
         <span className="absolute left-1 top-1 rounded bg-amber-600 px-1 text-xs font-medium text-white">
           {t("gallery.rawBadge")}
         </span>
       )}
 
-      {isHeic && (
+      {isHeic && !isLivePhoto && (
         <span className="absolute left-1 top-1 rounded bg-sky-600 px-1 text-xs font-medium text-white">
           {t("gallery.heicBadge")}
         </span>
