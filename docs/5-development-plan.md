@@ -1,12 +1,12 @@
 # LightFrame（影迹）详细开发计划
 
-> **文档版本**：v1.2  
-> **更新日期**：2026-06-29  
-> **当前版本**：v0.0.12（Phase 4 进行中）  
+> **文档版本**：v1.3  
+> **更新日期**：2026-07-01  
+> **当前版本**：v0.0.18（Phase 4 进行中）  
 > **产品名称**：影迹 / LightFrame  
 > **技术栈**：Tauri 2.x + Rust + React 19 + TypeScript + Python AI 扩展（可选）  
 > **开发模式**：单人全职  
-> **总工期估算**：24 周（Phase 0–4）  
+> **总工期估算**：36 周（Phase 0–5）  
 > **关联文档**：[需求规格](./2-requirements.md) · [架构设计](./3-architecture.md) · [调研报告](./0-research-report.md) · [技术路线决策](./1-tech-stack-decision.md)
 
 ---
@@ -143,6 +143,7 @@ flowchart LR
 | **Phase 2** | 照片组织与智能功能 | 6 周 | W9–W14 |
 | **Phase 3** | 增强体验 | 6 周 | W15–W20 |
 | **Phase 4** | 打磨发布 | 4 周 | W21–W24 |
+| **Phase 5** | 功能对齐与体验提升 | 12 周 | W25–W36 |
 
 ```mermaid
 gantt
@@ -743,13 +744,13 @@ flowchart TB
 | i18n | 关键 UI 字符串无缺失 key |
 | Store | 选择状态、相簿操作 |
 
-**当前测试规模（v0.0.12，2026-06-29）：**
+**当前测试规模（v0.0.18，2026-07-01）：**
 
 | 层级 | 数量 | 命令 |
 |------|------|------|
-| Rust workspace | **534** | `cargo test --workspace` |
-| React (Vitest) | **509**（51 文件） | `pnpm test` |
-| **合计** | **1043** | CI 每 PR 运行 |
+| Rust workspace | **646** | `cargo test --workspace` |
+| React (Vitest) | **561**（51 文件） | `pnpm test` |
+| **合计** | **1207** | CI 每 PR 运行 |
 
 **运行命令**：
 
@@ -834,6 +835,221 @@ jobs:
 
 ---
 
+### Phase 5：功能对齐与体验提升（12 周）— ⬜ 计划中
+
+**目标**：补齐 LightFrame 相对 iPhotron 的功能差距，形成完整的桌面照片管理体验。
+
+**背景**：基于 v0.0.18 与 iPhotron v6.6.8 的对比分析，LightFrame 缺少 20 项功能。按优先级和依赖关系分为 4 个子阶段执行。
+
+---
+
+#### Phase 5a：性能感知 + 媒体支持增强（3 周，W25–W27）
+
+##### 5a-1 Live Photo 支持（P1）
+
+| 任务 | 详情 |
+|------|------|
+| 配对识别 | 扫描时检测同名/同时间戳的 HEIC/JPG + MOV 文件对；解析 Apple `ContentIdentifier` (QuickTime mdta atom) |
+| 数据模型 | `media_files` 新增 `live_pair_id` 外键关联；`live_content_id` 索引字段 |
+| 前端展示 | PhotoCard 显示 "LIVE" badge；点击 badge 切换为内嵌视频播放（静音） |
+| 查看器集成 | 长按/悬停播放 MOV 部分；松开回到静帧 |
+| **技术细节** | Rust: 解析 MOV atom 获取 `com.apple.quicktime.content.identifier`；使用 `mp4parse` 或轻量解析器。前端: `<video>` 元素叠加在 `<img>` 上，CSS transition 切换 |
+| **验收** | 扫描 iPhone Live Photo 目录后自动识别配对；badge 可见且可交互 |
+
+##### 5a-2 微缩略图 + 滚动意图分类（P1）
+
+| 任务 | 详情 |
+|------|------|
+| 微缩略图生成 | 扫描时生成 32×32 JPEG micro thumbnail，存入 DB BLOB（~1KB/张） |
+| 即时上屏 | 滚动时先展示 micro 缩略图（无网络请求），再异步加载 small/large |
+| 滚动意图分类 | 监测 `scrollTop` 变化速率：slow (< 200px/s) / medium / fast (> 1000px/s) / burst (> 3000px/s) |
+| 动态预取深度 | slow: 预取 ±3 屏；medium: ±1 屏；fast: 仅可视区；burst: 暂停预取，仅 micro |
+| IntersectionObserver 优化 | 替代当前 scroll 事件监听，按可见性触发精确加载 |
+| **技术细节** | Rust: `image::imageops::resize()` 到 32×32 → JPEG encode → `UPDATE media_files SET micro_thumb = ?`。前端: CSS `image-rendering: pixelated` 放大 micro；`useRef` 记录 scroll velocity |
+| **验收** | 快速滚动 10 万张库无白屏闪烁；micro 缩略图 50ms 内可见；slow 滚动时 small 缩略图 200ms 内替换 |
+
+##### 5a-3 Filmstrip 导航条（P2）
+
+| 任务 | 详情 |
+|------|------|
+| 组件设计 | 查看器底部水平缩略图条，当前图高亮居中 |
+| 虚拟滚动 | 使用 `@tanstack/react-virtual` 水平模式，仅渲染可见区 ±20 项 |
+| 交互 | 点击跳转；键盘 ←/→ 导航时自动居中；滚轮水平滚动 |
+| 设置 | `showFilmstrip` 偏好设置（可隐藏） |
+| **技术细节** | 固定高度 64px 水平条；每项 48×48 micro 缩略图 + 选中高亮边框；CSS `overflow-x: hidden` 由 virtualizer 管理 |
+| **验收** | 查看器切换图片时 filmstrip 自动居中；1000 张序列无性能问题 |
+
+---
+
+#### Phase 5b：编辑器增强（3 周，W28–W30）
+
+##### 5b-1 去噪 / 锐化 / 暗角 / 清晰度（P2）
+
+| 任务 | 详情 |
+|------|------|
+| Rust 后端滤镜 | `image_edit.rs` 新增 4 个滤镜实现 |
+| 去噪 (Denoise) | Non-local means 或双边滤波；`intensity: 0-100` 参数 |
+| 锐化 (Sharpen) | Unsharp mask：`amount`, `radius`, `threshold` 三参数 |
+| 暗角 (Vignette) | 径向渐变黑色叠加：`strength`, `radius`, `softness` |
+| 清晰度 (Clarity) | 中频增强：高通滤波 + overlay 混合 |
+| 前端面板 | `ImageEditor.tsx` 新增 4 个 Section，各含对应滑块 |
+| **技术细节** | 去噪: `image` crate + 自定义 3×3/5×5 核卷积或 `imageproc::filter`。暗角: 距中心距离 → alpha 衰减公式。清晰度: Gaussian blur 20px → 原图减模糊 = 高频 → 加回原图 |
+| **验收** | 各滤镜实时预览；导出结果与预览一致；参数 JSON 可保存/恢复 |
+
+##### 5b-2 白平衡独立调节（P2）
+
+| 任务 | 详情 |
+|------|------|
+| 色温 (Temperature) | 冷(蓝)→暖(黄) 范围 2000K–10000K |
+| 色调 (Tint) | 绿→品红 范围 -100~+100 |
+| Rust 实现 | RGB → 色温偏移矩阵变换 |
+| **技术细节** | 色温映射: Kelvin → RGB multiplier（Planckian locus 近似）；色调: Green-Magenta 轴偏移 |
+| **验收** | 白平衡滑块独立调节，与其他编辑参数叠加正确 |
+
+##### 5b-3 黑白模式（P2）
+
+| 任务 | 详情 |
+|------|------|
+| 灰度转换 | 可选通道权重（标准 / R强调 / G强调 / B强调） |
+| 胶片预设 | 3-5 种预设色调映射（暖调/冷调/高对比/柔和） |
+| 颗粒 (Grain) | Gaussian noise 叠加，强度可调 |
+| 前端 UI | 编辑器新增 "Black & White" section，含预设选择器 + 滑块 |
+| **验收** | 预设一键切换；grain 强度平滑可调 |
+
+---
+
+#### Phase 5c：交互与浏览增强（3 周，W31–W33）
+
+##### 5c-1 网格长按预览弹窗（P2）
+
+| 任务 | 详情 |
+|------|------|
+| 长按检测 | 130ms 阈值触发；移动超过 5px 取消 |
+| 预览窗口 | 居中浮层 min(400px, 60vw)；图片用 `original://` small/large |
+| 视频预览 | 静音自动播放 MP4 |
+| 关闭 | 松开手指/鼠标 或按 Escape |
+| **技术细节** | React Portal + `usePointerEvent`；CSS `position: fixed` + backdrop blur；`requestAnimationFrame` 位置跟随 |
+| **验收** | 长按显示、松开消失；视频预览静音自动播放 |
+
+##### 5c-2 手动人脸标注（P2）
+
+| 任务 | 详情 |
+|------|------|
+| 标注 UI | 查看器模式下，用户画矩形/圆形框选人脸区域 |
+| 姓名输入 | 弹出输入框，支持已有人物名自动补全 |
+| 后端存储 | `faces` 表新增 `is_manual: bool`；手动标注不受重新扫描影响 |
+| 嵌入计算 | 保存后异步裁剪区域 → 计算 face embedding → 关联到 person |
+| **技术细节** | Canvas overlay 在查看器图片上；`mousedown → mousemove → mouseup` 画框；保存 `(x, y, w, h)` 归一化坐标 |
+| **验收** | 手动标注后人物出现在 People 视图；重新扫描不覆盖手动标注 |
+
+##### 5c-3 内存感知缩略图预算（P2）
+
+| 任务 | 详情 |
+|------|------|
+| 系统内存检测 | Rust: `sysinfo` crate 获取可用 RAM |
+| 动态 LRU 大小 | 根据可用内存调整 thumb cache 上限：>8GB → 2000/500；4-8GB → 1000/250；<4GB → 500/100 |
+| Worker 数量调整 | 缩略图生成并发数随内存动态缩放 |
+| **技术细节** | 应用启动时检测；每 60s 轮询一次；memory pressure 超过 80% 时主动 evict LRU |
+| **验收** | 4GB 机器不 OOM；16GB 机器充分利用缓存 |
+
+##### 5c-4 视频修剪（P2）
+
+| 任务 | 详情 |
+|------|------|
+| 前端 UI | 查看器内视频时间轴 trim bar（拖动 in/out 手柄） |
+| 非破坏性存储 | 编辑参数 JSON: `{ "video_trim_in_sec": 2.5, "video_trim_out_sec": 10.0 }` |
+| 导出渲染 | FFmpeg sidecar: `ffmpeg -i input.mp4 -ss {in} -to {out} -c copy output.mp4` |
+| 播放时应用 | 前端 `<video>` 播放时 `currentTime` 约束在 in/out 范围 |
+| **验收** | 拖动 trim 手柄实时预览；导出的视频时长正确 |
+
+---
+
+#### Phase 5d：平台体验 + 架构改进（3 周，W34–W36）
+
+##### 5d-1 人物分组（P3）
+
+| 任务 | 详情 |
+|------|------|
+| 数据模型 | `person_groups` 表：`id`, `name`, `cover_person_id`；`persons.group_id` FK |
+| 前端 UI | PeopleView 支持拖拽人物到组卡片；组内展开显示成员 |
+| CRUD | 创建/重命名/解散组；设置组封面 |
+| **验收** | 多人可归组；组卡片显示组合头像 |
+
+##### 5d-2 侧边栏固定/收藏（P3）
+
+| 任务 | 详情 |
+|------|------|
+| 固定功能 | 右键菜单 "Pin to sidebar"；侧边栏顶部显示固定项 |
+| 支持类型 | Albums, People, Smart Albums 可固定 |
+| 持久化 | `settings` 表存储 `pinned_items: string[]` |
+| **验收** | 固定项跨重启保持；最多 10 项 |
+
+##### 5d-3 CLI 命令行工具（P3）
+
+| 任务 | 详情 |
+|------|------|
+| 框架 | `clap` derive 宏；子命令: `scan`, `export`, `status`, `dedup` |
+| scan | 指定目录扫描，输出统计信息 |
+| export | 导出编辑后的照片到指定目录 |
+| status | 显示库统计（照片/视频/人脸/去重组数量） |
+| dedup | 列出重复文件并可选删除 |
+| **技术细节** | 独立 binary target `lightframe-cli`（共享 crate 依赖）；不依赖 Tauri/WebView |
+| **验收** | `lightframe-cli scan /path` 正确输出；`lightframe-cli status` 显示统计 |
+
+##### 5d-4 德语 + 多语言扩展框架（P3）
+
+| 任务 | 详情 |
+|------|------|
+| 德语翻译 | 新增 `src/i18n/locales/de.json`；翻译所有 key |
+| 贡献指南 | 文档说明如何贡献新语言翻译 |
+| 动态加载 | i18n 支持运行时切换，不需要重启 |
+| **验收** | 设置中可切换至德语；UI 无缺失 key |
+
+##### 5d-5 Facts vs Choices 架构分离（P2）
+
+| 任务 | 详情 |
+|------|------|
+| 分离定义 | 可重建数据（scan results, thumbs, embeddings）vs 用户数据（favorites, album assoc, person names, edits） |
+| 重建命令 | `rebuild_cache` 命令：清除 facts 表并重新扫描，保留 choices |
+| 数据库标记 | schema 注释标记每张表为 `-- FACT` 或 `-- CHOICE` |
+| **验收** | 执行 rebuild 后用户相簿/收藏/人物名称全部保留 |
+
+---
+
+#### Phase 5 总览
+
+```mermaid
+gantt
+    title Phase 5 功能对齐（12 周）
+    dateFormat YYYY-MM-DD
+
+    section Phase 5a: 性能+媒体
+    Live Photo 支持       :5a1, 2026-10-01, 7d
+    微缩略图+滚动优化    :5a2, 2026-10-01, 7d
+    Filmstrip 导航条      :5a3, after 5a1, 7d
+    Phase 5a 联调         :5a4, after 5a2, 7d
+
+    section Phase 5b: 编辑器
+    去噪/锐化/暗角/清晰度 :5b1, after 5a4, 10d
+    白平衡独立调节        :5b2, after 5b1, 4d
+    黑白模式              :5b3, after 5b2, 7d
+
+    section Phase 5c: 交互
+    长按预览弹窗          :5c1, after 5b3, 5d
+    手动人脸标注          :5c2, after 5c1, 7d
+    内存感知缩略图        :5c3, after 5c1, 5d
+    视频修剪              :5c4, after 5c2, 7d
+
+    section Phase 5d: 平台
+    人物分组              :5d1, after 5c4, 5d
+    侧边栏固定            :5d2, after 5d1, 3d
+    CLI 工具              :5d3, after 5d2, 7d
+    德语+多语言           :5d4, after 5d2, 3d
+    Facts vs Choices      :5d5, after 5d3, 5d
+```
+
+---
+
 ## 7. 附录
 
 ### 7.1 技术依赖与许可证
@@ -844,10 +1060,12 @@ jobs:
 
 | 版本 | 范围 | 说明 | 状态 |
 |------|------|------|------|
-| v0.0.12 | Phase 0–3 + Phase 4 功能增量 | 地图/幻灯片/更新器/语义搜索/人脸 UI 等 | ✅ 当前 |
+| v0.0.18 | Phase 0–4 安全/架构改进 | 代码审查修复、commands 拆分、安全加固 | ✅ 当前 |
 | v0.1.0-beta | Phase 4 完成 | 签名/公证、10万+压测、P0 bug 清零 | ⬜ 目标 |
-| v0.2.0 | Beta 反馈 + HEIC/libheif 可选包 | 体验修复 | 计划中 |
-| v0.3.0 | RAW 预览增强、GPU 加速、MFT/USN 生产化 | 性能增强 | 计划中 |
+| v0.2.0 | Phase 5a | Live Photo、微缩略图、Filmstrip | 计划中 |
+| v0.3.0 | Phase 5b | 编辑器增强（去噪/锐化/暗角/白平衡/黑白） | 计划中 |
+| v0.4.0 | Phase 5c | 交互增强（预览弹窗/手动人脸/视频修剪） | 计划中 |
+| v0.5.0 | Phase 5d | 平台体验（CLI/多语言/架构分离） | 计划中 |
 | v1.0.0 | 稳定版 | 功能完整、性能达标 | 计划中 |
 
 ### 7.4 v0.1.0-beta 剩余工作清单
