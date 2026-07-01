@@ -6,9 +6,10 @@ use std::path::{Path, PathBuf};
 use tauri::http::Response;
 
 const MAX_IMAGE_SIZE: u64 = 100 * 1024 * 1024; // 100MB for images
-const MAX_VIDEO_SIZE: u64 = 500 * 1024 * 1024; // 500MB for videos
-// Entire file is read into memory before serving. Large videos should use convertFileSrc, not original://.
-const MAX_INLINE_READ_BYTES: u64 = 200 * 1024 * 1024;
+// Tauri 2 custom protocol handlers return `Response<Vec<u8>>`; the body is always buffered in memory.
+// Video playback should use `convertFileSrc` (asset protocol), not original://.
+const MAX_VIDEO_SIZE: u64 = 200 * 1024 * 1024; // 200MB for videos
+const MAX_INLINE_READ_BYTES: u64 = 10 * 1024 * 1024; // warn above 10MB in-memory reads
 
 pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
     tracing::debug!("original protocol request: {request_path}");
@@ -326,6 +327,7 @@ mod tests {
             face_detecting: Arc::new(AtomicBool::new(false)),
             dedup_scanning: Arc::new(AtomicBool::new(false)),
             thumb_regenerating: Arc::new(AtomicBool::new(false)),
+            downloading: Arc::new(AtomicBool::new(false)),
             download_cancel: Arc::new(AtomicBool::new(false)),
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: crate::thumb_cache::ThumbCache::new(),
@@ -696,6 +698,7 @@ mod tests {
             face_detecting: Arc::new(AtomicBool::new(false)),
             dedup_scanning: Arc::new(AtomicBool::new(false)),
             thumb_regenerating: Arc::new(AtomicBool::new(false)),
+            downloading: Arc::new(AtomicBool::new(false)),
             download_cancel: Arc::new(AtomicBool::new(false)),
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: crate::thumb_cache::ThumbCache::new(),

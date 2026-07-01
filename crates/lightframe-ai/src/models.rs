@@ -1,3 +1,11 @@
+//! ONNX model definitions and download helpers.
+//!
+//! Each [`ModelInfo`] should have a pinned SHA-256 hash before production release
+//! (target: v0.1.0-beta). When `sha256` is empty, downloads still succeed but
+//! verification is skipped; the computed hash is logged at `WARN` so developers
+//! can copy it into the model definition. Run a verified download once, check
+//! logs for `no sha256 configured; computed hash for pinning`, then pin the hash.
+
 use lightframe_core::config;
 use lightframe_core::{Error, Result};
 use serde::{Deserialize, Serialize};
@@ -24,6 +32,7 @@ pub const CLIP_VISUAL_MODEL: ModelInfo = ModelInfo {
     filename: CLIP_MODEL_FILENAME,
     url: "https://huggingface.co/phineas-bage/clip-vit-b32-onnx/resolve/main/clip-vit-b32-visual.onnx",
     size_mb: 338,
+    // TODO: pin SHA-256 hash before v0.1.0-beta release (compute on first verified download)
     sha256: "",
     description: "CLIP ViT-B/32 visual encoder for image embeddings",
 };
@@ -33,6 +42,7 @@ pub const CLIP_TEXT_MODEL: ModelInfo = ModelInfo {
     filename: CLIP_TEXT_MODEL_FILENAME,
     url: "https://huggingface.co/phineas-bage/clip-vit-b32-onnx/resolve/main/clip-vit-b32-textual.onnx",
     size_mb: 254,
+    // TODO: pin SHA-256 hash before v0.1.0-beta release (compute on first verified download)
     sha256: "",
     description: "CLIP ViT-B/32 text encoder for semantic search",
 };
@@ -42,6 +52,7 @@ pub const FACE_DETECTION_MODEL: ModelInfo = ModelInfo {
     filename: FACE_DETECT_MODEL_FILENAME,
     url: "https://huggingface.co/phineas-bage/insightface-models/resolve/main/scrfd_500m_bnkps.onnx",
     size_mb: 3,
+    // TODO: pin SHA-256 hash before v0.1.0-beta release (compute on first verified download)
     sha256: "",
     description: "SCRFD face detector with landmark keypoints",
 };
@@ -51,6 +62,7 @@ pub const FACE_RECOGNITION_MODEL: ModelInfo = ModelInfo {
     filename: FACE_RECOG_MODEL_FILENAME,
     url: "https://huggingface.co/phineas-bage/insightface-models/resolve/main/w600k_r50.onnx",
     size_mb: 166,
+    // TODO: pin SHA-256 hash before v0.1.0-beta release (compute on first verified download)
     sha256: "",
     description: "ArcFace R50 for face embedding extraction",
 };
@@ -249,9 +261,11 @@ where
     on_progress(downloaded, total_bytes);
 
     if info.sha256.is_empty() {
-        tracing::info!(
+        let actual_hash = compute_file_sha256(&tmp)?;
+        tracing::warn!(
             model = info.name,
-            "no sha256 hash configured; skipping verification"
+            hash = %actual_hash,
+            "no sha256 configured; computed hash for pinning"
         );
     } else {
         verify_file_sha256(&tmp, info.sha256)?;
@@ -262,7 +276,7 @@ where
     Ok(dest)
 }
 
-fn verify_file_sha256(path: &Path, expected: &str) -> Result<()> {
+fn compute_file_sha256(path: &Path) -> Result<String> {
     use sha2::{Digest, Sha256};
 
     let mut file = std::fs::File::open(path).map_err(Error::Io)?;
@@ -275,8 +289,15 @@ fn verify_file_sha256(path: &Path, expected: &str) -> Result<()> {
         }
         hasher.update(&buffer[..n]);
     }
-    let hash = hasher.finalize();
-    let hex = hash.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect())
+}
+
+fn verify_file_sha256(path: &Path, expected: &str) -> Result<()> {
+    let hex = compute_file_sha256(path)?;
 
     if hex.eq_ignore_ascii_case(expected) {
         Ok(())

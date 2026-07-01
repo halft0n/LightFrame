@@ -1,3 +1,4 @@
+use crate::original_protocol::path_is_in_watched_folders;
 use crate::protocol_utils::{cors_headers, error_response, ok_response, strip_scheme_path};
 use crate::state::AppState;
 use http::{StatusCode, header};
@@ -35,10 +36,6 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
         return error_response(StatusCode::BAD_REQUEST, "invalid size");
     };
 
-    if let Some(cached) = state.thumb_cache.get(media_id, size) {
-        return thumb_ok_response(cached, content_type_for(size));
-    }
-
     let media = match state.db.get_media_by_id(media_id) {
         Ok(Some(m)) => m,
         Ok(None) => {
@@ -50,6 +47,29 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
             return error_response(StatusCode::INTERNAL_SERVER_ERROR, "database error");
         }
     };
+
+    let watched_folders = match state.db.list_watched_folders() {
+        Ok(folders) => folders,
+        Err(e) => {
+            tracing::error!("thumb protocol: failed to list watched folders: {e}");
+            return error_response(StatusCode::INTERNAL_SERVER_ERROR, "database error");
+        }
+    };
+
+    let file_path = Path::new(&media.path);
+    let path_plausible = file_path
+        .parent()
+        .map(|p| path_is_in_watched_folders(p, &watched_folders))
+        .unwrap_or(false)
+        || path_is_in_watched_folders(file_path, &watched_folders);
+
+    if !path_plausible {
+        return error_response(StatusCode::FORBIDDEN, "path not allowed");
+    }
+
+    if let Some(cached) = state.thumb_cache.get(media_id, size) {
+        return thumb_ok_response(cached, content_type_for(size));
+    }
 
     if matches!(size, ThumbnailSize::Micro)
         && let Ok(Some(blob)) = state.db.get_micro_thumb(media_id)
@@ -157,6 +177,7 @@ mod tests {
             face_detecting: Arc::new(AtomicBool::new(false)),
             dedup_scanning: Arc::new(AtomicBool::new(false)),
             thumb_regenerating: Arc::new(AtomicBool::new(false)),
+            downloading: Arc::new(AtomicBool::new(false)),
             download_cancel: Arc::new(AtomicBool::new(false)),
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: crate::thumb_cache::ThumbCache::new(),
@@ -277,12 +298,14 @@ mod tests {
 
     #[test]
     fn handle_cache_hit_returns_cached_bytes() {
+        let dir = tempfile::tempdir().unwrap();
         let state = test_state();
+        let media_id = insert_media(&state, dir.path(), Some("cachedhash"));
         let cached = vec![0xFF, 0xD8, 0xFF, 0xD9];
         state
             .thumb_cache
-            .insert(7, ThumbnailSize::Small, cached.clone());
-        let resp = handle(&state, "/7/small");
+            .insert(media_id, ThumbnailSize::Small, cached.clone());
+        let resp = handle(&state, &format!("/{media_id}/small"));
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(*resp.body(), cached);
         assert_eq!(
@@ -295,12 +318,14 @@ mod tests {
 
     #[test]
     fn handle_micro_cache_hit_uses_jpeg_content_type() {
+        let dir = tempfile::tempdir().unwrap();
         let state = test_state();
+        let media_id = insert_media(&state, dir.path(), Some("microhash"));
         let cached = vec![0xFF, 0xD8, 0xFF, 0xD9];
         state
             .thumb_cache
-            .insert(8, ThumbnailSize::Micro, cached.clone());
-        let resp = handle(&state, "/8/micro");
+            .insert(media_id, ThumbnailSize::Micro, cached.clone());
+        let resp = handle(&state, &format!("/{media_id}/micro"));
         assert_eq!(resp.status(), StatusCode::OK);
         assert_eq!(
             resp.headers()
@@ -375,5 +400,44 @@ mod tests {
         let state = test_state();
         let resp = handle(&state, "/../1/small");
         assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn handle_forbidden_outside_watched_folder() {
+        let state = test_state();
+        let watched = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let file = outside.path().join("secret.jpg");
+        std::fs::write(&file, b"fake-jpeg").expect("write source");
+
+        let folder_id = state
+            .db
+            .add_watched_folder(watched.path().to_str().unwrap())
+            .expect("add watched folder")
+            .id;
+        let media = MediaFile {
+            id: 0,
+            path: file.to_string_lossy().to_string(),
+            filename: "secret.jpg".to_string(),
+            media_type: MediaType::Photo,
+            size_bytes: 9,
+            width: Some(100),
+            height: Some(100),
+            created_at: None,
+            modified_at: chrono::NaiveDateTime::default(),
+            blake3_hash: Some("outsidehash".to_string()),
+            dhash: None,
+            phash: None,
+            latitude: None,
+            longitude: None,
+        };
+        let media_id = state
+            .db
+            .upsert_media(folder_id, &media)
+            .expect("upsert media outside watched tree");
+
+        let resp = handle(&state, &format!("/{media_id}/small"));
+        assert_eq!(resp.status(), StatusCode::FORBIDDEN);
+        assert_eq!(String::from_utf8_lossy(resp.body()), "path not allowed");
     }
 }

@@ -308,6 +308,7 @@ mod tests {
                 face_detecting: Arc::new(AtomicBool::new(false)),
                 dedup_scanning: Arc::new(AtomicBool::new(false)),
                 thumb_regenerating: Arc::new(AtomicBool::new(false)),
+                downloading: Arc::new(AtomicBool::new(false)),
                 download_cancel: Arc::new(AtomicBool::new(false)),
                 watch_manager: crate::watcher::WatchManager::new(),
                 thumb_cache: crate::thumb_cache::ThumbCache::new(),

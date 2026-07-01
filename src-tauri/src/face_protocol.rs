@@ -101,6 +101,20 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
 
     // Serve from disk cache after basic security check
     if let Some(cached) = read_face_cache(state, face_id) {
+        // Even on cache hit, verify the source media is still in watched folders
+        let canonical = match std::fs::canonicalize(file_path) {
+            Ok(p) => strip_extended_prefix(p),
+            Err(_) => {
+                return error_response(StatusCode::FORBIDDEN, "path not allowed");
+            }
+        };
+        if !path_is_in_watched_folders(&canonical, &watched_folders) {
+            tracing::warn!(
+                "face protocol: cached face canonical path {} escapes watched folders",
+                canonical.display()
+            );
+            return error_response(StatusCode::FORBIDDEN, "path not allowed");
+        }
         return jpeg_response(cached);
     }
 
@@ -191,6 +205,7 @@ mod tests {
             face_detecting: Arc::new(AtomicBool::new(false)),
             dedup_scanning: Arc::new(AtomicBool::new(false)),
             thumb_regenerating: Arc::new(AtomicBool::new(false)),
+            downloading: Arc::new(AtomicBool::new(false)),
             download_cancel: Arc::new(AtomicBool::new(false)),
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: crate::thumb_cache::ThumbCache::new(),
@@ -354,11 +369,31 @@ mod tests {
         assert_eq!(first.status(), StatusCode::OK);
         assert!(cache_path.exists(), "first request should write face cache");
 
-        std::fs::remove_file(dir.path().join("face_source.jpg")).unwrap();
-
         let second = handle(&state, &format!("/{face_id}"));
         assert_eq!(second.status(), StatusCode::OK);
         assert_eq!(first.body(), second.body());
+
+        let _ = std::fs::remove_file(&cache_path);
+    }
+
+    #[test]
+    fn handle_cache_hit_rejects_when_source_removed() {
+        let state = test_state();
+        let dir = tempfile::tempdir().unwrap();
+        let (face_id, _) = insert_face_media(&state, dir.path(), [20.0, 30.0, 80.0, 90.0]);
+
+        let cache_path = face_cache_path(&state, face_id);
+        let _ = std::fs::remove_file(&cache_path);
+
+        let first = handle(&state, &format!("/{face_id}"));
+        assert_eq!(first.status(), StatusCode::OK);
+        assert!(cache_path.exists());
+
+        std::fs::remove_file(dir.path().join("face_source.jpg")).unwrap();
+
+        let second = handle(&state, &format!("/{face_id}"));
+        assert_eq!(second.status(), StatusCode::FORBIDDEN);
+        assert_eq!(String::from_utf8_lossy(second.body()), "path not allowed");
 
         let _ = std::fs::remove_file(&cache_path);
     }

@@ -2834,6 +2834,53 @@ impl Database {
         Ok(())
     }
 
+    /// Create person records and assign face IDs within a single transaction.
+    /// Returns the new person ID for each cluster, in the same order as `clusters`.
+    pub fn cluster_and_assign_faces(
+        &self,
+        clusters: &[(Vec<i64>, Option<String>)],
+    ) -> lightframe_core::Result<Vec<i64>> {
+        let conn = self.conn()?;
+        conn.execute_batch("BEGIN IMMEDIATE")
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        let result = (|| -> lightframe_core::Result<Vec<i64>> {
+            let mut person_ids = Vec::with_capacity(clusters.len());
+            for (face_ids, name) in clusters {
+                conn.execute("INSERT INTO persons (name) VALUES (?1)", params![name])
+                    .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+                let person_id = conn.last_insert_rowid();
+                for face_id in face_ids {
+                    conn.execute(
+                        "UPDATE face_detections SET person_id = ?1 WHERE id = ?2",
+                        params![person_id, face_id],
+                    )
+                    .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+                }
+                person_ids.push(person_id);
+            }
+            conn.execute(
+                "DELETE FROM persons WHERE (name IS NULL OR TRIM(COALESCE(name, '')) = '')
+                 AND NOT EXISTS (SELECT 1 FROM face_detections WHERE person_id = persons.id)",
+                [],
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+            Ok(person_ids)
+        })();
+
+        match result {
+            Ok(person_ids) => {
+                conn.execute_batch("COMMIT")
+                    .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+                Ok(person_ids)
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                Err(e)
+            }
+        }
+    }
+
     /// Remove unnamed person records that no longer have any assigned faces.
     pub fn delete_empty_unnamed_persons(&self) -> lightframe_core::Result<()> {
         let conn = self.conn()?;
@@ -3000,6 +3047,19 @@ impl Database {
             .map_err(|e| lightframe_core::Error::Database(e.to_string()))
     }
 
+    /// Count media rows with a stored CLIP embedding (for scan guardrails).
+    pub fn count_clip_embeddings(&self) -> lightframe_core::Result<usize> {
+        let conn = self.read_conn()?;
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM media_embeddings WHERE clip_embedding IS NOT NULL",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+        Ok(count as usize)
+    }
+
     pub fn get_all_clip_embeddings(&self) -> lightframe_core::Result<Vec<(i64, Vec<f32>)>> {
         let conn = self.read_conn()?;
         let mut stmt = conn
@@ -3031,6 +3091,10 @@ impl Database {
         threshold: f32,
         limit: usize,
     ) -> lightframe_core::Result<Vec<(i64, f32)>> {
+        let embedding_count = self.count_clip_embeddings()?;
+        guard_embedding_scan(embedding_count)?;
+        let effective_limit = limit.min(SEMANTIC_SEARCH_TOP_K);
+
         let target = self.get_clip_embedding(media_id)?.ok_or_else(|| {
             lightframe_core::Error::Database(format!("no CLIP embedding for media {media_id}"))
         })?;
@@ -3045,7 +3109,7 @@ impl Database {
             &target,
             &candidates,
             threshold,
-            limit,
+            effective_limit,
         ))
     }
 
@@ -3056,8 +3120,12 @@ impl Database {
         threshold: f32,
         limit: usize,
     ) -> lightframe_core::Result<Vec<(MediaFile, f32)>> {
+        let embedding_count = self.count_clip_embeddings()?;
+        guard_embedding_scan(embedding_count)?;
+        let effective_limit = limit.min(SEMANTIC_SEARCH_TOP_K);
+
         let candidates = self.get_all_clip_embeddings()?;
-        let scored = find_similar_embeddings(embedding, &candidates, threshold, limit);
+        let scored = find_similar_embeddings(embedding, &candidates, threshold, effective_limit);
 
         let ids: Vec<i64> = scored.iter().map(|(id, _)| *id).collect();
         let media_by_id = self.get_media_by_ids(&ids)?;
@@ -3446,6 +3514,33 @@ fn blob_to_f32_vec(blob: &[u8]) -> Vec<f32> {
     blob.chunks_exact(4)
         .map(|chunk| f32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]))
         .collect()
+}
+
+/// Maximum number of semantic / similar-media results returned from a linear scan.
+const SEMANTIC_SEARCH_TOP_K: usize = 50;
+const SEMANTIC_SCAN_WARN_THRESHOLD: usize = 50_000;
+const SEMANTIC_SCAN_ABORT_THRESHOLD: usize = 100_000;
+
+fn guard_embedding_scan(embedding_count: usize) -> lightframe_core::Result<()> {
+    if embedding_count > SEMANTIC_SCAN_ABORT_THRESHOLD {
+        tracing::warn!(
+            embedding_count,
+            threshold = SEMANTIC_SCAN_ABORT_THRESHOLD,
+            "semantic search aborted: too many embeddings for linear scan"
+        );
+        return Err(lightframe_core::Error::Database(format!(
+            "too many embeddings ({embedding_count}) for semantic search; \
+             library exceeds {SEMANTIC_SCAN_ABORT_THRESHOLD} limit"
+        )));
+    }
+    if embedding_count > SEMANTIC_SCAN_WARN_THRESHOLD {
+        tracing::warn!(
+            embedding_count,
+            threshold = SEMANTIC_SCAN_WARN_THRESHOLD,
+            "semantic search scanning large embedding set; consider ANN index"
+        );
+    }
+    Ok(())
 }
 
 fn find_similar_embeddings(

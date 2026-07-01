@@ -218,21 +218,24 @@ export function AiSettings() {
   const [downloadProgress, setDownloadProgress] =
     useState<DownloadProgressState | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
+  const [statusError, setStatusError] = useState<string | null>(null);
   const speedSampleRef = useRef<{ downloaded: number; at: number } | null>(
     null,
   );
 
   const loadStatus = useCallback(async () => {
     setLoading(true);
+    setStatusError(null);
     try {
       const next = await getModelStatus();
       setStatus(next);
-    } catch {
+    } catch (err) {
       setStatus(null);
+      setStatusError(localizeError(err, t));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadStatus();
@@ -388,9 +391,18 @@ export function AiSettings() {
           </div>
         </div>
       ) : (
-        <p className="mt-4 text-sm text-neutral-500">
-          {t("ai.statusUnavailable")}
-        </p>
+        <div className="mt-4 space-y-3">
+          {statusError && (
+            <p className="text-sm text-red-600 dark:text-red-400">
+              {statusError}
+            </p>
+          )}
+          {!statusError && (
+            <p className="text-sm text-neutral-500">
+              {t("ai.statusUnavailable")}
+            </p>
+          )}
+        </div>
       )}
     </section>
   );

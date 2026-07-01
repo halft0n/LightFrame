@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import {
   getMediaById,
-  getOriginalUrl,
   getThumbnailUrl,
   type MediaItem,
 } from "@/lib/tauri";
@@ -22,7 +22,7 @@ const CONTROLS_HIDE_MS = 2000;
 
 function mediaSrc(media: MediaItem): string {
   return media.media_type === "Video"
-    ? getOriginalUrl(media.path)
+    ? convertFileSrc(media.path)
     : getThumbnailUrl(media.id, "large");
 }
 

@@ -167,9 +167,15 @@ export function PhotoGrid({
     overscan: 3,
   });
 
+  const prevLayoutRef = useRef({ columnCount: 0, rowHeight: 0 });
+
   useEffect(() => {
-    rowVirtualizer.measure();
-  }, [rowHeight, columnCount, rowVirtualizer]);
+    const prev = prevLayoutRef.current;
+    if (prev.columnCount !== columnCount || prev.rowHeight !== rowHeight) {
+      prevLayoutRef.current = { columnCount, rowHeight };
+      rowVirtualizer.measure();
+    }
+  }, [columnCount, rowHeight, rowVirtualizer]);
 
   useEffect(() => {
     if (!useStoreScroll) return;

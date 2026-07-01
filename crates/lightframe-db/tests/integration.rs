@@ -2168,6 +2168,49 @@ fn get_person_media_and_list_persons() {
 }
 
 #[test]
+fn cluster_and_assign_faces_creates_persons_and_assigns_faces() {
+    let db = create_test_db();
+    let fid = insert_folder_id(&db, "/photos");
+
+    let media_a = db
+        .upsert_media(fid, &sample_media("/photos/a.jpg"))
+        .unwrap();
+    let media_b = db
+        .upsert_media(fid, &sample_media("/photos/b.jpg"))
+        .unwrap();
+
+    db.store_face_detections(
+        media_a,
+        &[FaceDetectionInput {
+            bbox: [0.0, 0.0, 10.0, 10.0],
+            confidence: 0.9,
+            embedding: vec![1.0, 0.0],
+        }],
+    )
+    .unwrap();
+    db.store_face_detections(
+        media_b,
+        &[FaceDetectionInput {
+            bbox: [0.0, 0.0, 10.0, 10.0],
+            confidence: 0.9,
+            embedding: vec![0.9, 0.1],
+        }],
+    )
+    .unwrap();
+
+    let face_a = db.get_faces_for_media(media_a).unwrap()[0].id;
+    let face_b = db.get_faces_for_media(media_b).unwrap()[0].id;
+
+    let person_ids = db
+        .cluster_and_assign_faces(&[(vec![face_a], None), (vec![face_b], None)])
+        .unwrap();
+    assert_eq!(person_ids.len(), 2);
+    assert_eq!(db.get_person_face_count(person_ids[0]).unwrap(), 1);
+    assert_eq!(db.get_person_face_count(person_ids[1]).unwrap(), 1);
+    assert_eq!(db.get_persons_count().unwrap(), 2);
+}
+
+#[test]
 fn list_media_without_clip_embedding_and_get_all_clip_embeddings() {
     let db = create_test_db();
     let fid = insert_folder_id(&db, "/photos");

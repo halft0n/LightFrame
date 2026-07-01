@@ -1,4 +1,4 @@
-import { useSyncExternalStore, useMemo } from "react";
+import { useSyncExternalStore, useRef, useCallback } from "react";
 import type { MediaItem, ScanProgress, WatchedFolder } from "@/lib/tauri";
 import { getMediaCount, getMediaPage } from "@/lib/tauri";
 
@@ -472,7 +472,53 @@ export function useAppStore(): AppState {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
+function shallowEqual<T>(a: T, b: T): boolean {
+  if (Object.is(a, b)) return true;
+  if (
+    typeof a !== "object" ||
+    typeof b !== "object" ||
+    a === null ||
+    b === null
+  ) {
+    return false;
+  }
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (!Object.is(a[i], b[i])) return false;
+    }
+    return true;
+  }
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const recordA = a as Record<string, unknown>;
+  const recordB = b as Record<string, unknown>;
+  const keysA = Object.keys(recordA);
+  if (keysA.length !== Object.keys(recordB).length) return false;
+  for (const key of keysA) {
+    if (!Object.is(recordA[key], recordB[key])) return false;
+  }
+  return true;
+}
+
 export function useAppStoreSelector<T>(selector: (state: AppState) => T): T {
-  const state = useAppStore();
-  return useMemo(() => selector(state), [state, selector]);
+  const selectorRef = useRef(selector);
+  selectorRef.current = selector;
+
+  const selectedRef = useRef<T | undefined>(undefined);
+
+  const getSelectedSnapshot = useCallback(() => {
+    const next = selectorRef.current(getSnapshot());
+    const prev = selectedRef.current;
+    if (prev !== undefined && shallowEqual(prev, next)) {
+      return prev;
+    }
+    selectedRef.current = next;
+    return next;
+  }, []);
+
+  return useSyncExternalStore(
+    subscribe,
+    getSelectedSnapshot,
+    getSelectedSnapshot,
+  );
 }
