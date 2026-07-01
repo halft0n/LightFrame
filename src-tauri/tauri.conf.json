@@ -19,8 +19,7 @@
         "minHeight": 600,
         "decorations": true,
         "resizable": true,
-        "fullscreen": false,
-        "additionalBrowserArgs": "--disable-background-networking --disable-component-update"
+        "fullscreen": false
       }
     ],
     "security": {

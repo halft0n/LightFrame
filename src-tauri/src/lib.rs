@@ -21,7 +21,19 @@ use std::sync::Arc;
 use tauri::Manager;
 
 pub fn run() {
-    let app_state = AppState::new().expect("failed to initialize application state");
+    let app_state = match AppState::new() {
+        Ok(state) => state,
+        Err(e) => {
+            let msg = format!("LightFrame failed to start: {e}");
+            eprintln!("{msg}");
+            if let Some(dir) = dirs::data_local_dir() {
+                let crash_log = dir.join("lightframe").join("crash.log");
+                let _ = std::fs::create_dir_all(crash_log.parent().unwrap());
+                let _ = std::fs::write(&crash_log, &msg);
+            }
+            std::process::exit(1);
+        }
+    };
     let _guard = logging::init_logging(&app_state.config.log);
 
     tauri::Builder::default()
