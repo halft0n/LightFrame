@@ -10,6 +10,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - (nothing yet)
 
+## [0.0.19] - 2026-07-01
+
+### Added
+- **Person Groups**: `person_groups` table (v16 migration), CRUD operations, drag-and-drop grouping UI in PeopleView
+- **Sidebar Pinning**: Pin albums, people, and smart albums to sidebar (max 10); persistent `settings` table; transactional pin/unpin; context menus
+- **CLI Tool**: New `lightframe-cli` binary (`status`, `scan`, `export`, `dedup` subcommands); DB-aware `dedup --delete`
+- **German i18n**: Complete `de.json` translation (394+ keys); 3-locale framework with runtime switching; locale picker in Settings
+- **Facts vs Choices**: `rebuild_cache` with persistent staging tables; selective preservation of favorites, albums, manual faces, edit parameters; background post-scan restore; startup crash recovery
+
+### Changed
+- `rebuild_cache` now triggers automatic rescan and waits for completion before restoring user choices
+- Pin operations use `BEGIN IMMEDIATE` transactions to prevent race conditions
+- Person group commands validate group membership and existence
+- CLI `dedup --delete` synchronizes deletions with the database
+
+### Tests
+- Rust: 737 tests (up from 683)
+- Frontend: 639 tests (up from 636)
+- Total: 1376
+
+## [0.0.18] - 2026-07-01
+
+### Added
+- **Phase 5a**: Micro-first thumbnail loading, Filmstrip strip navigation, Live Photo support (paired MOV detection + playback)
+- **Phase 5b**: AI model download manager, parallel scan pipeline (0.7×CPU cores), database reset command, dhash/phash integer-to-hex migration
+- **Phase 5c**: Long-press preview popup, manual face annotation, memory-aware thumbnail budget, video trim with FFmpeg
+
+### Fixed
+- Scroll-intent ref lifecycle in PhotoGrid (useScrollIntent hook)
+- Memory pressure detection using `is_under_pressure` for live state
+- Code review fixes across all phases (validation, error handling, test coverage)
+
+### Tests
+- Rust: 683 tests (up from 643)
+- Frontend: 636 tests (up from 561)
+- Total: 1319
+
 ## [0.0.17] - 2026-07-01
 
 ### Fixed
