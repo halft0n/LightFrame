@@ -44,14 +44,38 @@ jobs:
       - run: pnpm build
 
       - name: Run benchmarks
-        run: cargo bench --workspace -- --output-format bencher | tee bench-output.txt
+        run: cargo bench --workspace 2>&1 | tee bench-full-output.txt
+
+      - name: Extract Criterion results for benchmark-action
+        run: |
+          python3 -c "
+          import re, json
+
+          results = []
+          with open('bench-full-output.txt') as f:
+              for line in f:
+                  m = re.match(r'^(\S+)\s+time:\s+\[[\d.]+ \S+ ([\d.]+) (\S+) [\d.]+ \S+\]', line)
+                  if m:
+                      name, value, unit = m.group(1), float(m.group(2)), m.group(3)
+                      if 'µs' in unit or 'us' in unit:
+                          value *= 1000
+                      elif 'ms' in unit:
+                          value *= 1_000_000
+                      elif unit == 's':
+                          value *= 1_000_000_000
+                      results.append({'name': name, 'unit': 'ns', 'value': value})
+
+          with open('bench-output.json', 'w') as f:
+              json.dump(results, f, indent=2)
+          print(f'Extracted {len(results)} benchmark results')
+          "
 
       - name: Store benchmark result
         uses: benchmark-action/github-action-benchmark@v1
         with:
           name: LightFrame Benchmarks
-          tool: cargo
-          output-file-path: bench-output.txt
+          tool: customSmallerIsBetter
+          output-file-path: bench-output.json
           github-token: ${{ secrets.GITHUB_TOKEN }}
           alert-threshold: '110%'
           comment-on-alert: true
