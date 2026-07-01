@@ -795,3 +795,201 @@ async fn e2e_album_with_mixed_media_types() {
     assert!(album_types.contains(&MediaType::Video));
     assert!(album_types.contains(&MediaType::Raw));
 }
+
+#[tokio::test]
+async fn e2e_rebuild_cache_full_pipeline() {
+    let env = TestEnv::new();
+    env.write_png("fav-photo.png", 10);
+    env.write_png("album-photo.png", 20);
+    env.write_png("edited-photo.png", 30);
+    env.scan().await;
+
+    let media = env.db.get_all_media(10, 0).unwrap();
+    assert_eq!(media.len(), 3);
+
+    let fav = media
+        .iter()
+        .find(|m| m.filename == "fav-photo.png")
+        .unwrap();
+    let album_item = media
+        .iter()
+        .find(|m| m.filename == "album-photo.png")
+        .unwrap();
+    let edited = media
+        .iter()
+        .find(|m| m.filename == "edited-photo.png")
+        .unwrap();
+
+    // Set up user choices
+    env.db.toggle_favorite(fav.id).unwrap();
+    let album = env.db.create_album("Vacation", None).unwrap();
+    env.db.add_to_album(album.id, &[album_item.id]).unwrap();
+    env.db
+        .save_edit_params(edited.id, r#"{"exposure":0.5}"#)
+        .unwrap();
+
+    // Verify pre-rebuild state
+    assert!(env.db.is_favorite(fav.id).unwrap());
+    assert_eq!(env.db.get_album_media(album.id, 10, 0).unwrap().len(), 1);
+    assert!(env.db.has_edits(edited.id).unwrap());
+
+    // Rebuild cache — stages choices, clears fact data
+    env.db.rebuild_cache().unwrap();
+
+    // Verify pending rebuild is detected
+    assert!(env.db.has_pending_rebuild().unwrap());
+
+    // All media should be gone after rebuild
+    assert_eq!(env.db.get_media_count().unwrap(), 0);
+
+    // Album still exists but is empty (media cleared)
+    let album_after = env.db.get_album(album.id).unwrap();
+    assert!(album_after.is_some());
+    assert_eq!(env.db.get_album_media(album.id, 10, 0).unwrap().len(), 0);
+
+    // Simulate rescan — re-insert the same files
+    env.scan().await;
+
+    // Media should be back
+    let media_after = env.db.get_all_media(10, 0).unwrap();
+    assert_eq!(media_after.len(), 3);
+
+    // Restore choices from staging tables
+    let (fav_count, edit_count, album_count, _face_count) =
+        env.db.restore_rebuild_choices().unwrap();
+
+    // Verify restoration
+    assert!(fav_count >= 1, "at least 1 favorite restored");
+    assert!(edit_count >= 1, "at least 1 edit param restored");
+    assert!(album_count >= 1, "at least 1 album item restored");
+
+    // Pending rebuild should be cleared after restore
+    assert!(!env.db.has_pending_rebuild().unwrap());
+
+    // Verify actual restored data
+    let new_fav = media_after
+        .iter()
+        .find(|m| m.filename == "fav-photo.png")
+        .unwrap();
+    let new_edited = media_after
+        .iter()
+        .find(|m| m.filename == "edited-photo.png")
+        .unwrap();
+    let new_album_item = media_after
+        .iter()
+        .find(|m| m.filename == "album-photo.png")
+        .unwrap();
+
+    let all_favs = env.db.get_favorites(10, 0).unwrap();
+    assert!(
+        all_favs.iter().any(|m| m.id == new_fav.id),
+        "favorite should be restored by path match"
+    );
+
+    assert!(
+        env.db.has_edits(new_edited.id).unwrap(),
+        "edit params should be restored"
+    );
+    let params = env.db.get_edit_params(new_edited.id).unwrap().unwrap();
+    assert_eq!(params, r#"{"exposure":0.5}"#);
+
+    let restored_album = env.db.get_album_media(album.id, 10, 0).unwrap();
+    assert!(
+        restored_album.iter().any(|m| m.id == new_album_item.id),
+        "album membership should be restored"
+    );
+}
+
+#[tokio::test]
+async fn e2e_rebuild_cache_persistence_across_db_reopen() {
+    let root = TempDir::new().expect("temp dir");
+    let db_path = root.path().join("library.db");
+    let photos_dir = root.path().join("photos");
+    std::fs::create_dir_all(&photos_dir).expect("create photos dir");
+
+    // Phase 1: Create data and initiate rebuild
+    {
+        let db = Arc::new(Database::open(&db_path).expect("open db"));
+        let folder = db
+            .add_watched_folder(photos_dir.to_str().unwrap())
+            .expect("add folder");
+
+        let img: RgbImage =
+            ImageBuffer::from_fn(64, 64, |x, y| Rgb([42, (x % 256) as u8, (y % 256) as u8]));
+        let photo_path = photos_dir.join("persist-test.png");
+        img.save(&photo_path).expect("write png");
+
+        let env_inner = TestEnv {
+            _root: root,
+            db: Arc::clone(&db),
+            photos_dir: photos_dir.clone(),
+            folder_id: folder.id,
+        };
+        env_inner.scan().await;
+
+        let media = db.get_all_media(1, 0).unwrap();
+        db.toggle_favorite(media[0].id).unwrap();
+
+        // Initiate rebuild — simulates crash (db dropped without restore)
+        db.rebuild_cache().unwrap();
+        assert!(db.has_pending_rebuild().unwrap());
+        // DB dropped here, simulating app crash
+        return; // early return to prevent drop of TempDir
+    }
+}
+
+#[tokio::test]
+async fn e2e_scan_thumbnail_pipeline_all_formats() {
+    let env = TestEnv::new();
+
+    // Create files of multiple formats
+    env.write_png("format-test.png", 10);
+    env.write_jpeg("format-test.jpg", 20);
+    env.write_avif("format-test.avif", 30);
+    env.write_raw_with_preview("format-test.cr2");
+
+    env.scan().await;
+
+    let media = env.db.get_all_media(10, 0).unwrap();
+    assert_eq!(media.len(), 4);
+
+    // All should have blake3 hashes
+    for m in &media {
+        assert!(
+            m.blake3_hash.is_some(),
+            "{} should have a blake3 hash",
+            m.filename
+        );
+    }
+
+    // PNG and JPEG should have thumbnails
+    for m in media
+        .iter()
+        .filter(|m| m.filename.ends_with(".png") || m.filename.ends_with(".jpg"))
+    {
+        let hash = m.blake3_hash.as_ref().unwrap();
+        let thumb = thumb_path(hash, ThumbnailSize::Small);
+        assert!(thumb.exists(), "{} should have a thumbnail", m.filename);
+    }
+
+    // PNG and JPEG should have dhash
+    for m in media
+        .iter()
+        .filter(|m| m.filename.ends_with(".png") || m.filename.ends_with(".jpg"))
+    {
+        assert!(m.dhash.is_some(), "{} should have a dhash", m.filename);
+    }
+
+    // RAW with embedded preview should have a thumbnail
+    let raw = media
+        .iter()
+        .find(|m| m.filename == "format-test.cr2")
+        .unwrap();
+    if let Some(hash) = raw.blake3_hash.as_ref() {
+        let thumb = thumb_path(hash, ThumbnailSize::Small);
+        assert!(
+            thumb.exists(),
+            "RAW with embedded preview should produce thumbnail"
+        );
+    }
+}

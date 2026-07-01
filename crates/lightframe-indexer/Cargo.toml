@@ -14,6 +14,11 @@ walkdir = "2"
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem", "Win32_Foundation", "Win32_System_IO", "Win32_System_Ioctl"] }
 
+[[bench]]
+name = "scan_bench"
+harness = false
+
 [dev-dependencies]
-tokio = { workspace = true, features = ["rt", "macros"] }
+criterion = { version = "0.5", features = ["html_reports"] }
+tokio = { workspace = true, features = ["rt", "macros", "rt-multi-thread"] }
 tempfile = "3"
