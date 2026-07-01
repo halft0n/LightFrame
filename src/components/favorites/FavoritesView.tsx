@@ -3,6 +3,7 @@ import { PhotoCard } from "@/components/gallery/PhotoCard";
 import { getFavorites, getFavoritesCount, type MediaItem } from "@/lib/tauri";
 import { openViewer } from "@/store/appStore";
 import { useTranslation } from "@/i18n/useTranslation";
+import { useScrollIntent } from "@/hooks/useScrollIntent";
 
 const MIN_COLUMN_WIDTH = 160;
 const GAP = 3;
@@ -11,6 +12,7 @@ const PAGE_SIZE = 60;
 export function FavoritesView() {
   const { t } = useTranslation();
   const parentRef = useRef<HTMLDivElement>(null);
+  const scrollIntent = useScrollIntent(parentRef);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -126,6 +128,7 @@ export function FavoritesView() {
                 selectedMediaIds={[]}
                 onSelect={() => openViewer(item.id)}
                 onOpen={openViewer}
+                scrollIntent={scrollIntent}
               />
             ))}
           </div>

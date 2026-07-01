@@ -28,19 +28,27 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn().mockResolvedValue(() => {}),
 }));
+let mockScrollIntent: import("@/hooks/useScrollIntent").ScrollIntent = "idle";
+vi.mock("@/hooks/useScrollIntent", () => ({
+  useScrollIntent: () => mockScrollIntent,
+}));
+let lastVirtualizerOverscan = 0;
 vi.mock("@tanstack/react-virtual", () => ({
-  useVirtualizer: ({ count }: { count: number }) => ({
-    getTotalSize: () => Math.max(count, 1) * 120,
-    getVirtualItems: () =>
-      Array.from({ length: count }, (_, index) => ({
-        key: index,
-        index,
-        start: index * 120,
-        size: 120,
-      })),
-    measure: vi.fn(),
-    range: { startIndex: 0, endIndex: Math.max(count - 1, 0) },
-  }),
+  useVirtualizer: ({ count, overscan }: { count: number; overscan?: number }) => {
+    lastVirtualizerOverscan = overscan ?? 0;
+    return {
+      getTotalSize: () => Math.max(count, 1) * 120,
+      getVirtualItems: () =>
+        Array.from({ length: count }, (_, index) => ({
+          key: index,
+          index,
+          start: index * 120,
+          size: 120,
+        })),
+      measure: vi.fn(),
+      range: { startIndex: 0, endIndex: Math.max(count - 1, 0) },
+    };
+  },
 }));
 vi.mock("@/lib/tauri", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/tauri")>();
@@ -424,6 +432,8 @@ describe("PhotoGrid scroll intent integration", () => {
     vi.clearAllMocks();
     setLocale("zh-CN");
     resetStore();
+    mockScrollIntent = "idle";
+    lastVirtualizerOverscan = 0;
     Object.defineProperty(HTMLElement.prototype, "clientWidth", {
       configurable: true,
       get: () => 800,
@@ -440,7 +450,8 @@ describe("PhotoGrid scroll intent integration", () => {
     modified_at: "2024-01-01T00:00:00",
   }));
 
-  it("renders PhotoCard components with scrollIntent prop", async () => {
+  it("passes overscan=5 to virtualizer during idle scroll", async () => {
+    mockScrollIntent = "idle";
     setMedia(items, 50);
     render(<PhotoGrid />);
     lastResizeObserver?.trigger(800);
@@ -449,12 +460,11 @@ describe("PhotoGrid scroll intent integration", () => {
       expect(screen.getByRole("grid")).toBeInTheDocument();
     });
 
-    // PhotoCards should render (scroll intent passed through from PhotoGrid)
-    const cells = screen.getAllByRole("gridcell");
-    expect(cells.length).toBeGreaterThan(0);
+    expect(lastVirtualizerOverscan).toBe(5);
   });
 
-  it("uses larger overscan during slow/idle scrolling", async () => {
+  it("passes overscan=5 to virtualizer during slow scroll", async () => {
+    mockScrollIntent = "slow";
     setMedia(items, 50);
     render(<PhotoGrid />);
     lastResizeObserver?.trigger(800);
@@ -463,8 +473,64 @@ describe("PhotoGrid scroll intent integration", () => {
       expect(screen.getByRole("grid")).toBeInTheDocument();
     });
 
-    // During idle/slow scroll (default), more items should be pre-rendered
+    expect(lastVirtualizerOverscan).toBe(5);
+  });
+
+  it("passes overscan=3 to virtualizer during medium scroll", async () => {
+    mockScrollIntent = "medium";
+    setMedia(items, 50);
+    render(<PhotoGrid />);
+    lastResizeObserver?.trigger(800);
+
+    await waitFor(() => {
+      expect(screen.getByRole("grid")).toBeInTheDocument();
+    });
+
+    expect(lastVirtualizerOverscan).toBe(3);
+  });
+
+  it("passes overscan=1 to virtualizer during fast scroll", async () => {
+    mockScrollIntent = "fast";
+    setMedia(items, 50);
+    render(<PhotoGrid />);
+    lastResizeObserver?.trigger(800);
+
+    await waitFor(() => {
+      expect(screen.getByRole("grid")).toBeInTheDocument();
+    });
+
+    expect(lastVirtualizerOverscan).toBe(1);
+  });
+
+  it("passes overscan=0 to virtualizer during burst scroll", async () => {
+    mockScrollIntent = "burst";
+    setMedia(items, 50);
+    render(<PhotoGrid />);
+    lastResizeObserver?.trigger(800);
+
+    await waitFor(() => {
+      expect(screen.getByRole("grid")).toBeInTheDocument();
+    });
+
+    expect(lastVirtualizerOverscan).toBe(0);
+  });
+
+  it("passes scrollIntent prop to PhotoCard components", async () => {
+    mockScrollIntent = "burst";
+    setMedia(items, 50);
+    render(<PhotoGrid />);
+    lastResizeObserver?.trigger(800);
+
+    await waitFor(() => {
+      expect(screen.getByRole("grid")).toBeInTheDocument();
+    });
+
+    // PhotoCards render — with burst intent, they should defer full-size loading
+    // (only micro thumbnail src rendered, no /small or /large src)
     const cells = screen.getAllByRole("gridcell");
-    expect(cells.length).toBeGreaterThanOrEqual(items.length > 10 ? 10 : items.length);
+    expect(cells.length).toBeGreaterThan(0);
+
+    // Verify overscan is 0 for burst (PhotoCards won't over-fetch)
+    expect(lastVirtualizerOverscan).toBe(0);
   });
 });

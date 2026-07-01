@@ -282,5 +282,108 @@ describe("PhotoCard", () => {
 
       expect(screen.queryByText("LIVE")).not.toBeInTheDocument();
     });
+
+    it("shows error UI when both micro and full thumbnails fail", () => {
+      render(
+        <PhotoCard
+          item={photoItem}
+          selected={false}
+          selectedMediaIds={[]}
+          onSelect={vi.fn()}
+          thumbnailSize="small"
+        />,
+      );
+
+      // Get micro img and trigger error
+      const imgs = screen.getAllByRole("img", { hidden: true });
+      const microImg = imgs.find(
+        (el) => (el as HTMLImageElement).src.includes("/micro"),
+      ) as HTMLImageElement;
+      fireEvent.error(microImg);
+
+      // Now get the full-size img and trigger error too
+      const updatedImgs = screen.getAllByRole("img", { hidden: true });
+      const fullImg = updatedImgs.find(
+        (el) => (el as HTMLImageElement).src.includes("/small"),
+      ) as HTMLImageElement;
+      fireEvent.error(fullImg);
+
+      // Error UI should show (thumbnail error placeholder)
+      expect(
+        screen.getByRole("img", { name: /thumbnail.*failed/i }),
+      ).toBeInTheDocument();
+    });
+
+    it("defers full-size load when scrollIntent is burst", () => {
+      render(
+        <PhotoCard
+          item={photoItem}
+          selected={false}
+          selectedMediaIds={[]}
+          onSelect={vi.fn()}
+          thumbnailSize="small"
+          scrollIntent="burst"
+        />,
+      );
+
+      // Micro img should load
+      const microImg = screen.getByRole("img", {
+        hidden: true,
+      }) as HTMLImageElement;
+      expect(microImg.src).toContain("/micro");
+
+      // Simulate micro loaded
+      fireEvent.load(microImg);
+
+      // Full-size img should NOT be present during burst
+      const allImgs = screen
+        .getAllByRole("img", { hidden: true })
+        .map((el) => (el as HTMLImageElement).src);
+      expect(allImgs.some((src) => src.includes("/small"))).toBe(false);
+    });
+
+    it("loads full-size after scroll intent changes from burst to idle", () => {
+      const { rerender } = render(
+        <PhotoCard
+          item={photoItem}
+          selected={false}
+          selectedMediaIds={[]}
+          onSelect={vi.fn()}
+          thumbnailSize="small"
+          scrollIntent="burst"
+        />,
+      );
+
+      // Load micro
+      const microImg = screen.getByRole("img", {
+        hidden: true,
+      }) as HTMLImageElement;
+      fireEvent.load(microImg);
+
+      // No full img during burst
+      expect(
+        screen
+          .getAllByRole("img", { hidden: true })
+          .some((el) => (el as HTMLImageElement).src.includes("/small")),
+      ).toBe(false);
+
+      // Re-render with idle intent
+      rerender(
+        <PhotoCard
+          item={photoItem}
+          selected={false}
+          selectedMediaIds={[]}
+          onSelect={vi.fn()}
+          thumbnailSize="small"
+          scrollIntent="idle"
+        />,
+      );
+
+      // Full img should now be present
+      const imgs = screen
+        .getAllByRole("img", { hidden: true })
+        .map((el) => (el as HTMLImageElement).src);
+      expect(imgs.some((src) => src.includes("/small"))).toBe(true);
+    });
   });
 });

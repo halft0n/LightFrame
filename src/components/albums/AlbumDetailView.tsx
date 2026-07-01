@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PhotoCard } from "@/components/gallery/PhotoCard";
 import { SelectionToolbar } from "@/components/gallery/SelectionToolbar";
+import { useScrollIntent } from "@/hooks/useScrollIntent";
 import {
   addToAlbum,
   getAlbumMedia,
@@ -31,6 +32,7 @@ export function AlbumDetailView() {
   const { selectedAlbumId, selectedMediaIds } = useAppStore();
   const parentRef = useRef<HTMLDivElement>(null);
   const lastSelectedRef = useRef<number | null>(null);
+  const scrollIntent = useScrollIntent(parentRef);
   const [album, setAlbum] = useState<Album | null>(null);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -263,6 +265,7 @@ export function AlbumDetailView() {
                   selectedMediaIds={selectedMediaIds}
                   onSelect={handleSelect}
                   onOpen={openViewer}
+                  scrollIntent={scrollIntent}
                 />
                 <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition group-hover:opacity-100">
                   <button

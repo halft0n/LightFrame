@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PhotoCard } from "@/components/gallery/PhotoCard";
+import { useScrollIntent } from "@/hooks/useScrollIntent";
 import {
   getDeletedMedia,
   permanentlyDelete,
@@ -15,6 +16,7 @@ const GAP = 3;
 export function DeletedView() {
   const { t } = useTranslation();
   const parentRef = useRef<HTMLDivElement>(null);
+  const scrollIntent = useScrollIntent(parentRef);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -106,6 +108,7 @@ export function DeletedView() {
                     if (!e.ctrlKey && !e.metaKey && !e.shiftKey)
                       openViewer(item.id);
                   }}
+                  scrollIntent={scrollIntent}
                   onOpen={openViewer}
                 />
                 <div className="absolute inset-x-0 bottom-0 flex gap-1 bg-gradient-to-t from-black/90 to-transparent p-2 opacity-0 transition group-hover:opacity-100">

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PhotoCard } from "@/components/gallery/PhotoCard";
+import { useScrollIntent } from "@/hooks/useScrollIntent";
 import {
   getScreenshotCount,
   getScreenshots,
@@ -32,6 +33,7 @@ function categoryLabelKey(category: ScreenshotCategory): string {
 export function ScreenshotView() {
   const { t } = useTranslation();
   const parentRef = useRef<HTMLDivElement>(null);
+  const scrollIntent = useScrollIntent(parentRef);
   const [category, setCategory] = useState<ScreenshotCategory>("all");
   const [screenshots, setScreenshots] = useState<MediaItem[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -167,6 +169,7 @@ export function ScreenshotView() {
                 selected={false}
                 selectedMediaIds={[]}
                 onSelect={() => openViewer(item.id)}
+                scrollIntent={scrollIntent}
                 onOpen={openViewer}
               />
             ))}

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PhotoCard } from "@/components/gallery/PhotoCard";
+import { useScrollIntent } from "@/hooks/useScrollIntent";
 import {
   getSmartAlbumMedia,
   listSmartAlbums,
@@ -21,6 +22,7 @@ export function SmartAlbumView() {
   const { t } = useTranslation();
   const { selectedSmartAlbumId } = useAppStore();
   const parentRef = useRef<HTMLDivElement>(null);
+  const scrollIntent = useScrollIntent(parentRef);
   const [album, setAlbum] = useState<SmartAlbum | null>(null);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -156,6 +158,7 @@ export function SmartAlbumView() {
                 selected={false}
                 selectedMediaIds={[]}
                 onSelect={() => openViewer(item.id)}
+                scrollIntent={scrollIntent}
                 onOpen={openViewer}
               />
             ))}

@@ -25,7 +25,7 @@ const makeItem = (id: number): MediaItem => ({
 
 describe("Filmstrip", () => {
   const items = Array.from({ length: 20 }, (_, i) => makeItem(i + 1));
-  let onNavigate: ReturnType<typeof vi.fn>;
+  let onNavigate: ReturnType<typeof vi.fn<(id: number) => void>>;
 
   beforeEach(() => {
     onNavigate = vi.fn();

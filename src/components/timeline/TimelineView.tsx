@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PhotoCard } from "@/components/gallery/PhotoCard";
+import { useScrollIntent } from "@/hooks/useScrollIntent";
 import {
   getTimelineGroups,
   type MediaItem,
@@ -139,6 +140,7 @@ function timelineCursorFromGroups(groups: TimelineGroup[]) {
 export function TimelineView() {
   const { t, locale } = useTranslation();
   const parentRef = useRef<HTMLDivElement>(null);
+  const scrollIntent = useScrollIntent(parentRef);
   const [groups, setGroups] = useState<TimelineGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -356,6 +358,7 @@ export function TimelineView() {
                       selectedMediaIds={[]}
                       onSelect={() => openViewer(item.id)}
                       onOpen={openViewer}
+                      scrollIntent={scrollIntent}
                     />
                   ))}
                   {Array.from(

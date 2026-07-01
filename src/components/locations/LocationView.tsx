@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PhotoCard } from "@/components/gallery/PhotoCard";
+import { useScrollIntent } from "@/hooks/useScrollIntent";
 import {
   getLocationGroups,
   getLocationStats,
@@ -114,6 +115,7 @@ const LocationGroupCard = memo(function LocationGroupCard({
 export function LocationView() {
   const { t } = useTranslation();
   const parentRef = useRef<HTMLDivElement>(null);
+  const scrollIntent = useScrollIntent(parentRef);
   const [groups, setGroups] = useState<LocationGroup[]>([]);
   const [stats, setStats] = useState<LocationStats | null>(null);
   const [loading, setLoading] = useState(true);
@@ -318,6 +320,7 @@ export function LocationView() {
                   selected={false}
                   selectedMediaIds={[]}
                   onSelect={handlePhotoSelect}
+                  scrollIntent={scrollIntent}
                   onOpen={openViewer}
                 />
               ))}

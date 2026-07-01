@@ -3791,4 +3791,29 @@ mod tests {
             .unwrap();
         assert_eq!(media_type, "Photo");
     }
+
+    #[test]
+    fn get_all_media_excludes_live_mov_companions() {
+        let db = test_db();
+        let folder_id = db.add_watched_folder("/live_photos").unwrap().id;
+
+        let mut still = sample_media("/live_photos/IMG_010.HEIC");
+        still.media_type = MediaType::Photo;
+        let still_id = db.upsert_media(folder_id, &still).unwrap();
+
+        let mut video = sample_media("/live_photos/IMG_010.MOV");
+        video.media_type = MediaType::Video;
+        let video_id = db.upsert_media(folder_id, &video).unwrap();
+
+        // Before pairing, both visible
+        let all_before = db.get_all_media(100, 0).unwrap();
+        assert_eq!(all_before.len(), 2);
+
+        // After pairing, MOV is hidden
+        db.set_live_pair(still_id, video_id).unwrap();
+        let all_after = db.get_all_media(100, 0).unwrap();
+        assert_eq!(all_after.len(), 1);
+        assert_eq!(all_after[0].id, still_id);
+        assert_eq!(all_after[0].media_type, MediaType::LivePhoto);
+    }
 }

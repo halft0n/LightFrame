@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PhotoCard } from "@/components/gallery/PhotoCard";
+import { useScrollIntent } from "@/hooks/useScrollIntent";
 import {
   searchMedia,
   searchMediaCount,
@@ -74,6 +75,7 @@ export function SearchResultsView() {
   const { t } = useTranslation();
   const { searchQuery, searchMode } = useAppStore();
   const parentRef = useRef<HTMLDivElement>(null);
+  const scrollIntent = useScrollIntent(parentRef);
   const requestIdRef = useRef(0);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [relevanceById, setRelevanceById] = useState<Map<number, number>>(
@@ -322,6 +324,7 @@ export function SearchResultsView() {
                     selectedMediaIds={[]}
                     onSelect={() => openViewer(item.id)}
                     onOpen={openViewer}
+                    scrollIntent={scrollIntent}
                   />
                   {relevance != null && (
                     <span

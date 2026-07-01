@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PhotoCard } from "@/components/gallery/PhotoCard";
+import { useScrollIntent } from "@/hooks/useScrollIntent";
 import {
   getMemoryMedia,
   listMemories,
@@ -17,6 +18,7 @@ export function MemoryDetailView() {
   const { t } = useTranslation();
   const { selectedMemoryId } = useAppStore();
   const parentRef = useRef<HTMLDivElement>(null);
+  const scrollIntent = useScrollIntent(parentRef);
   const [memory, setMemory] = useState<Memory | null>(null);
   const [media, setMedia] = useState<MediaItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -144,6 +146,7 @@ export function MemoryDetailView() {
               selected={false}
               selectedMediaIds={[]}
               onSelect={() => openViewer(item.id)}
+              scrollIntent={scrollIntent}
               onOpen={openViewer}
             />
           ))}

@@ -165,4 +165,30 @@ describe("useScrollIntent", () => {
 
     expect(result.current).toBe("burst");
   });
+
+  it("attaches listener when container mounts after hook initialization", async () => {
+    const ref = { current: null } as { current: HTMLDivElement | null };
+    const { result } = renderHook(() =>
+      useScrollIntent(ref as React.RefObject<HTMLDivElement | null>),
+    );
+
+    expect(result.current).toBe("idle");
+
+    // Simulate container mounting after initial render
+    act(() => {
+      (ref as { current: HTMLDivElement | null }).current = container;
+      document.body.appendChild(document.createElement("span"));
+    });
+
+    // Wait for MutationObserver callback to fire (async microtask)
+    await waitFor(() => {
+      expect(container.addEventListener).toBeDefined();
+    });
+
+    // Now scroll events should be tracked
+    act(() => { scrollTo(0, 0); });
+    act(() => { scrollTo(2000, 500); });
+
+    expect(result.current).toBe("burst");
+  });
 });

@@ -71,14 +71,43 @@ export function useScrollIntent(
   }, [containerRef, notify]);
 
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-
+    let attachedEl: HTMLElement | null = null;
     const opts: AddEventListenerOptions = { passive: true };
-    el.addEventListener("scroll", handleScroll, opts);
+
+    const attach = (el: HTMLElement) => {
+      attachedEl = el;
+      el.addEventListener("scroll", handleScroll, opts);
+    };
+
+    const el = containerRef.current;
+    if (el) {
+      attach(el);
+    } else {
+      // Container not yet mounted — observe DOM until it appears
+      const observer = new MutationObserver(() => {
+        const target = containerRef.current;
+        if (target) {
+          observer.disconnect();
+          attach(target);
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      return () => {
+        observer.disconnect();
+        if (attachedEl) {
+          attachedEl.removeEventListener("scroll", handleScroll, opts);
+        }
+        if (idleTimer.current !== null) {
+          clearTimeout(idleTimer.current);
+        }
+      };
+    }
 
     return () => {
-      el.removeEventListener("scroll", handleScroll, opts);
+      if (attachedEl) {
+        attachedEl.removeEventListener("scroll", handleScroll, opts);
+      }
       if (idleTimer.current !== null) {
         clearTimeout(idleTimer.current);
       }

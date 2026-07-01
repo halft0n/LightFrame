@@ -1406,4 +1406,67 @@ mod tests {
         assert_eq!(unenriched.len(), 1);
         assert_eq!(unenriched[0], id2);
     }
+
+    #[test]
+    fn pair_live_photos_detects_and_links_pairs() {
+        let dir = tempfile::tempdir().unwrap();
+        let db = Database::open(dir.path().join("test.db").as_path()).unwrap();
+        let folder_id = db
+            .add_watched_folder(dir.path().to_str().unwrap())
+            .unwrap()
+            .id;
+
+        // Insert a HEIC and its companion MOV
+        let heic_path = dir.path().join("IMG_001.HEIC");
+        let mov_path = dir.path().join("IMG_001.MOV");
+        fs::write(&heic_path, b"fake heic").unwrap();
+        fs::write(&mov_path, b"fake mov").unwrap();
+
+        let heic_media = lightframe_core::media::MediaFile {
+            id: 0,
+            path: heic_path.to_string_lossy().to_string(),
+            filename: "IMG_001.HEIC".into(),
+            media_type: lightframe_core::media::MediaType::Photo,
+            size_bytes: 100,
+            width: None,
+            height: None,
+            created_at: None,
+            modified_at: chrono::NaiveDateTime::default(),
+            blake3_hash: None,
+            dhash: None,
+            phash: None,
+            latitude: None,
+            longitude: None,
+        };
+        let mov_media = lightframe_core::media::MediaFile {
+            id: 0,
+            path: mov_path.to_string_lossy().to_string(),
+            filename: "IMG_001.MOV".into(),
+            media_type: lightframe_core::media::MediaType::Video,
+            ..heic_media.clone()
+        };
+
+        let heic_id = db.upsert_media(folder_id, &heic_media).unwrap();
+        let mov_id = db.upsert_media(folder_id, &mov_media).unwrap();
+
+        // Run pair_live_photos
+        pair_live_photos(&db, folder_id).unwrap();
+
+        // Verify pairing
+        let pair = db.get_live_pair(heic_id).unwrap();
+        assert_eq!(pair, Some(mov_id));
+
+        // Verify MOV is hidden from media page
+        let page = db.get_media_page(100, None).unwrap();
+        let ids: Vec<i64> = page.iter().map(|m| m.id).collect();
+        assert!(ids.contains(&heic_id));
+        assert!(!ids.contains(&mov_id));
+
+        // Verify media type is LivePhoto
+        let live_photo = page.iter().find(|m| m.id == heic_id).unwrap();
+        assert_eq!(
+            live_photo.media_type,
+            lightframe_core::media::MediaType::LivePhoto
+        );
+    }
 }

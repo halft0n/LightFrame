@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { PhotoCard } from "./PhotoCard";
+import { useScrollIntent } from "@/hooks/useScrollIntent";
 import { getMediaByType, getMediaCountByType } from "@/lib/tauri";
 import {
   clearMediaSelection,
@@ -22,6 +23,7 @@ export function VideosView() {
   const { t } = useTranslation();
   const { selectedMediaIds } = useAppStore();
   const parentRef = useRef<HTMLDivElement>(null);
+  const scrollIntent = useScrollIntent(parentRef);
   const lastSelectedRef = useRef<number | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [mediaItems, setMediaItems] = useState<
@@ -206,6 +208,7 @@ export function VideosView() {
                         selected={selectedSet.has(item.id)}
                         selectedMediaIds={selectedMediaIds}
                         onSelect={handleSelect}
+                        scrollIntent={scrollIntent}
                         onOpen={openViewer}
                       />
                     );
