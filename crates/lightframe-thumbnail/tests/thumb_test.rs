@@ -205,3 +205,70 @@ fn regenerate_from_decoded_overwrites_and_stays_valid() {
     image::open(&out2).expect("regenerated output should be a valid image");
     assert_eq!(first_len, out2.metadata().unwrap().len());
 }
+
+#[test]
+fn generate_all_three_sizes_from_decoded() {
+    let decoded = synthetic_decoded_image(2048, 1536);
+    let hash = "ddddeeeeffffaaaaddddeeeeffffaaaaddddeeeeffffaaaaddddeeeeffffaaaa";
+
+    for size in [
+        ThumbnailSize::Micro,
+        ThumbnailSize::Small,
+        ThumbnailSize::Large,
+    ] {
+        let out = generate_from_decoded(&decoded, hash, size).expect("generate");
+        assert!(out.exists(), "size {:?} should create file", size);
+        let img = image::open(&out).expect("valid image");
+        let (w, h) = (img.width(), img.height());
+        let max_dim = w.max(h);
+        assert!(
+            max_dim <= size.pixels(),
+            "{:?}: max dim {} > target {}",
+            size,
+            max_dim,
+            size.pixels()
+        );
+    }
+}
+
+#[test]
+fn micro_blob_is_compact() {
+    let decoded = synthetic_decoded_image(4032, 3024);
+    let blob = micro_blob_from_decoded(&decoded).expect("micro blob");
+    assert!(
+        blob.len() < 10_000,
+        "micro blob should be compact (got {} bytes)",
+        blob.len()
+    );
+}
+
+#[test]
+fn generate_thumbnail_from_portrait_image() {
+    let decoded = synthetic_decoded_image(1080, 1920);
+    let hash = "eeeeffffaaaabbbbeeeeffffaaaabbbbeeeeffffaaaabbbbeeeeffffaaaabbbb";
+    let out = generate_from_decoded(&decoded, hash, ThumbnailSize::Small).expect("generate");
+    let img = image::open(&out).expect("valid");
+    assert!(img.height() <= 256);
+    assert!(img.width() <= 256);
+}
+
+#[test]
+fn generate_thumbnail_from_square_image() {
+    let decoded = synthetic_decoded_image(512, 512);
+    let hash = "ffffaaaabbbbccccffffaaaabbbbccccffffaaaabbbbccccffffaaaabbbbcccc";
+    let out = generate_from_decoded(&decoded, hash, ThumbnailSize::Large).expect("generate");
+    let img = image::open(&out).expect("valid");
+    assert!(img.width() <= 1024);
+    assert!(img.height() <= 1024);
+}
+
+#[test]
+fn generate_thumbnail_from_tiny_source_produces_valid_output() {
+    let decoded = synthetic_decoded_image(32, 24);
+    let hash = "aaaabbbbccccddddaaaabbbbccccddddaaaabbbbccccddddaaaabbbbccccdddd";
+    let out = generate_from_decoded(&decoded, hash, ThumbnailSize::Large).expect("generate");
+    assert!(out.exists());
+    assert!(out.metadata().unwrap().len() > 0);
+    // Output should be a valid image regardless of source size
+    image::open(&out).expect("should be decodable");
+}
