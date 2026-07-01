@@ -2662,7 +2662,7 @@ dependencies = [
 
 [[package]]
 name = "lightframe-ai"
-version = "0.0.18"
+version = "0.0.19"
 dependencies = [
  "image",
  "kamadak-exif",
@@ -2680,7 +2680,7 @@ dependencies = [
 
 [[package]]
 name = "lightframe-app"
-version = "0.0.18"
+version = "0.0.19"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2717,7 +2717,7 @@ dependencies = [
 
 [[package]]
 name = "lightframe-cli"
-version = "0.0.18"
+version = "0.0.19"
 dependencies = [
  "clap",
  "lightframe-core",
@@ -2730,7 +2730,7 @@ dependencies = [
 
 [[package]]
 name = "lightframe-core"
-version = "0.0.18"
+version = "0.0.19"
 dependencies = [
  "chrono",
  "dirs",
@@ -2746,7 +2746,7 @@ dependencies = [
 
 [[package]]
 name = "lightframe-db"
-version = "0.0.18"
+version = "0.0.19"
 dependencies = [
  "chrono",
  "criterion",
@@ -2762,7 +2762,7 @@ dependencies = [
 
 [[package]]
 name = "lightframe-dedup"
-version = "0.0.18"
+version = "0.0.19"
 dependencies = [
  "blake3",
  "criterion",
@@ -2775,7 +2775,7 @@ dependencies = [
 
 [[package]]
 name = "lightframe-geo"
-version = "0.0.18"
+version = "0.0.19"
 dependencies = [
  "lightframe-core",
  "reverse_geocoder",
@@ -2786,7 +2786,7 @@ dependencies = [
 
 [[package]]
 name = "lightframe-indexer"
-version = "0.0.18"
+version = "0.0.19"
 dependencies = [
  "lightframe-core",
  "notify",
@@ -2799,7 +2799,7 @@ dependencies = [
 
 [[package]]
 name = "lightframe-metadata"
-version = "0.0.18"
+version = "0.0.19"
 dependencies = [
  "chrono",
  "kamadak-exif",
@@ -2812,7 +2812,7 @@ dependencies = [
 
 [[package]]
 name = "lightframe-thumbnail"
-version = "0.0.18"
+version = "0.0.19"
 dependencies = [
  "blake3",
  "criterion",
@@ -2826,7 +2826,7 @@ dependencies = [
 
 [[package]]
 name = "lightframe-video"
-version = "0.0.18"
+version = "0.0.19"
 dependencies = [
  "lightframe-core",
  "serde",
