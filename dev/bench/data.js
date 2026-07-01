@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782905640828,
+  "lastUpdate": 1782906788347,
   "repoUrl": "https://github.com/halft0n/LightFrame",
   "entries": {
     "LightFrame Benchmarks": [
@@ -63,6 +63,70 @@ window.BENCHMARK_DATA = {
           {
             "name": "is_media_file_batch_8",
             "value": 773.81,
+            "unit": "ns"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "w_sunshine163@163.com",
+            "name": "halft0n",
+            "username": "halft0n"
+          },
+          "committer": {
+            "email": "w_sunshine163@163.com",
+            "name": "halft0n",
+            "username": "halft0n"
+          },
+          "distinct": true,
+          "id": "59f0a9788fc0d797133617186fed30bcd3b31f08",
+          "message": "chore: bump version to v0.0.21\n\nFix Windows startup crash (WebView2 incompatible flags),\nharden bench CI, add gh-pages branch for benchmark data.",
+          "timestamp": "2026-07-01T19:42:40+08:00",
+          "tree_id": "fda6af483c78e7d72b5b0d211c439affe4657130",
+          "url": "https://github.com/halft0n/LightFrame/commit/59f0a9788fc0d797133617186fed30bcd3b31f08"
+        },
+        "date": 1782906787422,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "upsert_media_1000",
+            "value": 149430000,
+            "unit": "ns"
+          },
+          {
+            "name": "search_media_fts_10k",
+            "value": 9201300,
+            "unit": "ns"
+          },
+          {
+            "name": "compute_dhash",
+            "value": 1256200,
+            "unit": "ns"
+          },
+          {
+            "name": "compute_phash",
+            "value": 1546000,
+            "unit": "ns"
+          },
+          {
+            "name": "scan_walkdir/1000",
+            "value": 763490,
+            "unit": "ns"
+          },
+          {
+            "name": "scan_walkdir/5000",
+            "value": 3641200,
+            "unit": "ns"
+          },
+          {
+            "name": "scan_walkdir/10000",
+            "value": 7295900,
+            "unit": "ns"
+          },
+          {
+            "name": "is_media_file_batch_8",
+            "value": 763.2,
             "unit": "ns"
           }
         ]
