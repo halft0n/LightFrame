@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LightFrame Benchmarks</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 3rem 1rem;
+    }
+    h1 { font-size: 2rem; margin-bottom: 0.5rem; color: #f0f6fc; }
+    p { color: #8b949e; margin-bottom: 2rem; }
+    a {
+      color: #58a6ff;
+      text-decoration: none;
+      padding: 0.75rem 1.5rem;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      transition: border-color 0.2s;
+    }
+    a:hover { border-color: #58a6ff; }
+    .status { margin-top: 2rem; font-size: 0.875rem; color: #484f58; }
+  </style>
+</head>
+<body>
+  <h1>LightFrame Benchmarks</h1>
+  <p>Performance regression tracking for LightFrame</p>
+  <a href="dev/bench/">View Benchmark Results →</a>
+  <p class="status">Data is updated automatically on each push to main.</p>
+</body>
+</html>
