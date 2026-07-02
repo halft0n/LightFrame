@@ -1,9 +1,9 @@
 use lightframe_core::Result;
 use lightframe_core::config;
-use lightframe_core::decode::{self, is_heic_path};
+use lightframe_core::decode;
 use lightframe_core::media::{DecodedImage, ThumbnailSize};
 use std::path::{Path, PathBuf};
-use tracing::{debug, warn};
+use tracing::debug;
 
 pub fn thumb_path(blake3_hash: &str, size: ThumbnailSize) -> PathBuf {
     let cache_dir = config::thumb_cache_dir();
@@ -26,15 +26,8 @@ pub fn thumb_path(blake3_hash: &str, size: ThumbnailSize) -> PathBuf {
 }
 
 fn open_source_image(src: &Path) -> Result<image::DynamicImage> {
-    if is_heic_path(src) {
-        warn!(
-            path = %src.display(),
-            "HEIC/HEIF thumbnail skipped: optional libheif support not enabled"
-        );
-    }
-
     let decoded = decode::decode_image(src)?;
-    decoded.to_dynamic_image()
+    decoded.into_dynamic_image()
 }
 
 fn save_webp(thumb: &image::DynamicImage, path: &Path) -> Result<()> {

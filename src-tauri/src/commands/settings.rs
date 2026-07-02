@@ -114,6 +114,7 @@ pub fn add_watched_folder(
         .db
         .add_watched_folder(path_str)
         .map_err(|e| e.to_string())?;
+    state.watched_folders_cache.invalidate();
 
     scan::spawn_scan(app.clone(), &state, folder.id);
     if let Err(e) = watcher::start(&app, &state) {
@@ -136,6 +137,7 @@ pub fn remove_watched_folder(
         .db
         .remove_watched_folder(id)
         .map_err(|e| e.to_string())?;
+    state.watched_folders_cache.invalidate();
     for hash in hashes {
         if hash.len() >= 4 {
             for size in [

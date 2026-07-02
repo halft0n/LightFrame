@@ -17,7 +17,7 @@ thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 rusqlite = { version = "0.33", features = ["bundled", "blob"] }
-blake3 = "1"
+blake3 = { version = "1", features = ["rayon"] }
 image = { version = "0.25", features = ["avif"] }
 webp = "0.3"
 kamadak-exif = "0.5"

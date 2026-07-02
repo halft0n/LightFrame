@@ -29,13 +29,7 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
         return error_response(StatusCode::BAD_REQUEST, "invalid path");
     }
 
-    let watched_folders = match state.db.list_watched_folders() {
-        Ok(folders) => folders,
-        Err(e) => {
-            tracing::error!("original protocol: failed to list watched folders: {e}");
-            return error_response(StatusCode::INTERNAL_SERVER_ERROR, "database error");
-        }
-    };
+    let watched_folders = state.watched_folders_cache.get(&state.db);
 
     let canonical = match std::fs::canonicalize(&file_path) {
         Ok(p) => strip_extended_prefix(p),
@@ -323,6 +317,7 @@ mod tests {
             config: AppConfig::default(),
             scan_status: crate::state::ScanStatus::new(),
             scan_concurrency: 2,
+            processing_budget: crate::state::ProcessingBudget::new(4),
             scan_queue: crate::state::ScanQueue::new(),
             face_detecting: Arc::new(AtomicBool::new(false)),
             dedup_scanning: Arc::new(AtomicBool::new(false)),
@@ -331,7 +326,8 @@ mod tests {
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: std::sync::Arc::new(crate::thumb_cache::ThumbCache::new()),
             ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
-            face_cache_dir: tempfile::tempdir().unwrap().into_path(),
+            face_cache_dir: tempfile::tempdir().unwrap().keep(),
+            watched_folders_cache: crate::state::WatchedFoldersCache::new(),
         }
     }
 
@@ -693,6 +689,7 @@ mod tests {
             config: AppConfig::default(),
             scan_status: crate::state::ScanStatus::new(),
             scan_concurrency: 2,
+            processing_budget: crate::state::ProcessingBudget::new(4),
             scan_queue: crate::state::ScanQueue::new(),
             face_detecting: Arc::new(AtomicBool::new(false)),
             dedup_scanning: Arc::new(AtomicBool::new(false)),
@@ -701,7 +698,8 @@ mod tests {
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: std::sync::Arc::new(crate::thumb_cache::ThumbCache::new()),
             ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
-            face_cache_dir: tempfile::tempdir().unwrap().into_path(),
+            face_cache_dir: tempfile::tempdir().unwrap().keep(),
+            watched_folders_cache: crate::state::WatchedFoldersCache::new(),
         };
 
         let dir = tempfile::tempdir().unwrap();

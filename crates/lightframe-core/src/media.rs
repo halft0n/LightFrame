@@ -60,15 +60,31 @@ pub struct DecodedImage {
 }
 
 impl DecodedImage {
+    fn dimension_error(&self) -> crate::Error {
+        crate::Error::Decode(format!(
+            "RGBA buffer length {} does not match {}x{}x4={}",
+            self.rgba.len(),
+            self.width,
+            self.height,
+            (self.width as usize) * (self.height as usize) * 4,
+        ))
+    }
+
     pub fn to_dynamic_image(&self) -> Result<image::DynamicImage, crate::Error> {
-        let img = image::RgbaImage::from_raw(self.width, self.height, self.rgba.clone())
+        let img =
+            image::RgbaImage::from_raw(self.width, self.height, self.rgba.clone())
+                .ok_or_else(|| self.dimension_error())?;
+        Ok(image::DynamicImage::ImageRgba8(img))
+    }
+
+    /// Move ownership of the RGBA buffer into a DynamicImage, avoiding a clone.
+    pub fn into_dynamic_image(self) -> Result<image::DynamicImage, crate::Error> {
+        let (w, h) = (self.width, self.height);
+        let img = image::RgbaImage::from_raw(w, h, self.rgba)
             .ok_or_else(|| {
                 crate::Error::Decode(format!(
-                    "RGBA buffer length {} does not match {}x{}x4={}",
-                    self.rgba.len(),
-                    self.width,
-                    self.height,
-                    (self.width as usize) * (self.height as usize) * 4,
+                    "RGBA buffer does not match {w}x{h}x4={}",
+                    (w as usize) * (h as usize) * 4,
                 ))
             })?;
         Ok(image::DynamicImage::ImageRgba8(img))

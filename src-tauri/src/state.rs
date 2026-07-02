@@ -7,6 +7,7 @@ use serde::Serialize;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex};
+use tokio::sync::Semaphore;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ScanProgress {
@@ -137,11 +138,78 @@ impl Default for ScanQueue {
     }
 }
 
+/// Controls concurrent access to different processing tiers to prevent
+/// heavy tasks (image decode, video ffmpeg) from starving lighter work.
+#[derive(Clone)]
+pub struct ProcessingBudget {
+    /// Lightweight tasks: metadata reads, DB lookups, EXIF extraction.
+    /// Reserved for Phase 1 DB batch-write optimization (not yet wired).
+    #[allow(dead_code)]
+    pub light: Arc<Semaphore>,
+    /// CPU-intensive tasks: image decode, thumbnail generation, perceptual hashing
+    pub heavy: Arc<Semaphore>,
+    /// Video-specific tasks: ffmpeg frame extraction (process count limited)
+    pub video: Arc<Semaphore>,
+}
+
+impl ProcessingBudget {
+    pub fn new(cpus: usize) -> Self {
+        let light_permits = cpus.clamp(4, 32);
+        let heavy_permits = ((cpus as f64 * 0.75).ceil() as usize).clamp(2, 12);
+        let video_permits = (cpus / 2).clamp(1, 4);
+        Self {
+            light: Arc::new(Semaphore::new(light_permits)),
+            heavy: Arc::new(Semaphore::new(heavy_permits)),
+            video: Arc::new(Semaphore::new(video_permits)),
+        }
+    }
+}
+
+/// Cached watched-folder list with a short TTL to avoid per-request DB queries
+/// from custom protocol handlers (thumb, face, original) during rapid scrolling.
+pub struct WatchedFoldersCache {
+    inner: Mutex<(Vec<lightframe_db::WatchedFolder>, std::time::Instant)>,
+}
+
+impl WatchedFoldersCache {
+    const TTL: std::time::Duration = std::time::Duration::from_secs(5);
+
+    pub fn new() -> Self {
+        Self {
+            inner: Mutex::new((Vec::new(), std::time::Instant::now() - Self::TTL)),
+        }
+    }
+
+    pub fn get(&self, db: &Database) -> Vec<lightframe_db::WatchedFolder> {
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        if guard.1.elapsed() < Self::TTL {
+            return guard.0.clone();
+        }
+        match db.list_watched_folders() {
+            Ok(folders) => {
+                guard.0 = folders.clone();
+                guard.1 = std::time::Instant::now();
+                folders
+            }
+            Err(e) => {
+                tracing::warn!("watched folders cache refresh failed: {e}");
+                guard.0.clone()
+            }
+        }
+    }
+
+    pub fn invalidate(&self) {
+        let mut guard = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        guard.1 = std::time::Instant::now() - Self::TTL;
+    }
+}
+
 pub struct AppState {
     pub db: Arc<Database>,
     pub config: AppConfig,
     pub scan_status: ScanStatus,
     pub scan_concurrency: usize,
+    pub processing_budget: ProcessingBudget,
     pub scan_queue: ScanQueue,
     pub face_detecting: Arc<AtomicBool>,
     pub dedup_scanning: Arc<AtomicBool>,
@@ -152,6 +220,7 @@ pub struct AppState {
     pub thumb_cache: Arc<ThumbCache>,
     pub ai: Arc<tokio::sync::Mutex<AiDispatcher>>,
     pub face_cache_dir: PathBuf,
+    pub watched_folders_cache: WatchedFoldersCache,
 }
 
 const TRASH_RETENTION_DAYS: i64 = 30;
@@ -234,6 +303,7 @@ impl AppState {
             config,
             scan_status: ScanStatus::new(),
             scan_concurrency: concurrency,
+            processing_budget: ProcessingBudget::new(cpus),
             scan_queue: ScanQueue::new(),
             face_detecting: Arc::new(AtomicBool::new(false)),
             dedup_scanning: Arc::new(AtomicBool::new(false)),
@@ -246,6 +316,7 @@ impl AppState {
             )),
             ai: Arc::new(tokio::sync::Mutex::new(AiDispatcher::new())),
             face_cache_dir: lightframe_core::config::thumb_cache_dir().join("faces"),
+            watched_folders_cache: WatchedFoldersCache::new(),
         })
     }
 }

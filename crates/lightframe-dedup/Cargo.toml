@@ -7,6 +7,7 @@ description = "Photo deduplication: exact (BLAKE3), perceptual (DHash/PHash), se
 [dependencies]
 lightframe-core.workspace = true
 blake3.workspace = true
+memmap2 = "0.9"
 tokio.workspace = true
 tracing.workspace = true
 image.workspace = true

@@ -119,7 +119,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -130,7 +130,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.60.2",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -358,6 +358,7 @@ dependencies = [
  "cfg-if",
  "constant_time_eq",
  "cpufeatures 0.3.0",
+ "rayon-core",
 ]
 
 [[package]]
@@ -2662,7 +2663,7 @@ dependencies = [
 
 [[package]]
 name = "lightframe-ai"
-version = "0.0.23"
+version = "0.0.24"
 dependencies = [
  "image",
  "kamadak-exif",
@@ -2680,7 +2681,7 @@ dependencies = [
 
 [[package]]
 name = "lightframe-app"
-version = "0.0.23"
+version = "0.0.24"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2717,7 +2718,7 @@ dependencies = [
 
 [[package]]
 name = "lightframe-cli"
-version = "0.0.23"
+version = "0.0.24"
 dependencies = [
  "clap",
  "lightframe-core",
@@ -2730,7 +2731,7 @@ dependencies = [
 
 [[package]]
 name = "lightframe-core"
-version = "0.0.23"
+version = "0.0.24"
 dependencies = [
  "chrono",
  "dirs",
@@ -2742,11 +2743,12 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tracing",
+ "which",
 ]
 
 [[package]]
 name = "lightframe-db"
-version = "0.0.23"
+version = "0.0.24"
 dependencies = [
  "chrono",
  "criterion",
@@ -2762,12 +2764,13 @@ dependencies = [
 
 [[package]]
 name = "lightframe-dedup"
-version = "0.0.23"
+version = "0.0.24"
 dependencies = [
  "blake3",
  "criterion",
  "image",
  "lightframe-core",
+ "memmap2",
  "tempfile",
  "tokio",
  "tracing",
@@ -2775,7 +2778,7 @@ dependencies = [
 
 [[package]]
 name = "lightframe-geo"
-version = "0.0.23"
+version = "0.0.24"
 dependencies = [
  "lightframe-core",
  "reverse_geocoder",
@@ -2786,7 +2789,7 @@ dependencies = [
 
 [[package]]
 name = "lightframe-indexer"
-version = "0.0.23"
+version = "0.0.24"
 dependencies = [
  "criterion",
  "lightframe-core",
@@ -2800,7 +2803,7 @@ dependencies = [
 
 [[package]]
 name = "lightframe-metadata"
-version = "0.0.23"
+version = "0.0.24"
 dependencies = [
  "chrono",
  "kamadak-exif",
@@ -2813,7 +2816,7 @@ dependencies = [
 
 [[package]]
 name = "lightframe-thumbnail"
-version = "0.0.23"
+version = "0.0.24"
 dependencies = [
  "blake3",
  "criterion",
@@ -2827,7 +2830,7 @@ dependencies = [
 
 [[package]]
 name = "lightframe-video"
-version = "0.0.23"
+version = "0.0.24"
 dependencies = [
  "lightframe-core",
  "serde",
@@ -2934,6 +2937,15 @@ name = "memchr"
 version = "2.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
+
+[[package]]
+name = "memmap2"
+version = "0.9.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1219ed1b7f229ee7104d281dd01d6802fe28bb6e95d292942c4daacdeb798c0"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "memoffset"

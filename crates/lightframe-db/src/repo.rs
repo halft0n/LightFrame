@@ -445,6 +445,130 @@ impl Database {
         Ok(id)
     }
 
+    /// Batch-upsert multiple media files in a single transaction.
+    /// Returns `Vec<(index, media_id)>` for each successfully inserted item.
+    pub fn batch_upsert_media(
+        &self,
+        items: &[(i64, MediaFile)],
+    ) -> lightframe_core::Result<Vec<(usize, i64)>> {
+        if items.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.conn()?;
+        conn.execute_batch("BEGIN")
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        let result = (|| -> lightframe_core::Result<Vec<(usize, i64)>> {
+            let mut upsert_stmt = conn.prepare_cached(
+                "INSERT INTO media_files (folder_id, path, filename, media_type, size_bytes, width, height, created_at, modified_at, blake3_hash, dhash_hex, phash_hex, latitude, longitude)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+                 ON CONFLICT(path) DO UPDATE SET
+                    media_type = excluded.media_type,
+                    size_bytes = excluded.size_bytes,
+                    width = COALESCE(excluded.width, width),
+                    height = COALESCE(excluded.height, height),
+                    created_at = COALESCE(excluded.created_at, created_at),
+                    modified_at = excluded.modified_at,
+                    blake3_hash = CASE
+                        WHEN excluded.size_bytes != size_bytes OR excluded.modified_at != modified_at
+                        THEN excluded.blake3_hash
+                        ELSE COALESCE(excluded.blake3_hash, blake3_hash) END,
+                    dhash_hex = CASE
+                        WHEN excluded.size_bytes != size_bytes OR excluded.modified_at != modified_at
+                        THEN excluded.dhash_hex
+                        ELSE COALESCE(excluded.dhash_hex, dhash_hex) END,
+                    phash_hex = CASE
+                        WHEN excluded.size_bytes != size_bytes OR excluded.modified_at != modified_at
+                        THEN excluded.phash_hex
+                        ELSE COALESCE(excluded.phash_hex, phash_hex) END,
+                    latitude = COALESCE(excluded.latitude, latitude),
+                    longitude = COALESCE(excluded.longitude, longitude)",
+            ).map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+            let mut id_stmt = conn.prepare_cached(
+                "SELECT id FROM media_files WHERE path = ?1",
+            ).map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+            let mut results = Vec::with_capacity(items.len());
+            for (idx, (folder_id, media)) in items.iter().enumerate() {
+                let media_type_str = format!("{:?}", media.media_type);
+                upsert_stmt.execute(params![
+                    folder_id,
+                    media.path,
+                    media.filename,
+                    media_type_str,
+                    media.size_bytes,
+                    media.width,
+                    media.height,
+                    media.created_at.map(|d| d.to_string()),
+                    media.modified_at.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                    media.blake3_hash,
+                    hash_to_hex(media.dhash),
+                    hash_to_hex(media.phash),
+                    media.latitude,
+                    media.longitude,
+                ]).map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+                let id: i64 = id_stmt.query_row(
+                    params![media.path],
+                    |row| row.get(0),
+                ).map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+                results.push((idx, id));
+            }
+            Ok(results)
+        })();
+
+        match result {
+            Ok(ids) => {
+                conn.execute_batch("COMMIT")
+                    .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+                Ok(ids)
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                Err(e)
+            }
+        }
+    }
+
+    /// Batch update media locations in a single transaction.
+    pub fn batch_update_media_locations(
+        &self,
+        items: &[(i64, String, String)],
+    ) -> lightframe_core::Result<()> {
+        if items.is_empty() {
+            return Ok(());
+        }
+        let conn = self.conn()?;
+        conn.execute_batch("BEGIN")
+            .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+
+        let result = (|| -> lightframe_core::Result<()> {
+            let mut stmt = conn
+                .prepare_cached(
+                    "UPDATE media_files SET city = ?1, country = ?2 WHERE id = ?3",
+                )
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+            for (media_id, city, country) in items {
+                stmt.execute(params![city, country, media_id])
+                    .map_err(|e| lightframe_core::Error::Database(e.to_string()))?;
+            }
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => conn
+                .execute_batch("COMMIT")
+                .map_err(|e| lightframe_core::Error::Database(e.to_string()))?,
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK");
+                return Err(e);
+            }
+        }
+        Ok(())
+    }
+
     pub fn update_media_hashes(
         &self,
         media_id: i64,

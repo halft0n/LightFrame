@@ -84,9 +84,13 @@ pub fn is_avif_path(path: &Path) -> bool {
     matches!(detect_image_format(path), ImageFormatKind::Avif)
 }
 
-/// Returns false for HEIC/HEIF, which require optional native libheif support.
+/// Returns true if the file format can be decoded.
+/// HEIC/HEIF is supported when ffmpeg is available on PATH.
 pub fn is_decode_supported(path: &Path) -> bool {
-    !is_heic_path(path)
+    if is_heic_path(path) {
+        return which::which("ffmpeg").is_ok();
+    }
+    true
 }
 
 /// Extract embedded JPEG preview bytes from RAW files without full demosaic decode.
@@ -501,11 +505,50 @@ fn transpose_rgba(rgba: Vec<u8>, width: u32, height: u32) -> (Vec<u8>, u32, u32)
     (out, height, width)
 }
 
+/// Decode HEIC/HEIF via ffmpeg pipe (no temp files).
+/// ffmpeg outputs raw PNG to stdout which we decode in-memory.
+fn decode_heic_via_ffmpeg(path: &Path) -> Result<DecodedImage> {
+    let ffmpeg = which::which("ffmpeg").map_err(|_| {
+        crate::Error::Decode(
+            "HEIC/HEIF decoding requires ffmpeg on PATH; install ffmpeg to enable".into(),
+        )
+    })?;
+
+    let output = std::process::Command::new(ffmpeg)
+        .args(["-hide_banner", "-loglevel", "error", "-i"])
+        .arg(path)
+        .args(["-frames:v", "1", "-f", "image2pipe", "-vcodec", "png", "-"])
+        .output()
+        .map_err(|e| crate::Error::Other(format!("ffmpeg execution failed: {e}")))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(crate::Error::Decode(format!(
+            "HEIC decode via ffmpeg failed: {stderr}"
+        )));
+    }
+
+    if output.stdout.is_empty() {
+        return Err(crate::Error::Decode(
+            "ffmpeg produced no output for HEIC file".into(),
+        ));
+    }
+
+    let img = image::load_from_memory(&output.stdout)
+        .map_err(|e| crate::Error::Decode(format!("failed to decode ffmpeg HEIC output: {e}")))?;
+
+    let rgba = img.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    Ok(DecodedImage {
+        rgba: rgba.into_raw(),
+        width,
+        height,
+    })
+}
+
 pub fn decode_image(path: &Path) -> Result<DecodedImage> {
     if is_heic_path(path) {
-        return Err(crate::Error::Other(
-            "HEIC/HEIF decoding requires optional libheif; skipping decode".into(),
-        ));
+        return decode_heic_via_ffmpeg(path);
     }
 
     if is_raw_path(path) {

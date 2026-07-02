@@ -683,6 +683,7 @@ mod rename_person_tests {
             config: lightframe_core::config::AppConfig::default(),
             scan_status: ScanStatus::new(),
             scan_concurrency: 4,
+            processing_budget: crate::state::ProcessingBudget::new(4),
             scan_queue: crate::state::ScanQueue::new(),
             face_detecting: Arc::new(AtomicBool::new(false)),
             dedup_scanning: Arc::new(AtomicBool::new(false)),
@@ -691,7 +692,8 @@ mod rename_person_tests {
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: std::sync::Arc::new(crate::thumb_cache::ThumbCache::new()),
             ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
-            face_cache_dir: tempfile::tempdir().unwrap().into_path(),
+            face_cache_dir: tempfile::tempdir().unwrap().keep(),
+            watched_folders_cache: crate::state::WatchedFoldersCache::new(),
         }
     }
 
@@ -751,6 +753,7 @@ mod face_detection_tests {
             config: lightframe_core::config::AppConfig::default(),
             scan_status: ScanStatus::new(),
             scan_concurrency: 4,
+            processing_budget: crate::state::ProcessingBudget::new(4),
             scan_queue: crate::state::ScanQueue::new(),
             face_detecting: Arc::new(AtomicBool::new(false)),
             dedup_scanning: Arc::new(AtomicBool::new(false)),
@@ -759,7 +762,8 @@ mod face_detection_tests {
             watch_manager: crate::watcher::WatchManager::new(),
             thumb_cache: std::sync::Arc::new(crate::thumb_cache::ThumbCache::new()),
             ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
-            face_cache_dir: tempfile::tempdir().unwrap().into_path(),
+            face_cache_dir: tempfile::tempdir().unwrap().keep(),
+            watched_folders_cache: crate::state::WatchedFoldersCache::new(),
         };
 
         let err = detect_and_store_faces_for_media(&state, 99999)

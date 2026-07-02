@@ -13,6 +13,7 @@ dirs = "6"
 image.workspace = true
 kamadak-exif.workspace = true
 tracing.workspace = true
+which = "7"
 rawloader = { workspace = true, optional = true }
 
 [features]

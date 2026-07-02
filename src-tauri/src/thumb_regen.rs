@@ -21,6 +21,7 @@ pub fn media_needs_thumbnail_regeneration(db: &Database, media_id: i64, hash: &s
         .is_none_or(|blob| blob.is_empty())
 }
 
+#[cfg(test)]
 pub fn regenerate_thumbnails_for_media(state: &AppState, media_id: i64) -> Result<bool, String> {
     let result = regenerate_thumbnails_for_media_db(&state.db, media_id)?;
     if result {
@@ -169,6 +170,9 @@ pub async fn regenerate_all_thumbnails(
     app: AppHandle,
     state: &AppState,
 ) -> Result<ThumbnailRegenResult, String> {
+    use futures::stream::{self, StreamExt};
+    use std::sync::atomic::AtomicI64;
+
     if state
         .thumb_regenerating
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -185,52 +189,105 @@ pub async fn regenerate_all_thumbnails(
     }
     let _guard = ThumbRegeneratingGuard(Arc::clone(&state.thumb_regenerating));
 
-    let total = state.db.get_media_count().map_err(|e| e.to_string())?;
-    let mut processed = 0i64;
-    let mut regenerated = 0i64;
+    // Collect all media IDs upfront
+    let mut all_ids: Vec<i64> = Vec::new();
     let mut offset = 0i64;
-
-    let emit = |processed: i64, regenerated: i64, status: &str| {
-        let payload = ThumbnailRegenProgress {
-            processed,
-            total,
-            regenerated,
-            status: status.to_string(),
-        };
-        if let Err(e) = app.emit("thumbnail-regen-progress", &payload) {
-            tracing::warn!("failed to emit thumbnail-regen-progress: {e}");
-        }
-    };
-
-    emit(0, 0, "running");
-
-    while offset < total {
+    loop {
         let batch = state
             .db
             .get_all_media(PAGE_SIZE, offset)
             .map_err(|e| e.to_string())?;
-
         if batch.is_empty() {
             break;
         }
-
-        for media in batch {
-            processed += 1;
-            match regenerate_thumbnails_for_media(state, media.id) {
-                Ok(true) => regenerated += 1,
-                Ok(false) => {}
-                Err(e) => tracing::warn!(media_id = media.id, "thumbnail regen failed: {e}"),
-            }
-            emit(processed, regenerated, "running");
-        }
-
+        all_ids.extend(batch.iter().map(|m| m.id));
         offset += PAGE_SIZE;
-        tokio::task::yield_now().await;
     }
 
-    emit(processed, regenerated, "complete");
+    let total = all_ids.len() as i64;
+    let processed = Arc::new(AtomicI64::new(0));
+    let regenerated = Arc::new(AtomicI64::new(0));
+    let concurrency = state.scan_concurrency;
 
-    Ok(ThumbnailRegenResult { regenerated })
+    let _ = app.emit(
+        "thumbnail-regen-progress",
+        ThumbnailRegenProgress {
+            processed: 0,
+            total,
+            regenerated: 0,
+            status: "running".to_string(),
+        },
+    );
+
+    let last_emit = Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
+
+    stream::iter(all_ids.into_iter().map(|media_id| {
+        let db = Arc::clone(&state.db);
+        let thumb_cache = Arc::clone(&state.thumb_cache);
+        let processed = Arc::clone(&processed);
+        let regenerated = Arc::clone(&regenerated);
+        let app = app.clone();
+        let last_emit = Arc::clone(&last_emit);
+        async move {
+            let result = tokio::task::spawn_blocking(move || {
+                let regen = regenerate_thumbnails_for_media_db(&db, media_id)?;
+                if regen {
+                    thumb_cache.invalidate_media(media_id);
+                }
+                Ok::<bool, String>(regen)
+            })
+            .await;
+
+            let done = processed.fetch_add(1, Ordering::Relaxed) + 1;
+            match result {
+                Ok(Ok(true)) => {
+                    regenerated.fetch_add(1, Ordering::Relaxed);
+                }
+                Ok(Ok(false)) => {}
+                Ok(Err(e)) => tracing::warn!(media_id, "thumbnail regen failed: {e}"),
+                Err(e) => tracing::warn!(media_id, "thumbnail regen task panicked: {e}"),
+            }
+
+            let should_emit = done == total
+                || done % 20 == 0
+                || last_emit
+                    .lock()
+                    .map(|last| last.elapsed() >= std::time::Duration::from_millis(500))
+                    .unwrap_or(true);
+            if should_emit {
+                if let Ok(mut last) = last_emit.lock() {
+                    *last = std::time::Instant::now();
+                }
+                let _ = app.emit(
+                    "thumbnail-regen-progress",
+                    ThumbnailRegenProgress {
+                        processed: done,
+                        total,
+                        regenerated: regenerated.load(Ordering::Relaxed),
+                        status: "running".to_string(),
+                    },
+                );
+            }
+        }
+    }))
+    .buffer_unordered(concurrency)
+    .collect::<()>()
+    .await;
+
+    let final_regenerated = regenerated.load(Ordering::Relaxed);
+    let _ = app.emit(
+        "thumbnail-regen-progress",
+        ThumbnailRegenProgress {
+            processed: total,
+            total,
+            regenerated: final_regenerated,
+            status: "complete".to_string(),
+        },
+    );
+
+    Ok(ThumbnailRegenResult {
+        regenerated: final_regenerated,
+    })
 }
 
 #[cfg(test)]
@@ -304,6 +361,7 @@ mod tests {
                 config: AppConfig::default(),
                 scan_status: crate::state::ScanStatus::new(),
                 scan_concurrency: 2,
+                processing_budget: crate::state::ProcessingBudget::new(4),
                 scan_queue: crate::state::ScanQueue::new(),
                 face_detecting: Arc::new(AtomicBool::new(false)),
                 dedup_scanning: Arc::new(AtomicBool::new(false)),
@@ -312,7 +370,8 @@ mod tests {
                 watch_manager: crate::watcher::WatchManager::new(),
                 thumb_cache: std::sync::Arc::new(crate::thumb_cache::ThumbCache::new()),
                 ai: Arc::new(tokio::sync::Mutex::new(lightframe_ai::AiDispatcher::new())),
-                face_cache_dir: tempfile::tempdir().unwrap().into_path(),
+                face_cache_dir: tempfile::tempdir().unwrap().keep(),
+                watched_folders_cache: crate::state::WatchedFoldersCache::new(),
             };
 
             Self {
