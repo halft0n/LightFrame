@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782906788347,
+  "lastUpdate": 1782953055805,
   "repoUrl": "https://github.com/halft0n/LightFrame",
   "entries": {
     "LightFrame Benchmarks": [
@@ -127,6 +127,70 @@ window.BENCHMARK_DATA = {
           {
             "name": "is_media_file_batch_8",
             "value": 763.2,
+            "unit": "ns"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "w_sunshine163@163.com",
+            "name": "halft0n",
+            "username": "halft0n"
+          },
+          "committer": {
+            "email": "w_sunshine163@163.com",
+            "name": "halft0n",
+            "username": "halft0n"
+          },
+          "distinct": true,
+          "id": "198dadb1431e304e985b9de77794a6cd6b13bdf4",
+          "message": "fix: use tauri::async_runtime::spawn in setup to avoid tokio panic\n\nThe setup closure runs before Tauri's tokio runtime context is\navailable on the current thread. Replace direct tokio::spawn calls\nwith tauri::async_runtime::spawn which guarantees a valid runtime.",
+          "timestamp": "2026-07-02T08:34:31+08:00",
+          "tree_id": "d33c784daca293f418b45e28f5dc42fd00d8e1a0",
+          "url": "https://github.com/halft0n/LightFrame/commit/198dadb1431e304e985b9de77794a6cd6b13bdf4"
+        },
+        "date": 1782953055540,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "upsert_media_1000",
+            "value": 148170000,
+            "unit": "ns"
+          },
+          {
+            "name": "search_media_fts_10k",
+            "value": 9020400,
+            "unit": "ns"
+          },
+          {
+            "name": "compute_dhash",
+            "value": 1256300,
+            "unit": "ns"
+          },
+          {
+            "name": "compute_phash",
+            "value": 1541700,
+            "unit": "ns"
+          },
+          {
+            "name": "scan_walkdir/1000",
+            "value": 731310,
+            "unit": "ns"
+          },
+          {
+            "name": "scan_walkdir/5000",
+            "value": 3509200,
+            "unit": "ns"
+          },
+          {
+            "name": "scan_walkdir/10000",
+            "value": 7209500,
+            "unit": "ns"
+          },
+          {
+            "name": "is_media_file_batch_8",
+            "value": 745.63,
             "unit": "ns"
           }
         ]
