@@ -79,8 +79,8 @@ pub fn handle(state: &AppState, request_path: &str) -> Response<Vec<u8>> {
     }
 
     let Some(hash) = media.blake3_hash else {
-        tracing::warn!(media_id, path = %media.path, "no hash for media");
-        return error_response(StatusCode::NOT_FOUND, "no hash for media");
+        tracing::debug!(media_id, path = %media.path, "no hash yet — enrichment pending");
+        return placeholder_response();
     };
 
     let cache_path = thumb_path(&hash, size);
@@ -286,13 +286,18 @@ mod tests {
     }
 
     #[test]
-    fn handle_missing_blake3_hash_returns_404() {
+    fn handle_missing_blake3_hash_returns_placeholder() {
         let dir = tempfile::tempdir().unwrap();
         let state = test_state();
         let media_id = insert_media(&state, dir.path(), None);
         let resp = handle(&state, &format!("/{media_id}/small"));
-        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
-        assert_eq!(String::from_utf8_lossy(resp.body()), "no hash for media");
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert_eq!(
+            resp.headers()
+                .get(http::header::CONTENT_TYPE)
+                .and_then(|v| v.to_str().ok()),
+            Some("image/png")
+        );
     }
 
     #[test]

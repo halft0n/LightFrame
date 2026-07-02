@@ -414,6 +414,6 @@
   "slideshow.sequential": "Sequential mode",
   "ai.model.clip-vit-b32-visual.onnx": "CLIP ViT-B/32 visual encoder for image embeddings",
   "ai.model.clip-vit-b32-textual.onnx": "CLIP ViT-B/32 text encoder for semantic search",
-  "ai.model.scrfd_500m_bnkps.onnx": "SCRFD face detector with landmark keypoints",
+  "ai.model.scrfd_500m_bnkps.onnx": "SCRFD 2.5G face detector with landmark keypoints",
   "ai.model.w600k_r50.onnx": "ArcFace R50 for face embedding extraction"
 }

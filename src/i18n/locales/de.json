@@ -414,6 +414,6 @@
   "slideshow.sequential": "Reihenfolgemodus",
   "ai.model.clip-vit-b32-visual.onnx": "CLIP ViT-B/32 visueller Encoder für Bildeinbettungen",
   "ai.model.clip-vit-b32-textual.onnx": "CLIP ViT-B/32 Textencoder für semantische Suche",
-  "ai.model.scrfd_500m_bnkps.onnx": "SCRFD Gesichtsdetektor mit Landmarken",
+  "ai.model.scrfd_500m_bnkps.onnx": "SCRFD 2.5G Gesichtsdetektor mit Landmarken",
   "ai.model.w600k_r50.onnx": "ArcFace R50 für Gesichtseinbettung"
 }

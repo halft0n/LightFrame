@@ -30,9 +30,8 @@ pub struct ModelInfo {
 pub const CLIP_VISUAL_MODEL: ModelInfo = ModelInfo {
     name: "CLIP Visual Encoder",
     filename: CLIP_MODEL_FILENAME,
-    url: "https://huggingface.co/phineas-bage/clip-vit-b32-onnx/resolve/main/clip-vit-b32-visual.onnx",
-    size_mb: 338,
-    // TODO: pin SHA-256 hash before v0.1.0-beta release (compute on first verified download)
+    url: "https://huggingface.co/inference4j/clip-vit-base-patch32/resolve/main/vision_model.onnx",
+    size_mb: 340,
     sha256: "",
     description: "CLIP ViT-B/32 visual encoder for image embeddings",
 };
@@ -40,9 +39,8 @@ pub const CLIP_VISUAL_MODEL: ModelInfo = ModelInfo {
 pub const CLIP_TEXT_MODEL: ModelInfo = ModelInfo {
     name: "CLIP Text Encoder",
     filename: CLIP_TEXT_MODEL_FILENAME,
-    url: "https://huggingface.co/phineas-bage/clip-vit-b32-onnx/resolve/main/clip-vit-b32-textual.onnx",
-    size_mb: 254,
-    // TODO: pin SHA-256 hash before v0.1.0-beta release (compute on first verified download)
+    url: "https://huggingface.co/inference4j/clip-vit-base-patch32/resolve/main/text_model.onnx",
+    size_mb: 255,
     sha256: "",
     description: "CLIP ViT-B/32 text encoder for semantic search",
 };
@@ -50,20 +48,18 @@ pub const CLIP_TEXT_MODEL: ModelInfo = ModelInfo {
 pub const FACE_DETECTION_MODEL: ModelInfo = ModelInfo {
     name: "Face Detection (SCRFD)",
     filename: FACE_DETECT_MODEL_FILENAME,
-    url: "https://huggingface.co/phineas-bage/insightface-models/resolve/main/scrfd_500m_bnkps.onnx",
+    url: "https://huggingface.co/RuteNL/SCRFD-face-detection-ONNX/resolve/main/2.5g_bnkps.onnx",
     size_mb: 3,
-    // TODO: pin SHA-256 hash before v0.1.0-beta release (compute on first verified download)
     sha256: "",
-    description: "SCRFD face detector with landmark keypoints",
+    description: "SCRFD 2.5G face detector with landmark keypoints",
 };
 
 pub const FACE_RECOGNITION_MODEL: ModelInfo = ModelInfo {
     name: "Face Recognition (ArcFace)",
     filename: FACE_RECOG_MODEL_FILENAME,
-    url: "https://huggingface.co/phineas-bage/insightface-models/resolve/main/w600k_r50.onnx",
-    size_mb: 166,
-    // TODO: pin SHA-256 hash before v0.1.0-beta release (compute on first verified download)
-    sha256: "",
+    url: "https://huggingface.co/public-data/insightface/resolve/main/models/buffalo_l/w600k_r50.onnx",
+    size_mb: 174,
+    sha256: "4c06341c33c2ca1f86781dab0e829f88ad5b64be9fba56e56bc9ebdefc619e43",
     description: "ArcFace R50 for face embedding extraction",
 };
 
@@ -209,33 +205,96 @@ where
     let dest = model_path_for(info);
     let tmp = dest.with_extension("onnx.part");
 
+    tracing::info!(
+        model = info.name,
+        url = info.url,
+        dest = %dest.display(),
+        size_mb = info.size_mb,
+        "starting model download"
+    );
+
     let mut builder = ureq::AgentBuilder::new()
         .timeout_connect(std::time::Duration::from_secs(30))
         .timeout_read(std::time::Duration::from_secs(60));
 
-    if let Ok(proxy_url) = std::env::var("https_proxy")
+    let proxy_var = std::env::var("https_proxy")
         .or_else(|_| std::env::var("HTTPS_PROXY"))
         .or_else(|_| std::env::var("http_proxy"))
-        .or_else(|_| std::env::var("HTTP_PROXY"))
-        && let Ok(proxy) = ureq::Proxy::new(&proxy_url)
-    {
-        tracing::info!(proxy = %proxy_url, "using proxy for model download");
-        builder = builder.proxy(proxy);
+        .or_else(|_| std::env::var("HTTP_PROXY"));
+
+    match &proxy_var {
+        Ok(url) => {
+            let proxy_url = if url.starts_with("https://") {
+                url.replacen("https://", "http://", 1)
+            } else {
+                url.clone()
+            };
+            let after_scheme = proxy_url
+                .strip_prefix("http://")
+                .or_else(|| proxy_url.strip_prefix("https://"))
+                .unwrap_or(&proxy_url);
+            let authority = after_scheme.split('/').next().unwrap_or("");
+            let host_part = authority.split('@').next_back().unwrap_or(authority);
+            let host = if host_part.starts_with('[') {
+                host_part
+                    .trim_start_matches('[')
+                    .split(']')
+                    .next()
+                    .unwrap_or("")
+            } else {
+                host_part.split(':').next().unwrap_or("")
+            };
+            if host.is_empty() {
+                tracing::warn!(proxy = %proxy_url, original = %url, "proxy URL has no valid host, downloading directly");
+            } else {
+                match ureq::Proxy::new(&proxy_url) {
+                    Ok(proxy) => {
+                        tracing::info!(proxy = %proxy_url, "using proxy for model download");
+                        builder = builder.proxy(proxy);
+                    }
+                    Err(e) => {
+                        tracing::warn!(proxy = %proxy_url, original = %url, error = %e, "failed to parse proxy URL, downloading directly");
+                    }
+                }
+            }
+        }
+        Err(_) => {
+            tracing::info!(
+                "no proxy configured (https_proxy/HTTPS_PROXY/http_proxy/HTTP_PROXY not set)"
+            );
+        }
     }
 
     let agent = builder.build();
 
+    tracing::info!(url = info.url, "sending HTTP GET request");
     let response = agent.get(info.url).call().map_err(|e| {
         let detail = match &e {
             ureq::Error::Transport(t) => {
-                format!(
+                let msg = format!(
                     "network error ({}): {}. Check your internet connection or proxy settings.",
                     t.kind(),
                     t.message().unwrap_or("unknown")
-                )
+                );
+                tracing::error!(
+                    model = info.name,
+                    url = info.url,
+                    kind = %t.kind(),
+                    message = t.message().unwrap_or("unknown"),
+                    "model download transport error"
+                );
+                msg
             }
-            ureq::Error::Status(code, _) => {
-                format!("HTTP {code} from server")
+            ureq::Error::Status(code, resp) => {
+                let body = resp.status_text().to_string();
+                tracing::error!(
+                    model = info.name,
+                    url = info.url,
+                    status = code,
+                    status_text = %body,
+                    "model download HTTP error"
+                );
+                format!("HTTP {code} from server: {body}")
             }
         };
         Error::Ai(format!("download failed for {}: {detail}", info.name))
@@ -246,10 +305,20 @@ where
         .and_then(|s| s.parse::<u64>().ok())
         .unwrap_or(0);
 
+    tracing::info!(
+        model = info.name,
+        total_bytes,
+        content_type = response.content_type(),
+        "download response received, starting data transfer"
+    );
+
     on_progress(0, total_bytes);
 
     let mut reader = response.into_reader();
-    let mut file = std::fs::File::create(&tmp).map_err(Error::Io)?;
+    let mut file = std::fs::File::create(&tmp).map_err(|e| {
+        tracing::error!(path = %tmp.display(), error = %e, "failed to create temp file for download");
+        Error::Io(e)
+    })?;
 
     const CHUNK_SIZE: usize = 64 * 1024;
     const PROGRESS_INTERVAL: u64 = 100 * 1024;
@@ -262,14 +331,27 @@ where
         if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
             drop(file);
             let _ = std::fs::remove_file(&tmp);
+            tracing::info!(model = info.name, downloaded, "download cancelled by user");
             return Err(Error::Ai("download cancelled".to_string()));
         }
 
-        let n = reader.read(&mut buffer).map_err(Error::Io)?;
+        let n = reader.read(&mut buffer).map_err(|e| {
+            tracing::error!(
+                model = info.name,
+                downloaded,
+                total_bytes,
+                error = %e,
+                "network read error during download"
+            );
+            Error::Io(e)
+        })?;
         if n == 0 {
             break;
         }
-        file.write_all(&buffer[..n]).map_err(Error::Io)?;
+        file.write_all(&buffer[..n]).map_err(|e| {
+            tracing::error!(path = %tmp.display(), error = %e, "write error during download");
+            Error::Io(e)
+        })?;
         downloaded += n as u64;
 
         let percent = downloaded
@@ -434,7 +516,7 @@ mod tests {
                 "{}",
                 model.url
             );
-            assert!(model.url.ends_with(model.filename), "{}", model.url);
+            assert!(model.url.ends_with(".onnx"), "{}", model.url);
             assert!(!model.name.is_empty());
             assert!(!model.description.is_empty());
             assert!(model.size_mb > 0);

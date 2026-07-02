@@ -168,8 +168,27 @@ function ModelRow({
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
+  const [showInfo, setShowInfo] = useState(false);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const descKey = `ai.model.${model.filename}` as Parameters<typeof t>[0];
   const localizedDesc = t(descKey) !== descKey ? t(descKey) : model.description;
+
+  useEffect(() => {
+    return () => {
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    };
+  }, []);
+
+  const handleEnter = () => {
+    if (hideTimerRef.current) {
+      clearTimeout(hideTimerRef.current);
+      hideTimerRef.current = null;
+    }
+    setShowInfo(true);
+  };
+  const handleLeave = () => {
+    hideTimerRef.current = setTimeout(() => setShowInfo(false), 150);
+  };
 
   return (
     <li className="rounded-lg border border-neutral-200/80 px-3 py-3 dark:border-neutral-700">
@@ -179,18 +198,31 @@ function ModelRow({
             <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
               {model.name}
             </p>
-            <span className="group relative">
+            <span
+              className="relative"
+              onMouseEnter={handleEnter}
+              onMouseLeave={handleLeave}
+            >
               <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5 cursor-help text-neutral-400 dark:text-neutral-500">
                 <path fillRule="evenodd" d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm6.5-2.75A1.5 1.5 0 0 1 8 3.75h.01a1.5 1.5 0 0 1 0 3H8A1.5 1.5 0 0 1 6.5 5.25ZM8 7a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 7Z" clipRule="evenodd" />
               </svg>
-              <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 w-56 -translate-x-1/2 rounded-md bg-neutral-900 px-2.5 py-1.5 text-[11px] leading-snug text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 dark:bg-neutral-700">
-                <span className="block">{localizedDesc}</span>
-                {!model.installed && (
-                  <a href={model.url} target="_blank" rel="noopener noreferrer" className="mt-1 block truncate text-blue-300 underline hover:text-blue-200">
+              {showInfo && (
+                <span
+                  className="absolute bottom-full left-1/2 z-50 mb-1.5 w-64 -translate-x-1/2 select-text rounded-md bg-neutral-900 px-2.5 py-2 text-[11px] leading-snug text-white shadow-lg dark:bg-neutral-700"
+                  onMouseEnter={handleEnter}
+                  onMouseLeave={handleLeave}
+                >
+                  <span className="block">{localizedDesc}</span>
+                  <a
+                    href={model.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1.5 block break-all text-blue-300 underline hover:text-blue-200"
+                  >
                     {model.url}
                   </a>
-                )}
-              </span>
+                </span>
+              )}
             </span>
           </div>
           <p className="mt-1 font-mono text-[11px] text-neutral-500 dark:text-neutral-400">
@@ -204,16 +236,6 @@ function ModelRow({
         </div>
         <div className="flex items-center gap-2">
           <StatusBadge available={model.installed} />
-          {model.installed && model.sha256_verified === true && (
-            <span className="text-[10px] font-medium text-green-600 dark:text-green-400">
-              ✓ SHA-256
-            </span>
-          )}
-          {model.installed && model.sha256_verified === false && (
-            <span className="text-[10px] font-medium text-red-600 dark:text-red-400">
-              ✗ SHA-256
-            </span>
-          )}
           {!model.installed &&
             (downloading && progress ? (
               <CircularProgress progress={progress} onCancel={onCancel} />
@@ -248,6 +270,9 @@ export function AiSettings() {
   const speedSamplesRef = useRef<Map<string, { downloaded: number; at: number }>>(
     new Map(),
   );
+  const mountedRef = useRef(true);
+  const progressBufferRef = useRef(new Map<string, DownloadProgressState>());
+  const cancelledRef = useRef(new Set<string>());
 
   const loadStatus = useCallback(async () => {
     setLoading(true);
@@ -268,13 +293,79 @@ export function AiSettings() {
   }, [loadStatus]);
 
   useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!window.__TAURI_INTERNALS__) return;
 
-    let mounted = true;
     let unlisten: UnlistenFn | undefined;
+
+    const flushTimer = setInterval(() => {
+      if (!mountedRef.current) return;
+      const buf = progressBufferRef.current;
+      if (buf.size === 0) return;
+      const snapshot = new Map(buf);
+      buf.clear();
+      setDownloads((prev) => {
+        const next = new Map(prev);
+        for (const [k, v] of snapshot) next.set(k, v);
+        return next;
+      });
+    }, 200);
+
+    let staleCheckInFlight = false;
+    const staleTimer = setInterval(async () => {
+      if (!mountedRef.current || staleCheckInFlight) return;
+      const now = Date.now();
+      const stale: string[] = [];
+      for (const [filename, sample] of speedSamplesRef.current) {
+        if (now - sample.at > 5000) stale.push(filename);
+      }
+      if (stale.length === 0) return;
+      staleCheckInFlight = true;
+      try {
+        const fresh = await getModelStatus();
+        if (!mountedRef.current) return;
+        setStatus(fresh);
+        setDownloads((prev) => {
+          let next = prev;
+          for (const fn of stale) {
+            const m = fresh.models.find((x) => x.filename === fn);
+            if (
+              m?.installed ||
+              now - (speedSamplesRef.current.get(fn)?.at ?? 0) > 90000
+            ) {
+              if (next === prev) next = new Map(prev);
+              next.delete(fn);
+              speedSamplesRef.current.delete(fn);
+            }
+          }
+          return next;
+        });
+        setDownloadErrors((prev) => {
+          let next = prev;
+          for (const fn of stale) {
+            if (prev.has(fn)) {
+              if (next === prev) next = new Map(prev);
+              next.delete(fn);
+            }
+          }
+          return next;
+        });
+      } catch {
+        // ignore status check errors during reconciliation
+      } finally {
+        staleCheckInFlight = false;
+      }
+    }, 5000);
+
     void listen<ModelDownloadProgress>("model-download-progress", (event) => {
       const { filename, downloaded, total } = event.payload;
-      if (!mounted) return;
+      if (!mountedRef.current || cancelledRef.current.has(filename)) return;
 
       const now = Date.now();
       const prev = speedSamplesRef.current.get(filename);
@@ -287,13 +378,9 @@ export function AiSettings() {
         }
       }
       speedSamplesRef.current.set(filename, { downloaded, at: now });
-      setDownloads((prev) => {
-        const next = new Map(prev);
-        next.set(filename, { downloaded, total, speedBps });
-        return next;
-      });
+      progressBufferRef.current.set(filename, { downloaded, total, speedBps });
     }).then((fn) => {
-      if (mounted) {
+      if (mountedRef.current) {
         unlisten = fn;
       } else {
         fn();
@@ -301,8 +388,9 @@ export function AiSettings() {
     });
 
     return () => {
-      mounted = false;
-      void unlisten?.();
+      clearInterval(flushTimer);
+      clearInterval(staleTimer);
+      unlisten?.();
     };
   }, []);
 
@@ -328,6 +416,7 @@ export function AiSettings() {
       return;
     }
 
+    cancelledRef.current.delete(filename);
     setDownloads((prev) => {
       const next = new Map(prev);
       next.set(filename, { downloaded: 0, total: 0, speedBps: 0 });
@@ -342,10 +431,10 @@ export function AiSettings() {
 
     try {
       await downloadModel(filename);
-      await loadStatus();
+      if (mountedRef.current) await loadStatus();
     } catch (err) {
       const raw = err instanceof Error ? err.message : String(err);
-      if (!raw.includes("cancelled")) {
+      if (!raw.includes("cancelled") && mountedRef.current) {
         setDownloadErrors((prev) => {
           const next = new Map(prev);
           next.set(filename, localizeError(err, t));
@@ -353,16 +442,27 @@ export function AiSettings() {
         });
       }
     } finally {
-      setDownloads((prev) => {
-        const next = new Map(prev);
-        next.delete(filename);
-        return next;
-      });
+      if (mountedRef.current) {
+        setDownloads((prev) => {
+          const next = new Map(prev);
+          next.delete(filename);
+          return next;
+        });
+      }
       speedSamplesRef.current.delete(filename);
+      progressBufferRef.current.delete(filename);
     }
   };
 
   const handleCancel = async (filename: string) => {
+    cancelledRef.current.add(filename);
+    setDownloads((prev) => {
+      const next = new Map(prev);
+      next.delete(filename);
+      return next;
+    });
+    speedSamplesRef.current.delete(filename);
+    progressBufferRef.current.delete(filename);
     try {
       await cancelDownload(filename);
     } catch {
