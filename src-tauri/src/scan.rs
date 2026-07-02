@@ -261,7 +261,7 @@ pub async fn run_scan(
                     }
                 }
                 let scanned = scan_status.increment_scanned();
-                if scanned % 100 == 0 {
+                if scanned % 500 == 0 {
                     memory::log_memory("scan_progress");
                 }
                 progress.maybe_emit(&app, &scan_status, false);

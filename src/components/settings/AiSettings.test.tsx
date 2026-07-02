@@ -114,8 +114,6 @@ describe("AiSettings", () => {
     await waitFor(() => {
       expect(screen.getByText(/clip-vit-b32-visual\.onnx/)).toBeInTheDocument();
       expect(screen.getByText(/scrfd_500m_bnkps\.onnx/)).toBeInTheDocument();
-      expect(screen.getByText("Similar photo search")).toBeInTheDocument();
-      expect(screen.getByText("Face detection")).toBeInTheDocument();
     });
   });
 

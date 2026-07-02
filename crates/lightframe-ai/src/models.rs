@@ -209,10 +209,21 @@ where
     let dest = model_path_for(info);
     let tmp = dest.with_extension("onnx.part");
 
-    let agent = ureq::AgentBuilder::new()
+    let mut builder = ureq::AgentBuilder::new()
         .timeout_connect(std::time::Duration::from_secs(30))
-        .timeout_read(std::time::Duration::from_secs(60))
-        .build();
+        .timeout_read(std::time::Duration::from_secs(60));
+
+    if let Ok(proxy_url) = std::env::var("https_proxy")
+        .or_else(|_| std::env::var("HTTPS_PROXY"))
+        .or_else(|_| std::env::var("http_proxy"))
+        .or_else(|_| std::env::var("HTTP_PROXY"))
+        && let Ok(proxy) = ureq::Proxy::new(&proxy_url)
+    {
+        tracing::info!(proxy = %proxy_url, "using proxy for model download");
+        builder = builder.proxy(proxy);
+    }
+
+    let agent = builder.build();
 
     let response = agent.get(info.url).call().map_err(|e| {
         let detail = match &e {

@@ -411,5 +411,9 @@
   "slideshow.shuffle": "随机播放模式",
   "slideshow.shuffleOn": "随机",
   "slideshow.shuffleOff": "顺序",
-  "slideshow.sequential": "顺序播放模式"
+  "slideshow.sequential": "顺序播放模式",
+  "ai.model.clip-vit-b32-visual.onnx": "CLIP ViT-B/32 视觉编码器，用于图片嵌入向量",
+  "ai.model.clip-vit-b32-textual.onnx": "CLIP ViT-B/32 文本编码器，用于语义搜索",
+  "ai.model.scrfd_500m_bnkps.onnx": "SCRFD 人脸检测器（含关键点）",
+  "ai.model.w600k_r50.onnx": "ArcFace R50 人脸特征提取"
 }

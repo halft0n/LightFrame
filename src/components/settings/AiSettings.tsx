@@ -168,17 +168,31 @@ function ModelRow({
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
+  const descKey = `ai.model.${model.filename}` as Parameters<typeof t>[0];
+  const localizedDesc = t(descKey) !== descKey ? t(descKey) : model.description;
 
   return (
     <li className="rounded-lg border border-neutral-200/80 px-3 py-3 dark:border-neutral-700">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
-            {model.name}
-          </p>
-          <p className="mt-0.5 text-xs text-neutral-500 dark:text-neutral-400">
-            {model.description}
-          </p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+              {model.name}
+            </p>
+            <span className="group relative">
+              <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5 cursor-help text-neutral-400 dark:text-neutral-500">
+                <path fillRule="evenodd" d="M8 1.5a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13ZM0 8a8 8 0 1 1 16 0A8 8 0 0 1 0 8Zm6.5-2.75A1.5 1.5 0 0 1 8 3.75h.01a1.5 1.5 0 0 1 0 3H8A1.5 1.5 0 0 1 6.5 5.25ZM8 7a.75.75 0 0 1 .75.75v3.5a.75.75 0 0 1-1.5 0v-3.5A.75.75 0 0 1 8 7Z" clipRule="evenodd" />
+              </svg>
+              <span className="pointer-events-none absolute bottom-full left-1/2 z-50 mb-1.5 w-56 -translate-x-1/2 rounded-md bg-neutral-900 px-2.5 py-1.5 text-[11px] leading-snug text-white opacity-0 shadow-lg transition-opacity group-hover:opacity-100 dark:bg-neutral-700">
+                <span className="block">{localizedDesc}</span>
+                {!model.installed && (
+                  <a href={model.url} target="_blank" rel="noopener noreferrer" className="mt-1 block truncate text-blue-300 underline hover:text-blue-200">
+                    {model.url}
+                  </a>
+                )}
+              </span>
+            </span>
+          </div>
           <p className="mt-1 font-mono text-[11px] text-neutral-500 dark:text-neutral-400">
             {model.filename}
             {model.installed && model.file_size_bytes != null && (
@@ -187,11 +201,6 @@ function ModelRow({
             {!model.installed && <> · ~{model.size_mb} MB</>}
           </p>
           {downloading && progress && <DownloadInfo progress={progress} />}
-          {!model.installed && !downloading && (
-            <p className="mt-1 break-all text-[10px] text-neutral-400 dark:text-neutral-500">
-              URL: <a href={model.url} target="_blank" rel="noopener noreferrer" className="underline hover:text-blue-500">{model.url}</a>
-            </p>
-          )}
         </div>
         <div className="flex items-center gap-2">
           <StatusBadge available={model.installed} />

@@ -1,5 +1,3 @@
-use tracing::info;
-
 #[derive(Debug, Clone, Copy)]
 pub struct MemorySnapshot {
     pub rss_kb: u64,
@@ -19,7 +17,7 @@ pub fn current_memory() -> Option<MemorySnapshot> {
 
 pub fn log_memory(label: &str) {
     if let Some(mem) = current_memory() {
-        info!(
+        tracing::debug!(
             label,
             rss_mb = mem.rss_kb as f64 / 1024.0,
             vm_size_mb = mem.vm_size_kb as f64 / 1024.0,
