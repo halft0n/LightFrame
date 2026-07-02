@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1782953055805,
+  "lastUpdate": 1782954948534,
   "repoUrl": "https://github.com/halft0n/LightFrame",
   "entries": {
     "LightFrame Benchmarks": [
@@ -191,6 +191,70 @@ window.BENCHMARK_DATA = {
           {
             "name": "is_media_file_batch_8",
             "value": 745.63,
+            "unit": "ns"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "w_sunshine163@163.com",
+            "name": "halft0n",
+            "username": "halft0n"
+          },
+          "committer": {
+            "email": "w_sunshine163@163.com",
+            "name": "halft0n",
+            "username": "halft0n"
+          },
+          "distinct": true,
+          "id": "7a5eb84d16ada932be04c204310cb0e59944afdc",
+          "message": "fix: add loading spinner to index.html to avoid black screen on cold start\n\nThe spinner renders instantly and is replaced when React mounts,\nproviding immediate visual feedback during WebView initialization.",
+          "timestamp": "2026-07-02T09:05:21+08:00",
+          "tree_id": "9e06d71dd46d940dc52bd943f52d04e07a4dbc33",
+          "url": "https://github.com/halft0n/LightFrame/commit/7a5eb84d16ada932be04c204310cb0e59944afdc"
+        },
+        "date": 1782954947762,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "upsert_media_1000",
+            "value": 147010000,
+            "unit": "ns"
+          },
+          {
+            "name": "search_media_fts_10k",
+            "value": 9129900,
+            "unit": "ns"
+          },
+          {
+            "name": "compute_dhash",
+            "value": 1265900,
+            "unit": "ns"
+          },
+          {
+            "name": "compute_phash",
+            "value": 1550800,
+            "unit": "ns"
+          },
+          {
+            "name": "scan_walkdir/1000",
+            "value": 740480,
+            "unit": "ns"
+          },
+          {
+            "name": "scan_walkdir/5000",
+            "value": 3592100,
+            "unit": "ns"
+          },
+          {
+            "name": "scan_walkdir/10000",
+            "value": 7203700,
+            "unit": "ns"
+          },
+          {
+            "name": "is_media_file_batch_8",
+            "value": 771.45,
             "unit": "ns"
           }
         ]
