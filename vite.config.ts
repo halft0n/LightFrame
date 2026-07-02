@@ -13,6 +13,24 @@ export default defineConfig(async () => ({
     },
   },
   clearScreen: false,
+  build: {
+    chunkSizeWarningLimit: 550,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          "react-vendor": ["react", "react-dom"],
+          leaflet: ["leaflet", "react-leaflet", "leaflet.markercluster"],
+          tauri: [
+            "@tauri-apps/api",
+            "@tauri-apps/plugin-dialog",
+            "@tauri-apps/plugin-process",
+            "@tauri-apps/plugin-shell",
+          ],
+          virtualizer: ["@tanstack/react-virtual"],
+        },
+      },
+    },
+  },
   server: {
     port: 1420,
     strictPort: true,
