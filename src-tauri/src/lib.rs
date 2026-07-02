@@ -61,7 +61,7 @@ pub fn run() {
                 tracing::info!("pending rebuild detected — scheduling choice restoration");
                 let db_for_recovery = Arc::clone(&state.db);
                 let scan_running = state.scan_queue.running_flag();
-                tokio::spawn(async move {
+                tauri::async_runtime::spawn(async move {
                     // Wait for any initial/watcher-triggered scans
                     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                     let mut wait_ms = 5000u64;
@@ -87,7 +87,7 @@ pub fn run() {
 
             // Spawn periodic memory budget check (every 60s)
             let thumb_cache = Arc::clone(&state.thumb_cache);
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 let cpus = std::thread::available_parallelism()
                     .map(|n| n.get())
                     .unwrap_or(4);
