@@ -185,34 +185,24 @@ pub fn all_model_statuses() -> Vec<ModelFileStatus> {
     all_models().into_iter().map(model_file_status).collect()
 }
 
-pub fn download_model<F>(info: &ModelInfo, on_progress: F) -> Result<PathBuf>
-where
-    F: FnMut(u64, u64),
-{
-    download_model_cancellable(info, on_progress, None)
+fn apply_mirror(url: &str) -> String {
+    let mirror = std::env::var("HF_MIRROR")
+        .or_else(|_| std::env::var("LIGHTFRAME_HF_MIRROR"))
+        .ok()
+        .filter(|m| !m.trim().is_empty());
+
+    if let Some(mirror) = mirror {
+        let mirror = mirror.trim_end_matches('/');
+        if url.starts_with("https://huggingface.co") {
+            let replaced = url.replacen("https://huggingface.co", mirror, 1);
+            tracing::info!(original = url, mirror = %replaced, "using HuggingFace mirror");
+            return replaced;
+        }
+    }
+    url.to_string()
 }
 
-pub fn download_model_cancellable<F>(
-    info: &ModelInfo,
-    mut on_progress: F,
-    cancel: Option<&std::sync::atomic::AtomicBool>,
-) -> Result<PathBuf>
-where
-    F: FnMut(u64, u64),
-{
-    ensure_models_dir().map_err(Error::Io)?;
-
-    let dest = model_path_for(info);
-    let tmp = dest.with_extension("onnx.part");
-
-    tracing::info!(
-        model = info.name,
-        url = info.url,
-        dest = %dest.display(),
-        size_mb = info.size_mb,
-        "starting model download"
-    );
-
+fn build_download_agent() -> ureq::Agent {
     let mut builder = ureq::AgentBuilder::new()
         .timeout_connect(std::time::Duration::from_secs(30))
         .timeout_read(std::time::Duration::from_secs(60));
@@ -259,51 +249,105 @@ where
             }
         }
         Err(_) => {
-            tracing::info!(
+            tracing::debug!(
                 "no proxy configured (https_proxy/HTTPS_PROXY/http_proxy/HTTP_PROXY not set)"
             );
         }
     }
 
-    let agent = builder.build();
+    builder.build()
+}
 
-    tracing::info!(url = info.url, "sending HTTP GET request");
-    let response = agent.get(info.url).call().map_err(|e| {
-        let detail = match &e {
-            ureq::Error::Transport(t) => {
-                let msg = format!(
-                    "network error ({}): {}. Check your internet connection or proxy settings.",
-                    t.kind(),
-                    t.message().unwrap_or("unknown")
-                );
-                tracing::error!(
-                    model = info.name,
-                    url = info.url,
-                    kind = %t.kind(),
-                    message = t.message().unwrap_or("unknown"),
-                    "model download transport error"
-                );
-                msg
-            }
-            ureq::Error::Status(code, resp) => {
-                let body = resp.status_text().to_string();
-                tracing::error!(
-                    model = info.name,
-                    url = info.url,
-                    status = code,
-                    status_text = %body,
-                    "model download HTTP error"
-                );
-                format!("HTTP {code} from server: {body}")
-            }
-        };
-        Error::Ai(format!("download failed for {}: {detail}", info.name))
-    })?;
+fn map_download_error(e: &ureq::Error, info: &ModelInfo, url: &str) -> Error {
+    let detail = match e {
+        ureq::Error::Transport(t) => {
+            let msg = format!(
+                "network error ({}): {}",
+                t.kind(),
+                t.message().unwrap_or("unknown")
+            );
+            tracing::error!(
+                model = info.name,
+                url,
+                kind = %t.kind(),
+                message = t.message().unwrap_or("unknown"),
+                "model download transport error"
+            );
+            msg
+        }
+        ureq::Error::Status(code, resp) => {
+            let body = resp.status_text().to_string();
+            tracing::error!(
+                model = info.name,
+                url,
+                status = code,
+                status_text = %body,
+                "model download HTTP error"
+            );
+            format!("HTTP {code}: {body}")
+        }
+    };
+    Error::Ai(format!("download failed for {}: {detail}", info.name))
+}
 
-    let total_bytes = response
-        .header("Content-Length")
-        .and_then(|s| s.parse::<u64>().ok())
-        .unwrap_or(0);
+fn attempt_download<F>(
+    agent: &ureq::Agent,
+    url: &str,
+    info: &ModelInfo,
+    tmp: &Path,
+    on_progress: &mut F,
+    cancel: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<()>
+where
+    F: FnMut(u64, u64),
+{
+    let existing_bytes = tmp.metadata().map(|m| m.len()).unwrap_or(0);
+
+    let mut request = agent.get(url);
+    if existing_bytes > 0 {
+        request = request.set("Range", &format!("bytes={existing_bytes}-"));
+        tracing::info!(
+            model = info.name,
+            existing_bytes,
+            "attempting resume download"
+        );
+    }
+
+    let response = request
+        .call()
+        .map_err(|e| map_download_error(&e, info, url))?;
+
+    let status_code = response.status();
+    let is_resumed = status_code == 206;
+
+    let total_bytes = if is_resumed {
+        response
+            .header("Content-Range")
+            .and_then(|r| r.rsplit('/').next())
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0)
+    } else {
+        response
+            .header("Content-Length")
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(0)
+    };
+
+    let mut downloaded = if is_resumed { existing_bytes } else { 0 };
+
+    if is_resumed {
+        tracing::info!(
+            model = info.name,
+            resumed_from = existing_bytes,
+            total_bytes,
+            "resume accepted by server"
+        );
+    } else if existing_bytes > 0 {
+        tracing::info!(
+            model = info.name,
+            "server does not support resume, restarting"
+        );
+    }
 
     tracing::info!(
         model = info.name,
@@ -312,25 +356,36 @@ where
         "download response received, starting data transfer"
     );
 
-    on_progress(0, total_bytes);
+    on_progress(downloaded, total_bytes);
 
     let mut reader = response.into_reader();
-    let mut file = std::fs::File::create(&tmp).map_err(|e| {
-        tracing::error!(path = %tmp.display(), error = %e, "failed to create temp file for download");
-        Error::Io(e)
-    })?;
+    let mut file = if is_resumed {
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(tmp)
+            .map_err(|e| {
+                tracing::error!(path = %tmp.display(), error = %e, "failed to open temp file for resume");
+                Error::Io(e)
+            })?
+    } else {
+        std::fs::File::create(tmp).map_err(|e| {
+            tracing::error!(path = %tmp.display(), error = %e, "failed to create temp file");
+            Error::Io(e)
+        })?
+    };
 
     const CHUNK_SIZE: usize = 64 * 1024;
     const PROGRESS_INTERVAL: u64 = 100 * 1024;
     let mut buffer = [0_u8; CHUNK_SIZE];
-    let mut downloaded: u64 = 0;
-    let mut last_reported: u64 = 0;
-    let mut last_percent: u64 = 0;
+    let mut last_reported: u64 = downloaded;
+    let mut last_percent: u64 = downloaded
+        .saturating_mul(100)
+        .checked_div(total_bytes)
+        .unwrap_or(0);
 
     loop {
         if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
             drop(file);
-            let _ = std::fs::remove_file(&tmp);
             tracing::info!(model = info.name, downloaded, "download cancelled by user");
             return Err(Error::Ai("download cancelled".to_string()));
         }
@@ -369,21 +424,100 @@ where
     drop(file);
 
     on_progress(downloaded, total_bytes);
+    Ok(())
+}
 
-    if info.sha256.is_empty() {
-        let actual_hash = compute_file_sha256(&tmp)?;
-        tracing::warn!(
-            model = info.name,
-            hash = %actual_hash,
-            "no sha256 configured; computed hash for pinning"
-        );
-    } else {
-        verify_file_sha256(&tmp, info.sha256)?;
+const MAX_DOWNLOAD_RETRIES: u32 = 3;
+
+pub fn download_model<F>(info: &ModelInfo, on_progress: F) -> Result<PathBuf>
+where
+    F: FnMut(u64, u64),
+{
+    download_model_cancellable(info, on_progress, None)
+}
+
+pub fn download_model_cancellable<F>(
+    info: &ModelInfo,
+    mut on_progress: F,
+    cancel: Option<&std::sync::atomic::AtomicBool>,
+) -> Result<PathBuf>
+where
+    F: FnMut(u64, u64),
+{
+    ensure_models_dir().map_err(Error::Io)?;
+
+    let dest = model_path_for(info);
+    let tmp = dest.with_extension("onnx.part");
+    let url = apply_mirror(info.url);
+    let agent = build_download_agent();
+
+    tracing::info!(
+        model = info.name,
+        url = %url,
+        dest = %dest.display(),
+        size_mb = info.size_mb,
+        "starting model download"
+    );
+
+    for attempt in 1..=MAX_DOWNLOAD_RETRIES {
+        if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(Error::Ai("download cancelled".to_string()));
+        }
+
+        match attempt_download(&agent, &url, info, &tmp, &mut on_progress, cancel) {
+            Ok(()) => {
+                if info.sha256.is_empty() {
+                    let actual_hash = compute_file_sha256(&tmp)?;
+                    tracing::warn!(
+                        model = info.name,
+                        hash = %actual_hash,
+                        "no sha256 configured; computed hash for pinning"
+                    );
+                } else {
+                    verify_file_sha256(&tmp, info.sha256)?;
+                }
+
+                std::fs::rename(&tmp, &dest).map_err(Error::Io)?;
+                tracing::info!(
+                    model = info.name,
+                    path = %dest.display(),
+                    "model download complete"
+                );
+                return Ok(dest);
+            }
+            Err(e) => {
+                let msg = e.to_string();
+                let retryable = !msg.contains("cancelled")
+                    && !msg.contains("sha256")
+                    && !msg.contains("HTTP 4");
+
+                if retryable && attempt < MAX_DOWNLOAD_RETRIES {
+                    let delay_secs = 1u64 << (attempt - 1);
+                    tracing::warn!(
+                        model = info.name,
+                        attempt,
+                        max_retries = MAX_DOWNLOAD_RETRIES,
+                        delay_secs,
+                        error = %e,
+                        "download failed, retrying"
+                    );
+                    for _ in 0..delay_secs {
+                        if cancel.is_some_and(|c| c.load(std::sync::atomic::Ordering::Relaxed)) {
+                            let _ = std::fs::remove_file(&tmp);
+                            return Err(Error::Ai("download cancelled".to_string()));
+                        }
+                        std::thread::sleep(std::time::Duration::from_secs(1));
+                    }
+                    continue;
+                }
+
+                return Err(e);
+            }
+        }
     }
 
-    std::fs::rename(&tmp, &dest).map_err(Error::Io)?;
-    tracing::info!(model = info.name, path = %dest.display(), "model download complete");
-    Ok(dest)
+    unreachable!()
 }
 
 fn compute_file_sha256(path: &Path) -> Result<String> {
@@ -751,6 +885,16 @@ mod tests {
         let cancel = AtomicBool::new(true);
 
         let result = download_model_cancellable(&info, |_, _| {}, Some(&cancel));
+        // Cancel fires before connect, so server's accept() is still blocking.
+        // Connect briefly to unblock the server thread so it can exit.
+        let addr: std::net::SocketAddr = url_leaked
+            .trim_start_matches("http://")
+            .split('/')
+            .next()
+            .unwrap()
+            .parse()
+            .unwrap();
+        let _ = std::net::TcpStream::connect_timeout(&addr, std::time::Duration::from_secs(1));
         let _ = server.join();
 
         match &result {

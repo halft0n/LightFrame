@@ -454,6 +454,16 @@ export function AiSettings() {
     }
   };
 
+  const handleDownloadAll = () => {
+    if (!status || !window.__TAURI_INTERNALS__) return;
+    const uninstalled = status.models.filter(
+      (m) => !m.installed && !downloads.has(m.filename),
+    );
+    for (const model of uninstalled) {
+      void handleDownload(model.filename);
+    }
+  };
+
   const handleCancel = async (filename: string) => {
     cancelledRef.current.add(filename);
     setDownloads((prev) => {
@@ -519,6 +529,16 @@ export function AiSettings() {
           </p>
 
           <div className="flex flex-wrap gap-2">
+            {status.models.some((m) => !m.installed) && (
+              <button
+                type="button"
+                onClick={handleDownloadAll}
+                disabled={downloads.size > 0}
+                className="rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50"
+              >
+                {t("ai.downloadAll")}
+              </button>
+            )}
             <button
               type="button"
               onClick={() => void handleOpenModelsDir()}

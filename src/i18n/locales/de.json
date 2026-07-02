@@ -415,5 +415,13 @@
   "ai.model.clip-vit-b32-visual.onnx": "CLIP ViT-B/32 visueller Encoder für Bildeinbettungen",
   "ai.model.clip-vit-b32-textual.onnx": "CLIP ViT-B/32 Textencoder für semantische Suche",
   "ai.model.scrfd_500m_bnkps.onnx": "SCRFD 2.5G Gesichtsdetektor mit Landmarken",
-  "ai.model.w600k_r50.onnx": "ArcFace R50 für Gesichtseinbettung"
+  "ai.model.w600k_r50.onnx": "ArcFace R50 für Gesichtseinbettung",
+  "ai.downloadAll": "Alle herunterladen",
+  "errors.downloadDns": "DNS-Auflösung fehlgeschlagen. Überprüfen Sie Netzwerk oder Proxy.",
+  "errors.downloadConnection": "Verbindung fehlgeschlagen. Überprüfen Sie Netzwerk oder Firewall.",
+  "errors.downloadTimeout": "Zeitüberschreitung. Versuchen Sie einen Mirror (HF_MIRROR).",
+  "errors.downloadClientError": "Server hat die Anfrage abgelehnt. Bitte später erneut versuchen.",
+  "errors.downloadServerError": "Serverfehler. Bitte später erneut versuchen.",
+  "errors.downloadGeneric": "Download fehlgeschlagen. Prüfen Sie das Netzwerk oder setzen Sie HF_MIRROR.",
+  "errors.alreadyDownloading": "Dieses Modell wird bereits heruntergeladen"
 }

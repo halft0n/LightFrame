@@ -415,5 +415,13 @@
   "ai.model.clip-vit-b32-visual.onnx": "CLIP ViT-B/32 visual encoder for image embeddings",
   "ai.model.clip-vit-b32-textual.onnx": "CLIP ViT-B/32 text encoder for semantic search",
   "ai.model.scrfd_500m_bnkps.onnx": "SCRFD 2.5G face detector with landmark keypoints",
-  "ai.model.w600k_r50.onnx": "ArcFace R50 for face embedding extraction"
+  "ai.model.w600k_r50.onnx": "ArcFace R50 for face embedding extraction",
+  "ai.downloadAll": "Download All",
+  "errors.downloadDns": "DNS resolution failed. Check your network or proxy settings.",
+  "errors.downloadConnection": "Connection failed. Check your network or firewall.",
+  "errors.downloadTimeout": "Connection timed out. Try using a mirror (set HF_MIRROR).",
+  "errors.downloadClientError": "Server rejected the request. Please try again later.",
+  "errors.downloadServerError": "Server error. Please try again later.",
+  "errors.downloadGeneric": "Download failed. Check your network or set HF_MIRROR for a mirror.",
+  "errors.alreadyDownloading": "This model is already being downloaded"
 }
